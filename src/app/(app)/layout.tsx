@@ -66,12 +66,19 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex h-screen overflow-hidden bg-[var(--background)]">
       <Sidebar />
-      <div className="flex flex-1 flex-col overflow-hidden">
+      <div className="flex min-h-screen flex-1 flex-col overflow-hidden">
         <Header
           title={getPageTitle(pathname)}
           onMobileMenuToggle={toggleMobile}
         />
-        <div className="flex-1 overflow-y-auto p-6">{children}</div>
+        <div className="flex flex-1 flex-col overflow-y-auto">
+          <main className="flex-1 p-6">{children}</main>
+          <footer className="mt-auto border-t border-border bg-background/50 px-6 py-4 text-center md:text-right">
+            <p className="text-xs font-medium text-slate-500">
+              &copy;2026 InspiraLabs &middot; Unggul Sulaiman, S.Kom
+            </p>
+          </footer>
+        </div>
       </div>
     </div>
   )

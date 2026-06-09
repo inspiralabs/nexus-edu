@@ -1,5 +1,6 @@
 'use client'
 
+import Image from 'next/image'
 import {
   BarChart2,
   BookOpen,
@@ -502,8 +503,15 @@ function Sidebar() {
         )}
       >
         <div className="border-b border-[var(--border)] px-4 py-5">
-          <p className="text-xl font-bold text-primary">SQA</p>
-          <p className="text-xs text-[var(--text-tertiary)]">Platform</p>
+          <Image
+            src="/SQA.png"
+            alt="Logo SQA"
+            width={120}
+            height={40}
+            className="h-8 w-auto object-contain"
+            priority
+          />
+          <p className="mt-1 text-xs text-[var(--text-tertiary)]">Platform</p>
         </div>
 
         <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">

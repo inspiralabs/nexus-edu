@@ -1,19 +1,10 @@
 'use client'
 
+import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
-
-function SqaLogo() {
-  return (
-    <span className="text-xl font-bold">
-      <span className="text-primary">S</span>
-      <span className="text-secondary">Q</span>
-      <span className="text-primary">A</span>
-    </span>
-  )
-}
 
 export function Navbar() {
   const router = useRouter()
@@ -57,7 +48,14 @@ export function Navbar() {
           className="cursor-pointer"
           aria-label="Kembali ke atas"
         >
-          <SqaLogo />
+          <Image
+            src="/SQA.png"
+            alt="Logo SQA"
+            width={120}
+            height={40}
+            className="h-8 w-auto object-contain"
+            priority
+          />
         </a>
 
         <nav className="hidden items-center gap-8 md:flex">

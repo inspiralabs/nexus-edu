@@ -2,6 +2,7 @@
 
 import { zodResolver } from '@hookform/resolvers/zod'
 import { AlertCircle, CheckCircle, Eye, EyeOff } from 'lucide-react'
+import Image from 'next/image'
 import Link from 'next/link'
 import { useState, useTransition } from 'react'
 import { useForm } from 'react-hook-form'
@@ -156,6 +157,16 @@ export default function SignupPage() {
   return (
     <Card className="mx-auto w-full max-w-md">
       <CardHeader className="text-center">
+        <div className="mb-2 flex justify-center">
+          <Image
+            src="/SQA.png"
+            alt="Logo SQA"
+            width={120}
+            height={40}
+            className="h-8 w-auto object-contain"
+            priority
+          />
+        </div>
         <CardTitle>Daftar Akun Baru</CardTitle>
         <CardDescription>Isi form berikut untuk mendaftar</CardDescription>
       </CardHeader>

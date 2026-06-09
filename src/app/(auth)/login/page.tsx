@@ -2,6 +2,7 @@
 
 import { zodResolver } from '@hookform/resolvers/zod'
 import { AlertCircle, Eye, EyeOff } from 'lucide-react'
+import Image from 'next/image'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useMemo, useState, useTransition } from 'react'
@@ -13,7 +14,6 @@ import {
   CardContent,
   CardDescription,
   CardHeader,
-  CardTitle,
 } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -100,7 +100,16 @@ export default function LoginPage() {
   return (
     <Card className="mx-auto w-full max-w-sm">
       <CardHeader className="text-center">
-        <CardTitle className="text-2xl font-bold text-primary">SQA</CardTitle>
+        <div className="mb-2 flex justify-center">
+          <Image
+            src="/SQA.png"
+            alt="Logo SQA"
+            width={120}
+            height={40}
+            className="h-8 w-auto object-contain"
+            priority
+          />
+        </div>
         <CardDescription>Masuk ke akun Anda</CardDescription>
       </CardHeader>
       <CardContent>
