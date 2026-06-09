@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { type ColumnDef } from '@tanstack/react-table'
 import { format, parseISO } from 'date-fns'
 import { Edit, Plus, Search, Trash2, Upload } from 'lucide-react'
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { PageHeader } from '@/components/layout/page-header'
@@ -415,8 +415,6 @@ export default function PrestasiDataPage() {
     },
   })
 
-  const selectedUnit = form.watch('unit')
-
   const bulkForm = useForm<BulkPrestasiFormValues>({
     resolver: zodResolver(bulkPrestasiSchema),
     defaultValues: {
@@ -476,9 +474,9 @@ export default function PrestasiDataPage() {
   })
 
   const { isLoading: studentSearchLoading } = useQuery({
-    queryKey: ['students-search', debouncedStudentSearch, selectedUnit],
+    queryKey: ['students-search', debouncedStudentSearch, activeUnit],
     queryFn: async () => {
-      const results = await searchStudents(debouncedStudentSearch, selectedUnit)
+      const results = await searchStudents(debouncedStudentSearch, activeUnit)
       setStudentOptions(
         results.map((s) => ({
           value: s.id,
@@ -487,8 +485,14 @@ export default function PrestasiDataPage() {
       )
       return results
     },
-    enabled: (isFormOpen || isBulkAddOpen) && Boolean(selectedUnit),
+    enabled: isFormOpen || isBulkAddOpen,
   })
+
+  useEffect(() => {
+    if (isAddOpen || isBulkAddOpen) {
+      form.setValue('unit', activeUnit, { shouldValidate: true })
+    }
+  }, [isAddOpen, isBulkAddOpen, activeUnit, form])
 
   const { isLoading: eventSearchLoading } = useQuery({
     queryKey: ['event-search', debouncedEventSearch],
@@ -870,7 +874,7 @@ export default function PrestasiDataPage() {
     resetBulkComboboxState()
   }
 
-  const resetFormDefaults = (unit: Unit = 'SD') => {
+  const resetFormDefaults = (unit: Unit = activeUnit) => {
     form.reset({
       unit,
       siswa_id: '',
@@ -893,14 +897,6 @@ export default function PrestasiDataPage() {
     resetComboboxState()
   }
 
-  const handleUnitChange = (unit: Unit) => {
-    form.setValue('unit', unit, { shouldValidate: true })
-    form.setValue('siswa_id', '')
-    setKelasDisplay('')
-    setStudentOptions([])
-    setStudentSearch('')
-  }
-
   const handleActiveUnitChange = (unit: Unit) => {
     setActiveUnit(unit)
     setPage(1)
@@ -912,7 +908,7 @@ export default function PrestasiDataPage() {
 
   const openAddDialog = () => {
     setEditingItem(null)
-    resetFormDefaults()
+    resetFormDefaults(activeUnit)
     resetComboboxState()
     setIsAddOpen(true)
   }
@@ -1014,7 +1010,7 @@ export default function PrestasiDataPage() {
       ...prev,
       {
         localId: crypto.randomUUID(),
-        ...buildPayload(values),
+        ...buildPayload({ ...values, unit: activeUnit }),
         siswaLabel,
         kelas: kelasDisplay,
         eventLabel,
@@ -1044,7 +1040,7 @@ export default function PrestasiDataPage() {
         oldItem: editingItem,
       })
     } else {
-      createMutation.mutate(values)
+      createMutation.mutate({ ...values, unit: activeUnit })
     }
   }
 
@@ -1156,30 +1152,6 @@ export default function PrestasiDataPage() {
   const renderPrestasiFormFields = (showAddToListButton = false) => (
     <div className="space-y-4">
       <div className="space-y-2">
-        <Label>Unit</Label>
-        <Select
-          value={form.watch('unit')}
-          onValueChange={(value) => handleUnitChange(value as Unit)}
-        >
-          <SelectTrigger>
-            <SelectValue placeholder="Pilih unit" />
-          </SelectTrigger>
-          <SelectContent>
-            {UNITS.map((unit) => (
-              <SelectItem key={unit} value={unit}>
-                {unit}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        {form.formState.errors.unit && (
-          <p className="text-xs text-status-red">
-            {form.formState.errors.unit.message}
-          </p>
-        )}
-      </div>
-
-      <div className="space-y-2">
         <Label>Nama Siswa</Label>
         <Combobox
           options={studentOptions}
@@ -1191,7 +1163,6 @@ export default function PrestasiDataPage() {
           }}
           onSearch={setStudentSearch}
           placeholder="Cari siswa..."
-          disabled={!selectedUnit}
           isLoading={studentSearchLoading}
         />
         {form.formState.errors.siswa_id && (
