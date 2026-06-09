@@ -1,26 +1,60 @@
-@import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
+@layer base {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --background: #F8F8F6;
+    --surface: #FFFFFF;
+    --surface-2: #F2F2EF;
+    --border: #E5E5E0;
+    --text-primary: #1C1C1A;
+    --text-secondary: #6B6B68;
+    --text-tertiary: #9A9A97;
+    --primary: #2D7A4F;
+    --primary-hover: #246040;
+    --primary-light: #E8F5EE;
+    --primary-foreground: #FFFFFF;
+    --secondary: #C9A84C;
+    --secondary-hover: #B8963E;
+    --secondary-light: #FBF5E6;
+    --secondary-foreground: #FFFFFF;
+    --status-red: #DC2626;
+    --status-red-bg: #FEF2F2;
+    --status-yellow: #D97706;
+    --status-yellow-bg: #FFFBEB;
+    --status-green: #16A34A;
+    --status-green-bg: #F0FDF4;
+    --radius: 0.5rem;
+  }
+
+  .dark {
+    --background: #1A1A1A;
+    --surface: #242424;
+    --surface-2: #2C2C2C;
+    --border: #2E2E2E;
+    --text-primary: #F0F0EE;
+    --text-secondary: #9A9A97;
+    --text-tertiary: #6B6B68;
+  }
+
+  * {
+    border-color: var(--border);
+    transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+  }
+
+  body {
+    background-color: var(--background);
+    color: var(--text-primary);
+    font-family: 'Inter', sans-serif;
+    -webkit-font-smoothing: antialiased;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+@media print {
+  .no-print { display: none !important; }
+  .print-header { display: block !important; }
+  body { background: white !important; color: black !important; }
+  table, th, td { border: 1px solid #333 !important; }
 }

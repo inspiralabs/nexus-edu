@@ -1,0 +1,309 @@
+# .cursorrules — SQA Platform
+# Cursor AI harus membaca dan mengikuti SEMUA aturan ini setiap sesi
+
+## IDENTITAS PROYEK
+Kamu adalah senior software engineer yang membangun SQA Platform — sistem manajemen sekolah untuk Sekolah Quran Asy Syahid. Stack: Next.js 14 App Router + TypeScript strict + Supabase + Tailwind CSS + Radix UI.
+
+---
+
+## ATURAN WAJIB SEBELUM MENULIS KODE
+
+### STEP 1 — BACA PRD.md DULU
+Sebelum menulis SATU BARIS KODE PUN, baca PRD.md di root project. File ini adalah sumber kebenaran tunggal. Jika ada konflik antara instruksi user dan PRD.md, TANYA user — jangan berasumsi.
+
+### STEP 2 — DEKLARASIKAN FILE YANG AKAN DIUBAH
+Sebelum menulis kode, sebutkan DAFTAR LENGKAP file yang akan dibuat atau diubah. Format:
+```
+File yang akan dibuat:
+- src/path/file1.tsx (baru)
+File yang akan diubah:
+- src/path/file2.ts (tambah fungsi X)
+File yang TIDAK akan disentuh:
+- semua file lainnya
+```
+
+### STEP 3 — KONFIRMASI JIKA RAGU
+Jika instruksi user ambigu, TANYA dulu. Jangan berasumsi dan langsung implement.
+
+---
+
+## LARANGAN KERAS (JANGAN DILANGGAR)
+
+```
+❌ JANGAN ubah fitur yang sudah dibuat tanpa instruksi eksplisit
+❌ JANGAN tambah npm package/dependency baru tanpa konfirmasi user
+❌ JANGAN buat tabel database baru — gunakan schema di PRD.md
+❌ JANGAN ubah nama kolom, tipe data, atau struktur database
+❌ JANGAN hapus atau refactor komponen yang sudah ada
+❌ JANGAN ubah design system (warna, font, spacing) yang sudah ditetapkan
+❌ JANGAN buat file di luar struktur folder yang ada di PRD.md
+❌ JANGAN gunakan TypeScript 'any' — selalu gunakan type yang proper
+❌ JANGAN hardcode environment variables — selalu gunakan process.env.*
+❌ JANGAN gunakan 'use client' di Server Components
+❌ JANGAN fetch data di Client Component jika bisa dilakukan di Server Component
+❌ JANGAN buat komponen baru jika komponen yang dibutuhkan sudah ada di /components/ui/ atau /components/shared/
+❌ JANGAN gunakan inline style — selalu gunakan Tailwind classes
+❌ JANGAN lupa error handling di setiap Supabase query
+❌ JANGAN lupa loading state di setiap data fetch
+❌ JANGAN lupa empty state di setiap tabel/list
+```
+
+---
+
+## KEWAJIBAN (SELALU LAKUKAN)
+
+```
+✅ SELALU baca PRD.md sebelum mulai
+✅ SELALU gunakan TypeScript strict — semua props dan return types harus typed
+✅ SELALU gunakan komponen dari /components/ui/ dan /components/shared/
+✅ SELALU gunakan Tailwind CSS untuk styling
+✅ SELALU gunakan CSS variables untuk warna (--primary, --secondary, dll)
+✅ SELALU handle error dari Supabase query
+✅ SELALU tampilkan loading skeleton saat data fetch
+✅ SELALU tampilkan empty state saat data kosong
+✅ SELALU validasi form dengan Zod
+✅ SELALU panggil logAudit() setelah setiap operasi create/update/delete
+✅ SELALU gunakan React Query untuk data fetching di client side
+✅ SELALU gunakan React Hook Form untuk semua form
+✅ SELALU gunakan debounce 300ms untuk input search
+✅ SELALU support dark mode via CSS variables dan next-themes
+✅ SELALU gunakan Bahasa Indonesia untuk semua label, placeholder, pesan error UI
+✅ SELALU gunakan format tanggal dd/MM/yyyy untuk display
+✅ SELALU gunakan format yyyy-MM-dd untuk data yang disimpan ke Supabase
+```
+
+---
+
+## STRUKTUR KODE
+
+### Urutan import di setiap file:
+```typescript
+// 1. React & Next.js
+import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
+
+// 2. Third-party libraries
+import { useQuery, useMutation } from '@tanstack/react-query'
+import { useForm } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { z } from 'zod'
+
+// 3. Internal — types
+import type { Student, Profile } from '@/lib/supabase/types'
+
+// 4. Internal — lib/utils
+import { cn } from '@/lib/utils'
+import { getStudents } from '@/lib/queries/students'
+
+// 5. Internal — components
+import { Button } from '@/components/ui/button'
+import { DataTable } from '@/components/shared/data-table'
+```
+
+### Pola Server Action:
+```typescript
+'use server'
+import { createClient } from '@/lib/supabase/server'
+
+export async function createStudent(data: CreateStudentInput) {
+  const supabase = await createClient()
+  const { data: result, error } = await supabase
+    .from('students')
+    .insert(data)
+    .select()
+    .single()
+  
+  if (error) throw new Error(error.message)
+  
+  // Audit log
+  await logAudit(userId, 'CREATE', 'students', result.id, null, result)
+  
+  return result
+}
+```
+
+### Pola React Query di Client Component:
+```typescript
+'use client'
+const { data, isLoading, error } = useQuery({
+  queryKey: ['students', unit, page, pageSize, search],
+  queryFn: () => getStudents(unit, { page, pageSize, search }),
+})
+
+const mutation = useMutation({
+  mutationFn: createStudent,
+  onSuccess: () => {
+    queryClient.invalidateQueries({ queryKey: ['students'] })
+    toast({ title: 'Berhasil', description: 'Data berhasil disimpan' })
+  },
+  onError: (error) => {
+    toast({ title: 'Gagal', description: error.message, variant: 'destructive' })
+  }
+})
+```
+
+### Pola Combobox (autocomplete):
+```typescript
+// Selalu gunakan komponen dari /components/shared/combobox.tsx
+// Selalu debounce 300ms pada input search
+// Selalu tampilkan loading state saat mencari
+// Format display: "Nama - Kelas" untuk siswa, "Nama" untuk master data
+```
+
+### Pola Tabel:
+```typescript
+// Selalu gunakan komponen DataTable dari /components/shared/data-table.tsx
+// Selalu define columns dengan ColumnDef<T>[]
+// Selalu include checkbox column untuk bulk actions
+// Selalu include actions column (Edit, Hapus)
+```
+
+---
+
+## DESIGN SYSTEM — REFERENSI CEPAT
+
+### Warna Tailwind Custom (dari tailwind.config.ts):
+```
+bg-background          → background halaman
+bg-surface             → background card/panel
+bg-surface-2           → secondary surface
+border-border          → border default
+text-text-primary      → teks utama
+text-text-secondary    → teks sekunder
+text-text-tertiary     → placeholder
+bg-primary             → hijau #2D7A4F
+text-primary-foreground → putih
+bg-secondary           → emas #C9A84C
+```
+
+### Komponen UI yang tersedia di /components/ui/:
+```
+Button, Input, Label, Card, Dialog, Select, DropdownMenu,
+Tabs, Badge, Avatar, Separator, Switch, Checkbox, RadioGroup,
+Popover, Toast, Command, Table, Skeleton, Calendar
+```
+
+### Komponen Shared yang tersedia di /components/shared/:
+```
+DataTable, Combobox, DatePicker, ConfirmDialog, StatCard,
+PageTitle, EmptyState, LoadingSpinner
+```
+
+### Status Badge Colors:
+```
+'Belum Diproses' → variant="destructive" (merah)
+'Pending'        → variant="warning" (kuning)
+'Sudah Diproses' → variant="success" (hijau)
+```
+
+---
+
+## SUPABASE RULES
+
+### Gunakan client yang benar:
+```typescript
+// Di Client Component → gunakan browser client
+import { createClient } from '@/lib/supabase/client'
+
+// Di Server Component / Server Action → gunakan server client
+import { createClient } from '@/lib/supabase/server'
+```
+
+### Query dengan relasi (select join):
+```typescript
+// Kedisiplinan dengan semua relasi:
+.select(`*, students(id,nama,kelas), kategori_disiplin(id,nama_kategori), divisi(id,nama_divisi), pasal(id,nama_pasal,poin), tindakan(id,nama_tindakan)`)
+
+// Prestasi dengan semua relasi:
+.select(`*, students(id,nama,kelas), event(id,nama_event), juara(id,nama_juara), bidang(id,nama_bidang), kategori_prestasi(id,nama_kategori)`)
+```
+
+### Pagination di Supabase:
+```typescript
+const from = (page - 1) * pageSize
+const to = from + pageSize - 1
+.range(from, to)
+```
+
+### Search case-insensitive:
+```typescript
+.ilike('nama', `%${search}%`)
+```
+
+---
+
+## AUTH & ROLES
+
+### Cek role di page/component:
+```typescript
+// Di Server Component:
+const supabase = await createClient()
+const { data: { user } } = await supabase.auth.getUser()
+const { data: profile } = await supabase
+  .from('profiles')
+  .select('role, is_approved')
+  .eq('user_id', user?.id)
+  .single()
+
+if (profile?.role !== 'admin' && profile?.role !== 'superadmin') {
+  redirect('/dashboard')
+}
+```
+
+### Hierarki role:
+```
+superadmin > admin > user
+superadmin bisa akses semua route
+admin bisa akses semua route kecuali /superadmin/*
+user hanya bisa akses /dashboard /students /kedisiplinan /prestasi /account
+```
+
+---
+
+## PESAN ERROR & TOAST (BAHASA INDONESIA)
+
+### Error messages:
+```
+Login: "Username tidak ditemukan" | "Password salah" | "Akun belum disetujui Admin"
+CRUD: "Gagal menyimpan data" | "Gagal menghapus data" | "Data tidak ditemukan"
+Validasi: Sesuai schema Zod di PRD.md
+```
+
+### Success messages:
+```
+Create: "[Nama entitas] berhasil ditambahkan"
+Update: "[Nama entitas] berhasil diperbarui"
+Delete: "[Nama entitas] berhasil dihapus"
+Approve: "Akun berhasil diaktifkan"
+```
+
+---
+
+## FORMAT FILE & NAMING CONVENTION
+
+```
+Components  → PascalCase (DataTable.tsx, ConfirmDialog.tsx)
+Pages       → lowercase kebab (page.tsx — Next.js convention)
+Hooks       → camelCase dengan prefix 'use' (use-auth.ts, use-debounce.ts)
+Utils/Lib   → camelCase (students.ts, kedisiplinan.ts)
+Types       → PascalCase untuk interfaces/types (Profile, Student, Kedisiplinan)
+Constants   → SCREAMING_SNAKE_CASE (PAGE_SIZE_OPTIONS, TINGKAT_KEJUARAAN)
+```
+
+---
+
+## CHECKLIST SEBELUM SELESAI
+
+Setelah selesai menulis kode untuk setiap prompt, cek:
+- [ ] Tidak ada `any` di TypeScript
+- [ ] Tidak ada hardcoded color values (gunakan CSS variables atau Tailwind)
+- [ ] Tidak ada hardcoded string environment variables
+- [ ] Setiap Supabase query punya error handling
+- [ ] Setiap form punya validasi Zod
+- [ ] Setiap operasi write punya logAudit()
+- [ ] Setiap data fetch punya loading skeleton
+- [ ] Setiap tabel/list punya empty state
+- [ ] Dark mode support (tidak ada hardcoded bg-white atau text-black)
+- [ ] Semua label, placeholder, error message dalam Bahasa Indonesia
+- [ ] Import yang tidak digunakan sudah dihapus
+- [ ] Tidak ada console.log yang tertinggal
