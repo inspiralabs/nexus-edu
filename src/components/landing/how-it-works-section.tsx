@@ -40,16 +40,16 @@ const steps: Step[] = [
 
 export function HowItWorksSection() {
   return (
-    <section id="how-it-works" className="px-6 py-24">
+    <section id="how-it-works" className="bg-background px-6 py-24">
       <div className="mx-auto max-w-6xl">
         <div className="mb-16 text-center">
           <p className="text-xs font-semibold uppercase tracking-widest text-primary">
             CARA KERJA
           </p>
-          <h2 className="mt-3 text-3xl font-bold text-text-primary md:text-4xl">
+          <h2 className="mt-3 text-3xl font-bold text-slate-900 dark:text-slate-50 md:text-4xl">
             Mulai dalam 3 Langkah
           </h2>
-          <p className="mt-4 text-text-secondary">
+          <p className="mt-4 text-slate-600 dark:text-slate-400">
             Proses sederhana untuk mulai menggunakan SQA Platform.
           </p>
         </div>
@@ -59,17 +59,17 @@ export function HowItWorksSection() {
             <Card
               key={step.number}
               className={cn(
-                'p-6 text-center transition-all duration-200',
+                'bg-surface p-6 text-center transition-all duration-200',
                 'hover:border-primary/40 hover:shadow-md'
               )}
             >
-              <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-primary text-xl font-bold text-white shadow-lg shadow-primary/20">
+              <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-primary text-xl font-bold text-primary-foreground shadow-lg shadow-primary/20">
                 {step.number}
               </div>
-              <h3 className="text-lg font-semibold text-text-primary">
+              <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-50">
                 {step.title}
               </h3>
-              <p className="mx-auto mt-2 text-sm leading-relaxed text-text-secondary">
+              <p className="mx-auto mt-2 text-sm leading-relaxed text-slate-600 dark:text-slate-400">
                 {step.description}
               </p>
             </Card>

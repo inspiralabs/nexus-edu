@@ -1,9 +1,7 @@
 'use client'
 
-import { Moon, Sun } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useState } from 'react'
-import { useTheme } from '@/components/providers/theme-provider'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
@@ -19,7 +17,6 @@ function SqaLogo() {
 
 export function Navbar() {
   const router = useRouter()
-  const { theme, setTheme } = useTheme()
   const [isVisible, setIsVisible] = useState(false)
 
   useEffect(() => {
@@ -49,7 +46,7 @@ export function Navbar() {
   return (
     <header
       className={cn(
-        'fixed left-0 right-0 top-0 z-50 border-b border-border bg-surface/80 backdrop-blur-md transition-transform duration-300 ease-in-out',
+        'fixed left-0 right-0 top-0 z-50 border-b border-border bg-background/80 backdrop-blur-md transition-transform duration-300 ease-in-out',
         isVisible ? 'translate-y-0' : '-translate-y-full'
       )}
     >
@@ -67,40 +64,27 @@ export function Navbar() {
           <a
             href="#features"
             onClick={(event) => handleAnchorClick(event, 'features')}
-            className="text-sm text-text-secondary transition-colors hover:text-text-primary"
+            className="text-sm text-slate-600 transition-colors hover:text-slate-900"
           >
             Fitur
           </a>
           <a
             href="#how-it-works"
             onClick={(event) => handleAnchorClick(event, 'how-it-works')}
-            className="text-sm text-text-secondary transition-colors hover:text-text-primary"
+            className="text-sm text-slate-600 transition-colors hover:text-slate-900"
           >
             Cara Kerja
           </a>
         </nav>
 
-        <div className="flex items-center gap-2">
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="relative"
-            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-            aria-label="Toggle tema gelap/terang"
-          >
-            <Sun className="h-5 w-5 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
-            <Moon className="absolute h-5 w-5 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            className="bg-primary text-white hover:bg-primary-hover"
-            onClick={() => router.push('/login')}
-          >
-            Masuk
-          </Button>
-        </div>
+        <Button
+          type="button"
+          size="sm"
+          className="bg-primary hover:bg-primary-hover"
+          onClick={() => router.push('/login')}
+        >
+          Masuk
+        </Button>
       </div>
     </header>
   )

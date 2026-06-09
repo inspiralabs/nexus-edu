@@ -14,32 +14,30 @@ const WHATSAPP_URL = `https://api.whatsapp.com/send?phone=${WHATSAPP_PHONE}&text
 
 export function CtaSection() {
   return (
-    <section className="px-6 py-24">
-      <div className="mx-auto w-full max-w-6xl">
-        <div className="w-full rounded-2xl border border-primary/20 bg-gradient-to-br from-primary-light to-secondary-light px-8 py-16 text-center md:px-16">
-          <MessageCircle className="mx-auto mb-6 h-10 w-10 text-primary" />
-          <h2 className="text-3xl font-bold text-text-primary md:text-4xl">
-            Butuh Aplikasi Lain?
-          </h2>
-          <p className="mx-auto mt-4 max-w-2xl text-base text-text-secondary md:text-lg">
-            Butuh aplikasi custom atau sistem digital untuk instansi Anda?
-            Hubungi Pak Unggul untuk konsultasi dan solusi IT yang sesuai
-            kebutuhan Anda.
-          </p>
-          <div className="mt-8 flex justify-center">
-            <a
-              href={WHATSAPP_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-              className={cn(
-                buttonVariants({ size: 'lg', variant: 'default' }),
-                'inline-flex items-center gap-2 bg-primary text-white hover:bg-primary-hover'
-              )}
-            >
-              Hubungi Pak Unggul
-              <ArrowRight className="h-5 w-5" />
-            </a>
-          </div>
+    <section className="w-full bg-gradient-to-br from-primary-light via-background to-secondary-light pt-20 pb-0">
+      <div className="mx-auto w-full max-w-4xl px-6 pb-20 text-center">
+        <MessageCircle className="mx-auto mb-6 h-10 w-10 text-primary" />
+        <h2 className="text-3xl font-bold text-slate-900 dark:text-slate-50 md:text-4xl">
+          Butuh Aplikasi Lain?
+        </h2>
+        <p className="mx-auto mt-4 max-w-2xl text-base text-slate-600 dark:text-slate-400 md:text-lg">
+          Butuh aplikasi custom atau sistem digital untuk instansi Anda?
+          Hubungi Pak Unggul untuk konsultasi dan solusi IT yang sesuai
+          kebutuhan Anda.
+        </p>
+        <div className="mt-8 flex justify-center">
+          <a
+            href={WHATSAPP_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={cn(
+              buttonVariants({ size: 'lg', variant: 'default' }),
+              'inline-flex items-center gap-2 bg-primary hover:bg-primary-hover'
+            )}
+          >
+            Hubungi Pak Unggul
+            <ArrowRight className="h-5 w-5" />
+          </a>
         </div>
       </div>
     </section>

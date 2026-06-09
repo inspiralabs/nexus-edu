@@ -35,16 +35,16 @@ const features: Feature[] = [
 
 export function FeaturesSection() {
   return (
-    <section id="features" className="bg-surface-2/50 px-6 py-24">
+    <section id="features" className="bg-background px-6 py-24">
       <div className="mx-auto max-w-6xl">
         <div className="mb-16 text-center">
           <p className="text-xs font-semibold uppercase tracking-widest text-primary">
             FITUR UNGGULAN
           </p>
-          <h2 className="mt-3 text-3xl font-bold text-text-primary md:text-4xl">
+          <h2 className="mt-3 text-3xl font-bold text-slate-900 dark:text-slate-50 md:text-4xl">
             Semua yang Guru Butuhkan
           </h2>
-          <p className="mx-auto mt-4 max-w-xl text-text-secondary">
+          <p className="mx-auto mt-4 max-w-xl text-slate-600 dark:text-slate-400">
             Satu platform terintegrasi untuk mengelola data siswa, kedisiplinan,
             dan prestasi.
           </p>
@@ -58,24 +58,24 @@ export function FeaturesSection() {
               <Card
                 key={feature.title}
                 className={cn(
-                  'p-6 transition-all duration-200',
+                  'bg-surface p-6 transition-all duration-200',
                   'hover:border-primary/40 hover:shadow-md'
                 )}
               >
                 <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-xl bg-primary-light">
                   <Icon className="h-6 w-6 text-primary" />
                 </div>
-                <h3 className="text-lg font-semibold text-text-primary">
+                <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-50">
                   {feature.title}
                 </h3>
-                <p className="mt-2 text-sm leading-relaxed text-text-secondary">
+                <p className="mt-2 text-sm leading-relaxed text-slate-600 dark:text-slate-400">
                   {feature.description}
                 </p>
                 <div className="mt-4 flex flex-wrap gap-2">
                   {feature.highlights.map((highlight) => (
                     <span
                       key={highlight}
-                      className="rounded-md border border-border bg-surface-2 px-2 py-1 text-xs text-text-secondary"
+                      className="rounded-md border border-border bg-surface-2 px-2 py-1 text-xs text-slate-600 dark:text-slate-400"
                     >
                       {highlight}
                     </span>
