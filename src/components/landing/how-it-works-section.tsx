@@ -18,23 +18,23 @@ const steps: Step[] = [
   {
     number: '01',
     icon: UserPlus,
-    title: 'Daftar Akun',
+    title: 'Isi Form Registrasi',
     description:
-      'Guru mendaftar dengan mengisi form registrasi. Akun akan aktif setelah mendapat persetujuan Admin.',
+      'Daftarkan akun Anda dengan cepat. Admin akan melakukan verifikasi kilat demi keamanan data sekolah',
   },
   {
     number: '02',
     icon: LayoutDashboard,
-    title: 'Akses Dashboard',
+    title: 'Eksplorasi Dashboard',
     description:
-      'Setelah akun aktif, login dan akses semua fitur: Data Siswa, Kedisiplinan, dan Prestasi.',
+      'Masuk ke sistem dan langsung nikmati akses penuh ke fitur pengelolaan siswa, poin kedisiplinan, dan rekam prestasi.',
   },
   {
     number: '03',
     icon: FileText,
-    title: 'Kelola & Cetak',
+    title: 'Kelola & Cetak Instan',
     description:
-      'Input data, pantau statistik lewat grafik, dan cetak laporan kapan saja dengan format siap print.',
+      'Pantau perkembangan siswa lewat visual grafik yang informatif, lalu unduh laporan siap cetak dalam sekali klik.',
   },
 ]
 
@@ -50,7 +50,7 @@ export function HowItWorksSection() {
             Mulai dalam 3 Langkah
           </h2>
           <p className="mt-4 text-slate-600 dark:text-slate-400">
-            Proses sederhana untuk mulai menggunakan SQA Platform.
+            Semudah ini memulai di SQA Platform.
           </p>
         </div>
 

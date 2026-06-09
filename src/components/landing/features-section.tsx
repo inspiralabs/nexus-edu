@@ -14,21 +14,21 @@ const features: Feature[] = [
     icon: Users,
     title: 'Data Siswa',
     description:
-      'Kelola data lengkap siswa SD, SMP, dan SMA. Input, edit, dan impor data secara massal dengan mudah.',
+      'Simpan dan kelola database siswa SD, SMP, hingga SMA secara terpusat. Dilengkapi fitur import massal sekali klik untuk menghemat waktu Anda',
     highlights: ['CRUD lengkap', 'Import massal', 'Filter per unit'],
   },
   {
     icon: ShieldAlert,
     title: 'Kedisiplinan',
     description:
-      'Catat pelanggaran dan penghargaan siswa secara digital. Pantau status dan buat laporan instan.',
+      'Rekam setiap poin pelanggaran maupun penghargaan siswa secara digital. Pantau grafik kedisiplinan dan terbitkan laporan instan kapan saja.',
     highlights: ['Status tracking', 'Filter & laporan', 'Multi kategori'],
   },
   {
     icon: Trophy,
     title: 'Prestasi',
     description:
-      'Dokumentasikan pencapaian siswa dari tingkat sekolah hingga internasional secara terstruktur.',
+      'Catat dan dokumentasikan pencapaian gemilang siswa mulai tingkat lokal hingga internasional demi reputasi sekolah yang akurat.',
     highlights: ['8 tingkat kejuaraan', 'Laporan cetak', 'Dashboard analitik'],
   },
 ]
@@ -42,9 +42,9 @@ export function FeaturesSection() {
             FITUR UNGGULAN
           </p>
           <h2 className="mt-3 text-3xl font-bold text-slate-900 dark:text-slate-50 md:text-4xl">
-            Semua yang Guru Butuhkan
+            Satu Aplikasi, Segala Kemudahan untuk Guru
           </h2>
-          <p className="mx-auto mt-4 max-w-xl text-slate-600 dark:text-slate-400">
+          <p className="mx-auto mt-4 max-w-2xl text-slate-600 dark:text-slate-400">
             Satu platform terintegrasi untuk mengelola data siswa, kedisiplinan,
             dan prestasi.
           </p>

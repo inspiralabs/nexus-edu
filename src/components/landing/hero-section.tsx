@@ -1,6 +1,6 @@
 'use client'
 
-import { ArrowRight, Monitor, Sparkles } from 'lucide-react'
+import { ArrowRight, Monitor, Sparkles, Zap, Shield, Clock } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
@@ -60,9 +60,9 @@ export function HeroSection() {
   const [bgError, setBgError] = useState(false)
 
   return (
-    <>
-      {/* Hero intro — background scoped here only */}
-      <section className="relative flex min-h-[88vh] flex-col items-center overflow-hidden px-6 pb-32 pt-28">
+    <div className="w-full bg-background">
+      {/* 1. HERO SECTION - TINGGI DIKUNCI AGAR TIDAK TERIKUT KEATAS */}
+      <section className="relative flex h-[620px] w-full flex-col items-center overflow-hidden px-6 pt-28">
         <div
           className="pointer-events-none absolute inset-0 z-0"
           aria-hidden="true"
@@ -93,52 +93,66 @@ export function HeroSection() {
 
           <h1 className="text-center tracking-tight">
             <span className="animate-fade-in-up block text-5xl font-bold text-slate-900 [animation-delay:100ms] md:text-6xl">
-              Kelola Sekolah
+              Pangkas Waktu Administrasi,
             </span>
             <span className="animate-fade-in-up block bg-gradient-to-r from-primary to-secondary bg-clip-text text-5xl font-bold text-transparent [animation-delay:100ms] md:text-6xl">
-              Lebih Cerdas
+              Fokus Cetak Generasi Berprestasi.
             </span>
           </h1>
 
-          <p className="animate-fade-in-up mt-4 max-w-xl text-center text-lg text-slate-600 [animation-delay:200ms]">
-            Platform Digital Yang Membantu Guru Di Lingkungan Sekolah Quran Asy
-            Syahid
+          <p className="animate-fade-in-up mt-4 max-w-2xl text-center text-lg text-slate-600 [animation-delay:200ms]">
+            Satu platform terintegrasi untuk menyederhanakan rekam data siswa, kedisiplinan, hingga pencapaian prestasi dalam hitungan detik.
           </p>
 
           <Button
             type="button"
             size="lg"
-            className="animate-fade-in-up mt-8 gap-2 bg-primary [animation-delay:300ms] hover:bg-primary-hover"
+            className="animate-fade-in-up mt-6 gap-2 px-8 py-6 bg-primary [animation-delay:300ms] hover:bg-primary-hover"
             onClick={() => router.push('/login')}
           >
-            Masuk Ke Aplikasi
+            Mulai Kelola Sekarang
             <ArrowRight className="h-4 w-4" />
           </Button>
 
-          <p className="animate-fade-in-up mt-4 text-center text-xs text-slate-500 [animation-delay:400ms]">
-            Dibuat dengan hati oleh : Unggul Sulaiman, S.Kom (Guru Informatika),
-            2026
-          </p>
+          {/* SaaS Feature Badges */}
+          <div className="animate-fade-in-up mt-6 flex flex-wrap items-center justify-center gap-x-8 gap-y-3 text-sm font-medium text-slate-400 [animation-delay:400ms]">
+            <div className="flex items-center gap-2">
+              <Zap className="h-4 w-4 text-primary" />
+              <span>Lebih Efisien</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Shield className="h-4 w-4 text-primary" />
+              <span>Data Terjaga</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Clock className="h-4 w-4 text-primary" />
+              <span>Hemat Waktu</span>
+            </div>
+          </div>
         </div>
       </section>
 
-      {/* Screenshot bridge — antara hero dan fitur unggulan */}
-      <section className="relative z-10 -mt-24 bg-background px-6 pb-20">
-        <div className="mx-auto grid w-full max-w-6xl grid-cols-1 gap-6 md:grid-cols-2 md:gap-8">
-          <ScreenshotCard
-            title="Dashboard Kedisiplinan"
-            src="/screenshots/dashboard-kedisiplinan.png"
-            alt="Dashboard Kedisiplinan SQA Platform"
-            delayClass="[animation-delay:500ms]"
-          />
-          <ScreenshotCard
-            title="Dashboard Prestasi"
-            src="/screenshots/dashboard-prestasi.png"
-            alt="Dashboard Prestasi SQA Platform"
-            delayClass="[animation-delay:600ms]"
-          />
+      {/* 2. SCREENSHOT BRIDGE - POSITION ABSOLUTE MELAYANG BEBAS */}
+      <section className="relative z-20 w-full px-6">
+        <div className="absolute left-1/2 top-0 w-full max-w-7xl -translate-x-1/2 -translate-y-[100px] px-6">
+          <div className="grid w-full grid-cols-1 gap-6 md:grid-cols-2 md:gap-8">
+            <ScreenshotCard
+              title="Dashboard Kedisiplinan"
+              src="/screenshots/dashboard-kedisiplinan.png"
+              alt="Dashboard Kedisiplinan SQA Platform"
+              delayClass="[animation-delay:500ms]"
+            />
+            <ScreenshotCard
+              title="Dashboard Prestasi"
+              src="/screenshots/dashboard-prestasi.png"
+              alt="Dashboard Prestasi SQA Platform"
+              delayClass="[animation-delay:600ms]"
+            />
+          </div>
         </div>
+        {/* Spacer untuk mendorong konten section berikutnya agar pas */}
+        <div className="h-[260px] md:h-[220px]" aria-hidden="true" />
       </section>
-    </>
+    </div>
   )
 }
