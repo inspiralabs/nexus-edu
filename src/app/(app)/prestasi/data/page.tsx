@@ -4,7 +4,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { type ColumnDef } from '@tanstack/react-table'
 import { format, parseISO } from 'date-fns'
-import { Edit, Plus, Search, Trash2 } from 'lucide-react'
+import { Edit, Plus, Search, Trash2, Upload } from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
@@ -32,6 +32,14 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
 import { toast } from '@/components/ui/use-toast'
 import { useAuth } from '@/hooks/use-auth'
 import { useDebounce } from '@/hooks/use-debounce'
@@ -50,6 +58,7 @@ import {
 import { getStudentClasses, searchStudents } from '@/lib/queries/students'
 import { createClient } from '@/lib/supabase/client'
 import type {
+  AuditAction,
   JenisJuara,
   Juara,
   Prestasi,
@@ -78,9 +87,32 @@ const prestasiSchema = z.object({
 
 type PrestasiFormValues = z.infer<typeof prestasiSchema>
 
+const bulkPrestasiSchema = z.object({
+  event_id: z.string().uuid('Pilih event'),
+  tempat: z.enum(['Offline', 'Online']),
+  waktu: z.date('Pilih waktu'),
+  juara_id: z.string().uuid('Pilih juara'),
+  jenis_juara: z.enum(['Individu', 'Kelompok']),
+  bidang_id: z.string().uuid('Pilih bidang'),
+  kategori_id: z.string().uuid('Pilih kategori'),
+  tingkat_kejuaraan: z.enum(
+    [...TINGKAT_KEJUARAAN] as [TingkatKejuaraan, ...TingkatKejuaraan[]]
+  ),
+})
+
+type BulkPrestasiFormValues = z.infer<typeof bulkPrestasiSchema>
+
 interface ComboboxOption {
   value: string
   label: string
+}
+
+interface PendingPrestasiQueueItem extends CreatePrestasiInput {
+  localId: string
+  siswaLabel: string
+  kelas: string
+  eventLabel: string
+  juaraLabel: string
 }
 
 function prestasiToRecord(item: Prestasi): Record<string, unknown> {
@@ -250,6 +282,53 @@ async function fetchPrestasiPageData(
   }
 }
 
+type BulkPrestasiUpdateInput = Omit<
+  CreatePrestasiInput,
+  'unit' | 'siswa_id'
+>
+
+async function bulkCreatePrestasi(
+  data: CreatePrestasiInput[]
+): Promise<Prestasi[]> {
+  const supabase = createClient()
+
+  const { data: result, error } = await supabase
+    .from('prestasi')
+    .insert(data)
+    .select(PRESTASI_SELECT)
+
+  if (error) throw new Error(error.message)
+
+  return (result ?? []) as Prestasi[]
+}
+
+async function bulkUpdatePrestasiRecords(
+  ids: string[],
+  payload: BulkPrestasiUpdateInput
+): Promise<{ oldItems: Prestasi[]; updatedItems: Prestasi[] }> {
+  const supabase = createClient()
+
+  const { data: oldItems, error: fetchError } = await supabase
+    .from('prestasi')
+    .select(PRESTASI_SELECT)
+    .in('id', ids)
+
+  if (fetchError) throw new Error(fetchError.message)
+
+  const { data: updatedItems, error } = await supabase
+    .from('prestasi')
+    .update(payload)
+    .in('id', ids)
+    .select(PRESTASI_SELECT)
+
+  if (error) throw new Error(error.message)
+
+  return {
+    oldItems: (oldItems ?? []) as Prestasi[],
+    updatedItems: (updatedItems ?? []) as Prestasi[],
+  }
+}
+
 export default function PrestasiDataPage() {
   const queryClient = useQueryClient()
   const { profile } = useAuth()
@@ -269,6 +348,12 @@ export default function PrestasiDataPage() {
   const [isEditOpen, setIsEditOpen] = useState(false)
   const [isDeleteOpen, setIsDeleteOpen] = useState(false)
   const [isBulkDeleteOpen, setIsBulkDeleteOpen] = useState(false)
+  const [isBulkEditOpen, setIsBulkEditOpen] = useState(false)
+  const [isBulkAddOpen, setIsBulkAddOpen] = useState(false)
+
+  const [prestasiQueue, setPrestasiQueue] = useState<PendingPrestasiQueueItem[]>(
+    []
+  )
 
   const [editingItem, setEditingItem] = useState<Prestasi | null>(null)
   const [deletingItem, setDeletingItem] = useState<Prestasi | null>(null)
@@ -281,11 +366,25 @@ export default function PrestasiDataPage() {
   const [bidangSearch, setBidangSearch] = useState('')
   const [kategoriSearch, setKategoriSearch] = useState('')
 
+  const [bulkEventSearch, setBulkEventSearch] = useState('')
+  const [bulkJuaraSearch, setBulkJuaraSearch] = useState('')
+  const [bulkBidangSearch, setBulkBidangSearch] = useState('')
+  const [bulkKategoriSearch, setBulkKategoriSearch] = useState('')
+
   const [studentOptions, setStudentOptions] = useState<ComboboxOption[]>([])
   const [eventOptions, setEventOptions] = useState<ComboboxOption[]>([])
   const [juaraOptions, setJuaraOptions] = useState<ComboboxOption[]>([])
   const [bidangOptions, setBidangOptions] = useState<ComboboxOption[]>([])
   const [kategoriOptions, setKategoriOptions] = useState<ComboboxOption[]>([])
+
+  const [bulkEventOptions, setBulkEventOptions] = useState<ComboboxOption[]>([])
+  const [bulkJuaraOptions, setBulkJuaraOptions] = useState<ComboboxOption[]>([])
+  const [bulkBidangOptions, setBulkBidangOptions] = useState<ComboboxOption[]>(
+    []
+  )
+  const [bulkKategoriOptions, setBulkKategoriOptions] = useState<
+    ComboboxOption[]
+  >([])
 
   const debouncedSearch = useDebounce(search, 300)
   const debouncedStudentSearch = useDebounce(studentSearch, 300)
@@ -293,6 +392,10 @@ export default function PrestasiDataPage() {
   const debouncedJuaraSearch = useDebounce(juaraSearch, 300)
   const debouncedBidangSearch = useDebounce(bidangSearch, 300)
   const debouncedKategoriSearch = useDebounce(kategoriSearch, 300)
+  const debouncedBulkEventSearch = useDebounce(bulkEventSearch, 300)
+  const debouncedBulkJuaraSearch = useDebounce(bulkJuaraSearch, 300)
+  const debouncedBulkBidangSearch = useDebounce(bulkBidangSearch, 300)
+  const debouncedBulkKategoriSearch = useDebounce(bulkKategoriSearch, 300)
 
   const isFormOpen = isAddOpen || isEditOpen
 
@@ -313,6 +416,20 @@ export default function PrestasiDataPage() {
   })
 
   const selectedUnit = form.watch('unit')
+
+  const bulkForm = useForm<BulkPrestasiFormValues>({
+    resolver: zodResolver(bulkPrestasiSchema),
+    defaultValues: {
+      event_id: '',
+      tempat: 'Offline',
+      waktu: new Date(),
+      juara_id: '',
+      jenis_juara: 'Individu',
+      bidang_id: '',
+      kategori_id: '',
+      tingkat_kejuaraan: 'Tingkat Sekolah',
+    },
+  })
 
   const queryFilters = useMemo(
     () => ({
@@ -370,7 +487,7 @@ export default function PrestasiDataPage() {
       )
       return results
     },
-    enabled: isFormOpen && Boolean(selectedUnit),
+    enabled: (isFormOpen || isBulkAddOpen) && Boolean(selectedUnit),
   })
 
   const { isLoading: eventSearchLoading } = useQuery({
@@ -385,7 +502,7 @@ export default function PrestasiDataPage() {
       )
       return results
     },
-    enabled: isFormOpen,
+    enabled: isFormOpen || isBulkAddOpen,
   })
 
   const { isLoading: juaraSearchLoading } = useQuery({
@@ -400,7 +517,7 @@ export default function PrestasiDataPage() {
       )
       return results
     },
-    enabled: isFormOpen,
+    enabled: isFormOpen || isBulkAddOpen,
   })
 
   const { isLoading: bidangSearchLoading } = useQuery({
@@ -415,7 +532,7 @@ export default function PrestasiDataPage() {
       )
       return results
     },
-    enabled: isFormOpen,
+    enabled: isFormOpen || isBulkAddOpen,
   })
 
   const { isLoading: kategoriSearchLoading } = useQuery({
@@ -430,7 +547,67 @@ export default function PrestasiDataPage() {
       )
       return results
     },
-    enabled: isFormOpen,
+    enabled: isFormOpen || isBulkAddOpen,
+  })
+
+  const { isLoading: bulkEventSearchLoading } = useQuery({
+    queryKey: ['bulk-event-search', debouncedBulkEventSearch],
+    queryFn: async () => {
+      const results = await searchEvent(debouncedBulkEventSearch)
+      setBulkEventOptions(
+        results.map((e) => ({
+          value: e.id,
+          label: e.nama_event,
+        }))
+      )
+      return results
+    },
+    enabled: isBulkEditOpen,
+  })
+
+  const { isLoading: bulkJuaraSearchLoading } = useQuery({
+    queryKey: ['bulk-juara-search', debouncedBulkJuaraSearch],
+    queryFn: async () => {
+      const results = await searchJuara(debouncedBulkJuaraSearch)
+      setBulkJuaraOptions(
+        results.map((j) => ({
+          value: j.id,
+          label: j.nama_juara,
+        }))
+      )
+      return results
+    },
+    enabled: isBulkEditOpen,
+  })
+
+  const { isLoading: bulkBidangSearchLoading } = useQuery({
+    queryKey: ['bulk-bidang-search', debouncedBulkBidangSearch],
+    queryFn: async () => {
+      const results = await searchBidang(debouncedBulkBidangSearch)
+      setBulkBidangOptions(
+        results.map((b) => ({
+          value: b.id,
+          label: b.nama_bidang,
+        }))
+      )
+      return results
+    },
+    enabled: isBulkEditOpen,
+  })
+
+  const { isLoading: bulkKategoriSearchLoading } = useQuery({
+    queryKey: ['bulk-kategori-prestasi-search', debouncedBulkKategoriSearch],
+    queryFn: async () => {
+      const results = await searchKategoriPrestasi(debouncedBulkKategoriSearch)
+      setBulkKategoriOptions(
+        results.map((k) => ({
+          value: k.id,
+          label: k.nama_kategori,
+        }))
+      )
+      return results
+    },
+    enabled: isBulkEditOpen,
   })
 
   const getUserId = (): string | null => profile?.user_id ?? null
@@ -444,6 +621,19 @@ export default function PrestasiDataPage() {
   const buildPayload = (values: PrestasiFormValues): CreatePrestasiInput => ({
     unit: values.unit,
     siswa_id: values.siswa_id,
+    event_id: values.event_id,
+    tempat: values.tempat,
+    waktu: format(values.waktu, 'yyyy-MM-dd'),
+    juara_id: values.juara_id,
+    jenis_juara: values.jenis_juara,
+    bidang_id: values.bidang_id,
+    kategori_id: values.kategori_id,
+    tingkat_kejuaraan: values.tingkat_kejuaraan,
+  })
+
+  const buildBulkPayload = (
+    values: BulkPrestasiFormValues
+  ): BulkPrestasiUpdateInput => ({
     event_id: values.event_id,
     tempat: values.tempat,
     waktu: format(values.waktu, 'yyyy-MM-dd'),
@@ -522,6 +712,81 @@ export default function PrestasiDataPage() {
     },
   })
 
+  const bulkCreateMutation = useMutation({
+    mutationFn: (items: CreatePrestasiInput[]) => bulkCreatePrestasi(items),
+    onSuccess: async (results) => {
+      const userId = getUserId()
+      if (userId) {
+        for (const result of results) {
+          await logAudit(
+            userId,
+            'BULK_CREATE' as AuditAction,
+            'prestasi',
+            result.id,
+            null,
+            prestasiToRecord(result)
+          )
+        }
+      }
+      invalidate()
+      toast({
+        title: 'Berhasil',
+        description: `Berhasil menyimpan ${results.length} data prestasi`,
+      })
+      closeBulkAddDialog()
+    },
+    onError: (error: Error) => {
+      toast({
+        title: 'Gagal',
+        description: error.message,
+        variant: 'destructive',
+      })
+    },
+  })
+
+  const bulkUpdateMutation = useMutation({
+    mutationFn: async ({
+      ids,
+      values,
+    }: {
+      ids: string[]
+      values: BulkPrestasiFormValues
+    }) => bulkUpdatePrestasiRecords(ids, buildBulkPayload(values)),
+    onSuccess: async ({ oldItems, updatedItems }) => {
+      const userId = getUserId()
+      if (userId) {
+        const oldMap = new Map(oldItems.map((item) => [item.id, item]))
+        for (const updated of updatedItems) {
+          const oldItem = oldMap.get(updated.id)
+          if (oldItem) {
+            await logAudit(
+              userId,
+              'BULK_UPDATE' as AuditAction,
+              'prestasi',
+              updated.id,
+              prestasiToRecord(oldItem),
+              prestasiToRecord(updated)
+            )
+          }
+        }
+      }
+      invalidate()
+      toast({
+        title: 'Berhasil',
+        description: `Berhasil memperbarui ${updatedItems.length} data prestasi`,
+      })
+      setSelectedRows([])
+      closeBulkEditDialog()
+    },
+    onError: (error: Error) => {
+      toast({
+        title: 'Gagal',
+        description: error.message,
+        variant: 'destructive',
+      })
+    },
+  })
+
   const deleteMutation = useMutation({
     mutationFn: (ids: string[]) => deletePrestasi(ids),
     onSuccess: async (_, ids) => {
@@ -575,9 +840,39 @@ export default function PrestasiDataPage() {
     setKelasDisplay('')
   }
 
-  const resetFormDefaults = () => {
+  const resetBulkComboboxState = () => {
+    setBulkEventSearch('')
+    setBulkJuaraSearch('')
+    setBulkBidangSearch('')
+    setBulkKategoriSearch('')
+    setBulkEventOptions([])
+    setBulkJuaraOptions([])
+    setBulkBidangOptions([])
+    setBulkKategoriOptions([])
+  }
+
+  const resetBulkFormDefaults = () => {
+    bulkForm.reset({
+      event_id: '',
+      tempat: 'Offline',
+      waktu: new Date(),
+      juara_id: '',
+      jenis_juara: 'Individu',
+      bidang_id: '',
+      kategori_id: '',
+      tingkat_kejuaraan: 'Tingkat Sekolah',
+    })
+  }
+
+  const closeBulkEditDialog = () => {
+    setIsBulkEditOpen(false)
+    resetBulkFormDefaults()
+    resetBulkComboboxState()
+  }
+
+  const resetFormDefaults = (unit: Unit = 'SD') => {
     form.reset({
-      unit: 'SD',
+      unit,
       siswa_id: '',
       event_id: '',
       tempat: 'Offline',
@@ -685,6 +980,60 @@ export default function PrestasiDataPage() {
 
   const openBulkDelete = () => {
     setIsBulkDeleteOpen(true)
+  }
+
+  const openBulkEdit = () => {
+    resetBulkFormDefaults()
+    resetBulkComboboxState()
+    setIsBulkEditOpen(true)
+  }
+
+  const closeBulkAddDialog = () => {
+    setIsBulkAddOpen(false)
+    setPrestasiQueue([])
+    resetFormDefaults(activeUnit)
+    resetComboboxState()
+  }
+
+  const openBulkAdd = () => {
+    resetFormDefaults(activeUnit)
+    resetComboboxState()
+    setPrestasiQueue([])
+    setIsBulkAddOpen(true)
+  }
+
+  const addToPrestasiQueue = (values: PrestasiFormValues) => {
+    const siswaLabel =
+      studentOptions.find((o) => o.value === values.siswa_id)?.label ?? '-'
+    const eventLabel =
+      eventOptions.find((o) => o.value === values.event_id)?.label ?? '-'
+    const juaraLabel =
+      juaraOptions.find((o) => o.value === values.juara_id)?.label ?? '-'
+
+    setPrestasiQueue((prev) => [
+      ...prev,
+      {
+        localId: crypto.randomUUID(),
+        ...buildPayload(values),
+        siswaLabel,
+        kelas: kelasDisplay,
+        eventLabel,
+        juaraLabel,
+      },
+    ])
+    resetFormDefaults(activeUnit)
+    resetComboboxState()
+    toast({
+      title: 'Ditambahkan',
+      description: 'Item ditambahkan ke daftar. Isi form untuk menambah lagi.',
+    })
+  }
+
+  const onSubmitBulkEdit = (values: BulkPrestasiFormValues) => {
+    bulkUpdateMutation.mutate({
+      ids: selectedRows,
+      values,
+    })
   }
 
   const onSubmitForm = (values: PrestasiFormValues) => {
@@ -801,16 +1150,277 @@ export default function PrestasiDataPage() {
   )
 
   const isSubmitting = createMutation.isPending || updateMutation.isPending
+  const isBulkSubmitting = bulkUpdateMutation.isPending
+  const isBulkCreateSubmitting = bulkCreateMutation.isPending
+
+  const renderPrestasiFormFields = (showAddToListButton = false) => (
+    <div className="space-y-4">
+      <div className="space-y-2">
+        <Label>Unit</Label>
+        <Select
+          value={form.watch('unit')}
+          onValueChange={(value) => handleUnitChange(value as Unit)}
+        >
+          <SelectTrigger>
+            <SelectValue placeholder="Pilih unit" />
+          </SelectTrigger>
+          <SelectContent>
+            {UNITS.map((unit) => (
+              <SelectItem key={unit} value={unit}>
+                {unit}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {form.formState.errors.unit && (
+          <p className="text-xs text-status-red">
+            {form.formState.errors.unit.message}
+          </p>
+        )}
+      </div>
+
+      <div className="space-y-2">
+        <Label>Nama Siswa</Label>
+        <Combobox
+          options={studentOptions}
+          value={form.watch('siswa_id')}
+          onSelect={(value, label) => {
+            form.setValue('siswa_id', value, { shouldValidate: true })
+            const kelasPart = label.split(' - ')[1]
+            setKelasDisplay(kelasPart ?? '')
+          }}
+          onSearch={setStudentSearch}
+          placeholder="Cari siswa..."
+          disabled={!selectedUnit}
+          isLoading={studentSearchLoading}
+        />
+        {form.formState.errors.siswa_id && (
+          <p className="text-xs text-status-red">
+            {form.formState.errors.siswa_id.message}
+          </p>
+        )}
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="kelas">Kelas</Label>
+        <Input id="kelas" value={kelasDisplay} disabled readOnly />
+      </div>
+
+      <div className="space-y-2">
+        <Label>Event</Label>
+        <Combobox
+          options={eventOptions}
+          value={form.watch('event_id')}
+          onSelect={(value) =>
+            form.setValue('event_id', value, { shouldValidate: true })
+          }
+          onSearch={setEventSearch}
+          placeholder="Cari event..."
+          isLoading={eventSearchLoading}
+        />
+        {form.formState.errors.event_id && (
+          <p className="text-xs text-status-red">
+            {form.formState.errors.event_id.message}
+          </p>
+        )}
+      </div>
+
+      <div className="space-y-2">
+        <Label>Tempat</Label>
+        <RadioGroup
+          value={form.watch('tempat')}
+          onValueChange={(value) =>
+            form.setValue('tempat', value as Tempat, {
+              shouldValidate: true,
+            })
+          }
+          className="flex gap-4"
+        >
+          <div className="flex items-center gap-2">
+            <RadioGroupItem value="Offline" id="tempat-offline" />
+            <Label htmlFor="tempat-offline" className="font-normal">
+              Offline
+            </Label>
+          </div>
+          <div className="flex items-center gap-2">
+            <RadioGroupItem value="Online" id="tempat-online" />
+            <Label htmlFor="tempat-online" className="font-normal">
+              Online
+            </Label>
+          </div>
+        </RadioGroup>
+        {form.formState.errors.tempat && (
+          <p className="text-xs text-status-red">
+            {form.formState.errors.tempat.message}
+          </p>
+        )}
+      </div>
+
+      <div className="space-y-2">
+        <Label>Waktu</Label>
+        <DatePicker
+          value={form.watch('waktu')}
+          onChange={(date) => {
+            if (date) {
+              form.setValue('waktu', date, { shouldValidate: true })
+            }
+          }}
+        />
+        {form.formState.errors.waktu && (
+          <p className="text-xs text-status-red">
+            {form.formState.errors.waktu.message}
+          </p>
+        )}
+      </div>
+
+      <div className="space-y-2">
+        <Label>Juara</Label>
+        <Combobox
+          options={juaraOptions}
+          value={form.watch('juara_id')}
+          onSelect={(value) =>
+            form.setValue('juara_id', value, { shouldValidate: true })
+          }
+          onSearch={setJuaraSearch}
+          placeholder="Cari juara..."
+          isLoading={juaraSearchLoading}
+        />
+        {form.formState.errors.juara_id && (
+          <p className="text-xs text-status-red">
+            {form.formState.errors.juara_id.message}
+          </p>
+        )}
+      </div>
+
+      <div className="space-y-2">
+        <Label>Jenis Juara</Label>
+        <RadioGroup
+          value={form.watch('jenis_juara')}
+          onValueChange={(value) =>
+            form.setValue('jenis_juara', value as JenisJuara, {
+              shouldValidate: true,
+            })
+          }
+          className="flex gap-4"
+        >
+          <div className="flex items-center gap-2">
+            <RadioGroupItem value="Individu" id="jenis-individu" />
+            <Label htmlFor="jenis-individu" className="font-normal">
+              Individu
+            </Label>
+          </div>
+          <div className="flex items-center gap-2">
+            <RadioGroupItem value="Kelompok" id="jenis-kelompok" />
+            <Label htmlFor="jenis-kelompok" className="font-normal">
+              Kelompok
+            </Label>
+          </div>
+        </RadioGroup>
+        {form.formState.errors.jenis_juara && (
+          <p className="text-xs text-status-red">
+            {form.formState.errors.jenis_juara.message}
+          </p>
+        )}
+      </div>
+
+      <div className="space-y-2">
+        <Label>Bidang</Label>
+        <Combobox
+          options={bidangOptions}
+          value={form.watch('bidang_id')}
+          onSelect={(value) =>
+            form.setValue('bidang_id', value, { shouldValidate: true })
+          }
+          onSearch={setBidangSearch}
+          placeholder="Cari bidang..."
+          isLoading={bidangSearchLoading}
+        />
+        {form.formState.errors.bidang_id && (
+          <p className="text-xs text-status-red">
+            {form.formState.errors.bidang_id.message}
+          </p>
+        )}
+      </div>
+
+      <div className="space-y-2">
+        <Label>Kategori</Label>
+        <Combobox
+          options={kategoriOptions}
+          value={form.watch('kategori_id')}
+          onSelect={(value) =>
+            form.setValue('kategori_id', value, {
+              shouldValidate: true,
+            })
+          }
+          onSearch={setKategoriSearch}
+          placeholder="Cari kategori..."
+          isLoading={kategoriSearchLoading}
+        />
+        {form.formState.errors.kategori_id && (
+          <p className="text-xs text-status-red">
+            {form.formState.errors.kategori_id.message}
+          </p>
+        )}
+      </div>
+
+      <div className="space-y-2">
+        <Label>Tingkat Kejuaraan</Label>
+        <Select
+          value={form.watch('tingkat_kejuaraan')}
+          onValueChange={(value) =>
+            form.setValue(
+              'tingkat_kejuaraan',
+              value as TingkatKejuaraan,
+              { shouldValidate: true }
+            )
+          }
+        >
+          <SelectTrigger>
+            <SelectValue placeholder="Pilih tingkat" />
+          </SelectTrigger>
+          <SelectContent>
+            {TINGKAT_KEJUARAAN.map((tingkat) => (
+              <SelectItem key={tingkat} value={tingkat}>
+                {tingkat}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {form.formState.errors.tingkat_kejuaraan && (
+          <p className="text-xs text-status-red">
+            {form.formState.errors.tingkat_kejuaraan.message}
+          </p>
+        )}
+      </div>
+
+      {showAddToListButton && (
+        <Button
+          type="button"
+          variant="outline"
+          className="w-full"
+          onClick={form.handleSubmit(addToPrestasiQueue)}
+        >
+          Tambah ke Daftar
+        </Button>
+      )}
+    </div>
+  )
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="Data Prestasi"
         actions={
-          <Button type="button" onClick={openAddDialog}>
-            <Plus className="mr-2 h-4 w-4" />
-            Tambah Prestasi
-          </Button>
+          <>
+            <Button type="button" onClick={openAddDialog}>
+              <Plus className="mr-2 h-4 w-4" />
+              Tambah Prestasi
+            </Button>
+            <Button type="button" variant="outline" onClick={openBulkAdd}>
+              <Upload className="mr-2 h-4 w-4" />
+              Tambah Banyak
+            </Button>
+          </>
         }
       />
 
@@ -902,10 +1512,14 @@ export default function PrestasiDataPage() {
       </div>
 
       {selectedRows.length > 0 && (
-        <div className="flex items-center gap-3 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-4 py-3">
+        <div className="flex flex-wrap items-center gap-3 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-4 py-3">
           <span className="text-sm text-[var(--text-primary)]">
             {selectedRows.length} item terpilih
           </span>
+          <Button type="button" variant="outline" size="sm" onClick={openBulkEdit}>
+            <Edit className="mr-2 h-4 w-4" />
+            Edit Terpilih
+          </Button>
           <Button
             type="button"
             variant="destructive"
@@ -958,72 +1572,157 @@ export default function PrestasiDataPage() {
             onSubmit={form.handleSubmit(onSubmitForm)}
             className="space-y-4"
           >
-            <div className="space-y-2">
-              <Label>Unit</Label>
-              <Select
-                value={form.watch('unit')}
-                onValueChange={(value) => handleUnitChange(value as Unit)}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Pilih unit" />
-                </SelectTrigger>
-                <SelectContent>
-                  {UNITS.map((unit) => (
-                    <SelectItem key={unit} value={unit}>
-                      {unit}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {form.formState.errors.unit && (
-                <p className="text-xs text-status-red">
-                  {form.formState.errors.unit.message}
+            {renderPrestasiFormFields(false)}
+
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={closeFormDialog}>
+                Batal
+              </Button>
+              <Button type="submit" isLoading={isSubmitting}>
+                {isEditOpen ? 'Simpan' : 'Tambah'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={isBulkAddOpen}
+        onOpenChange={(open) => {
+          if (!open) closeBulkAddDialog()
+        }}
+      >
+        <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Tambah Banyak Data Prestasi</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            {renderPrestasiFormFields(true)}
+
+            {prestasiQueue.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-[var(--text-primary)]">
+                  Daftar ({prestasiQueue.length} item)
                 </p>
-              )}
-            </div>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Waktu</TableHead>
+                      <TableHead>Siswa</TableHead>
+                      <TableHead>Event</TableHead>
+                      <TableHead>Juara</TableHead>
+                      <TableHead className="w-12" />
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {prestasiQueue.map((item) => (
+                      <TableRow key={item.localId}>
+                        <TableCell>{formatTanggal(item.waktu)}</TableCell>
+                        <TableCell>{item.siswaLabel}</TableCell>
+                        <TableCell>{item.eventLabel}</TableCell>
+                        <TableCell>{item.juaraLabel}</TableCell>
+                        <TableCell>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            onClick={() =>
+                              setPrestasiQueue((prev) =>
+                                prev.filter((p) => p.localId !== item.localId)
+                              )
+                            }
+                            aria-label="Hapus dari daftar"
+                          >
+                            <Trash2 className="h-4 w-4 text-status-red" />
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={closeBulkAddDialog}
+            >
+              Batal
+            </Button>
+            <Button
+              type="button"
+              isLoading={isBulkCreateSubmitting}
+              disabled={prestasiQueue.length === 0}
+              onClick={() =>
+                bulkCreateMutation.mutate(
+                  prestasiQueue.map(
+                    ({
+                      localId: _localId,
+                      siswaLabel: _siswaLabel,
+                      kelas: _kelas,
+                      eventLabel: _eventLabel,
+                      juaraLabel: _juaraLabel,
+                      ...payload
+                    }) => payload
+                  )
+                )
+              }
+            >
+              Simpan Semua ({prestasiQueue.length})
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
-            <div className="space-y-2">
-              <Label>Nama Siswa</Label>
-              <Combobox
-                options={studentOptions}
-                value={form.watch('siswa_id')}
-                onSelect={(value, label) => {
-                  form.setValue('siswa_id', value, { shouldValidate: true })
-                  const kelasPart = label.split(' - ')[1]
-                  setKelasDisplay(kelasPart ?? '')
-                }}
-                onSearch={setStudentSearch}
-                placeholder="Cari siswa..."
-                disabled={!selectedUnit}
-                isLoading={studentSearchLoading}
-              />
-              {form.formState.errors.siswa_id && (
-                <p className="text-xs text-status-red">
-                  {form.formState.errors.siswa_id.message}
-                </p>
-              )}
-            </div>
+      <ConfirmDialog
+        open={isDeleteOpen}
+        onOpenChange={setIsDeleteOpen}
+        title="Hapus Prestasi"
+        description="Apakah Anda yakin ingin menghapus prestasi ini? Tindakan ini tidak dapat dibatalkan."
+        variant="destructive"
+        isLoading={deleteMutation.isPending}
+        onConfirm={() => {
+          if (deletingItem) {
+            deleteMutation.mutate([deletingItem.id])
+          }
+        }}
+      />
 
-            <div className="space-y-2">
-              <Label htmlFor="kelas">Kelas</Label>
-              <Input id="kelas" value={kelasDisplay} disabled readOnly />
-            </div>
-
+      <Dialog
+        open={isBulkEditOpen}
+        onOpenChange={(open) => {
+          if (!open) closeBulkEditDialog()
+        }}
+      >
+        <DialogContent className="max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Edit Banyak Data Prestasi</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-[var(--text-secondary)]">
+            Mengubah {selectedRows.length} data terpilih. Field Unit, Nama Siswa,
+            dan Kelas tidak diubah karena setiap record memiliki siswa berbeda.
+          </p>
+          <form
+            onSubmit={bulkForm.handleSubmit(onSubmitBulkEdit)}
+            className="space-y-4"
+          >
             <div className="space-y-2">
               <Label>Event</Label>
               <Combobox
-                options={eventOptions}
-                value={form.watch('event_id')}
+                options={bulkEventOptions}
+                value={bulkForm.watch('event_id')}
                 onSelect={(value) =>
-                  form.setValue('event_id', value, { shouldValidate: true })
+                  bulkForm.setValue('event_id', value, { shouldValidate: true })
                 }
-                onSearch={setEventSearch}
+                onSearch={setBulkEventSearch}
                 placeholder="Cari event..."
-                isLoading={eventSearchLoading}
+                isLoading={bulkEventSearchLoading}
               />
-              {form.formState.errors.event_id && (
+              {bulkForm.formState.errors.event_id && (
                 <p className="text-xs text-status-red">
-                  {form.formState.errors.event_id.message}
+                  {bulkForm.formState.errors.event_id.message}
                 </p>
               )}
             </div>
@@ -1031,30 +1730,30 @@ export default function PrestasiDataPage() {
             <div className="space-y-2">
               <Label>Tempat</Label>
               <RadioGroup
-                value={form.watch('tempat')}
+                value={bulkForm.watch('tempat')}
                 onValueChange={(value) =>
-                  form.setValue('tempat', value as Tempat, {
+                  bulkForm.setValue('tempat', value as Tempat, {
                     shouldValidate: true,
                   })
                 }
                 className="flex gap-4"
               >
                 <div className="flex items-center gap-2">
-                  <RadioGroupItem value="Offline" id="tempat-offline" />
-                  <Label htmlFor="tempat-offline" className="font-normal">
+                  <RadioGroupItem value="Offline" id="bulk-tempat-offline" />
+                  <Label htmlFor="bulk-tempat-offline" className="font-normal">
                     Offline
                   </Label>
                 </div>
                 <div className="flex items-center gap-2">
-                  <RadioGroupItem value="Online" id="tempat-online" />
-                  <Label htmlFor="tempat-online" className="font-normal">
+                  <RadioGroupItem value="Online" id="bulk-tempat-online" />
+                  <Label htmlFor="bulk-tempat-online" className="font-normal">
                     Online
                   </Label>
                 </div>
               </RadioGroup>
-              {form.formState.errors.tempat && (
+              {bulkForm.formState.errors.tempat && (
                 <p className="text-xs text-status-red">
-                  {form.formState.errors.tempat.message}
+                  {bulkForm.formState.errors.tempat.message}
                 </p>
               )}
             </div>
@@ -1062,16 +1761,16 @@ export default function PrestasiDataPage() {
             <div className="space-y-2">
               <Label>Waktu</Label>
               <DatePicker
-                value={form.watch('waktu')}
+                value={bulkForm.watch('waktu')}
                 onChange={(date) => {
                   if (date) {
-                    form.setValue('waktu', date, { shouldValidate: true })
+                    bulkForm.setValue('waktu', date, { shouldValidate: true })
                   }
                 }}
               />
-              {form.formState.errors.waktu && (
+              {bulkForm.formState.errors.waktu && (
                 <p className="text-xs text-status-red">
-                  {form.formState.errors.waktu.message}
+                  {bulkForm.formState.errors.waktu.message}
                 </p>
               )}
             </div>
@@ -1079,18 +1778,18 @@ export default function PrestasiDataPage() {
             <div className="space-y-2">
               <Label>Juara</Label>
               <Combobox
-                options={juaraOptions}
-                value={form.watch('juara_id')}
+                options={bulkJuaraOptions}
+                value={bulkForm.watch('juara_id')}
                 onSelect={(value) =>
-                  form.setValue('juara_id', value, { shouldValidate: true })
+                  bulkForm.setValue('juara_id', value, { shouldValidate: true })
                 }
-                onSearch={setJuaraSearch}
+                onSearch={setBulkJuaraSearch}
                 placeholder="Cari juara..."
-                isLoading={juaraSearchLoading}
+                isLoading={bulkJuaraSearchLoading}
               />
-              {form.formState.errors.juara_id && (
+              {bulkForm.formState.errors.juara_id && (
                 <p className="text-xs text-status-red">
-                  {form.formState.errors.juara_id.message}
+                  {bulkForm.formState.errors.juara_id.message}
                 </p>
               )}
             </div>
@@ -1098,30 +1797,30 @@ export default function PrestasiDataPage() {
             <div className="space-y-2">
               <Label>Jenis Juara</Label>
               <RadioGroup
-                value={form.watch('jenis_juara')}
+                value={bulkForm.watch('jenis_juara')}
                 onValueChange={(value) =>
-                  form.setValue('jenis_juara', value as JenisJuara, {
+                  bulkForm.setValue('jenis_juara', value as JenisJuara, {
                     shouldValidate: true,
                   })
                 }
                 className="flex gap-4"
               >
                 <div className="flex items-center gap-2">
-                  <RadioGroupItem value="Individu" id="jenis-individu" />
-                  <Label htmlFor="jenis-individu" className="font-normal">
+                  <RadioGroupItem value="Individu" id="bulk-jenis-individu" />
+                  <Label htmlFor="bulk-jenis-individu" className="font-normal">
                     Individu
                   </Label>
                 </div>
                 <div className="flex items-center gap-2">
-                  <RadioGroupItem value="Kelompok" id="jenis-kelompok" />
-                  <Label htmlFor="jenis-kelompok" className="font-normal">
+                  <RadioGroupItem value="Kelompok" id="bulk-jenis-kelompok" />
+                  <Label htmlFor="bulk-jenis-kelompok" className="font-normal">
                     Kelompok
                   </Label>
                 </div>
               </RadioGroup>
-              {form.formState.errors.jenis_juara && (
+              {bulkForm.formState.errors.jenis_juara && (
                 <p className="text-xs text-status-red">
-                  {form.formState.errors.jenis_juara.message}
+                  {bulkForm.formState.errors.jenis_juara.message}
                 </p>
               )}
             </div>
@@ -1129,18 +1828,18 @@ export default function PrestasiDataPage() {
             <div className="space-y-2">
               <Label>Bidang</Label>
               <Combobox
-                options={bidangOptions}
-                value={form.watch('bidang_id')}
+                options={bulkBidangOptions}
+                value={bulkForm.watch('bidang_id')}
                 onSelect={(value) =>
-                  form.setValue('bidang_id', value, { shouldValidate: true })
+                  bulkForm.setValue('bidang_id', value, { shouldValidate: true })
                 }
-                onSearch={setBidangSearch}
+                onSearch={setBulkBidangSearch}
                 placeholder="Cari bidang..."
-                isLoading={bidangSearchLoading}
+                isLoading={bulkBidangSearchLoading}
               />
-              {form.formState.errors.bidang_id && (
+              {bulkForm.formState.errors.bidang_id && (
                 <p className="text-xs text-status-red">
-                  {form.formState.errors.bidang_id.message}
+                  {bulkForm.formState.errors.bidang_id.message}
                 </p>
               )}
             </div>
@@ -1148,20 +1847,20 @@ export default function PrestasiDataPage() {
             <div className="space-y-2">
               <Label>Kategori</Label>
               <Combobox
-                options={kategoriOptions}
-                value={form.watch('kategori_id')}
+                options={bulkKategoriOptions}
+                value={bulkForm.watch('kategori_id')}
                 onSelect={(value) =>
-                  form.setValue('kategori_id', value, {
+                  bulkForm.setValue('kategori_id', value, {
                     shouldValidate: true,
                   })
                 }
-                onSearch={setKategoriSearch}
+                onSearch={setBulkKategoriSearch}
                 placeholder="Cari kategori..."
-                isLoading={kategoriSearchLoading}
+                isLoading={bulkKategoriSearchLoading}
               />
-              {form.formState.errors.kategori_id && (
+              {bulkForm.formState.errors.kategori_id && (
                 <p className="text-xs text-status-red">
-                  {form.formState.errors.kategori_id.message}
+                  {bulkForm.formState.errors.kategori_id.message}
                 </p>
               )}
             </div>
@@ -1169,9 +1868,9 @@ export default function PrestasiDataPage() {
             <div className="space-y-2">
               <Label>Tingkat Kejuaraan</Label>
               <Select
-                value={form.watch('tingkat_kejuaraan')}
+                value={bulkForm.watch('tingkat_kejuaraan')}
                 onValueChange={(value) =>
-                  form.setValue(
+                  bulkForm.setValue(
                     'tingkat_kejuaraan',
                     value as TingkatKejuaraan,
                     { shouldValidate: true }
@@ -1189,38 +1888,28 @@ export default function PrestasiDataPage() {
                   ))}
                 </SelectContent>
               </Select>
-              {form.formState.errors.tingkat_kejuaraan && (
+              {bulkForm.formState.errors.tingkat_kejuaraan && (
                 <p className="text-xs text-status-red">
-                  {form.formState.errors.tingkat_kejuaraan.message}
+                  {bulkForm.formState.errors.tingkat_kejuaraan.message}
                 </p>
               )}
             </div>
 
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={closeFormDialog}>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={closeBulkEditDialog}
+              >
                 Batal
               </Button>
-              <Button type="submit" isLoading={isSubmitting}>
-                {isEditOpen ? 'Simpan' : 'Tambah'}
+              <Button type="submit" isLoading={isBulkSubmitting}>
+                Simpan Perubahan ({selectedRows.length} Data)
               </Button>
             </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
-
-      <ConfirmDialog
-        open={isDeleteOpen}
-        onOpenChange={setIsDeleteOpen}
-        title="Hapus Prestasi"
-        description="Apakah Anda yakin ingin menghapus prestasi ini? Tindakan ini tidak dapat dibatalkan."
-        variant="destructive"
-        isLoading={deleteMutation.isPending}
-        onConfirm={() => {
-          if (deletingItem) {
-            deleteMutation.mutate([deletingItem.id])
-          }
-        }}
-      />
 
       <ConfirmDialog
         open={isBulkDeleteOpen}
