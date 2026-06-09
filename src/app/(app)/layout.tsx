@@ -12,6 +12,7 @@ const PATH_TITLES: Record<string, string> = {
   '/students': 'Data Siswa',
   '/kedisiplinan': 'Dashboard Kedisiplinan',
   '/kedisiplinan/data': 'Data Kedisiplinan',
+  '/kedisiplinan/rekap': 'Rekap Poin & Leaderboard',
   '/kedisiplinan/kategori': 'Kategori Disiplin',
   '/kedisiplinan/divisi': 'Divisi',
   '/kedisiplinan/pasal': 'Pasal',

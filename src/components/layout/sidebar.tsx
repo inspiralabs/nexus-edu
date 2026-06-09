@@ -2,6 +2,7 @@
 
 import Image from 'next/image'
 import {
+  Award,
   BarChart2,
   BookOpen,
   ChevronDown,
@@ -92,6 +93,13 @@ const menuItems: MenuItemConfig[] = [
         label: 'Data',
         href: '/kedisiplinan/data',
         icon: List,
+        minRole: 'user',
+      },
+      {
+        id: 'kedisiplinan-rekap',
+        label: 'Rekap Poin',
+        href: '/kedisiplinan/rekap',
+        icon: Award,
         minRole: 'user',
       },
       {
