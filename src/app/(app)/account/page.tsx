@@ -130,7 +130,18 @@ export default function AccountPage() {
       await refreshAuthContext()
       return `${publicUrl}?t=${Date.now()}`
     },
-    onSuccess: (url) => {
+    onSuccess: async (url) => {
+      if (profile?.user_id) {
+        const cleanUrl = url.split('?')[0]
+        await logAudit(
+          profile.user_id,
+          'UPDATE',
+          'profiles',
+          profile.id,
+          profileToRecord(profile),
+          { ...profileToRecord(profile), avatar_url: cleanUrl }
+        )
+      }
       setAvatarPreview(url)
       toast({
         title: 'Berhasil',
@@ -192,7 +203,17 @@ export default function AccountPage() {
   const changePasswordMutation = useMutation({
     mutationFn: (values: PasswordFormValues) =>
       changePassword(values.password_baru),
-    onSuccess: () => {
+    onSuccess: async () => {
+      if (profile?.user_id) {
+        await logAudit(
+          profile.user_id,
+          'UPDATE',
+          'profiles',
+          profile.id,
+          profileToRecord(profile),
+          { ...profileToRecord(profile), password_changed: true }
+        )
+      }
       passwordForm.reset({
         password_baru: '',
         konfirmasi_password: '',
