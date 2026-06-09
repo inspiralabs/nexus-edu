@@ -31,6 +31,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { toast } from '@/components/ui/use-toast'
 import { useAuth } from '@/hooks/use-auth'
 import { useDebounce } from '@/hooks/use-debounce'
@@ -38,7 +39,6 @@ import { logAudit } from '@/lib/audit/log'
 import {
   createPrestasi,
   deletePrestasi,
-  getPrestasi,
   searchBidang,
   searchEvent,
   searchJuara,
@@ -47,9 +47,11 @@ import {
   updatePrestasi,
   type CreatePrestasiInput,
 } from '@/lib/queries/prestasi'
-import { searchStudents } from '@/lib/queries/students'
+import { getStudentClasses, searchStudents } from '@/lib/queries/students'
+import { createClient } from '@/lib/supabase/client'
 import type {
   JenisJuara,
+  Juara,
   Prestasi,
   Tempat,
   TingkatKejuaraan,
@@ -107,6 +109,147 @@ function formatTanggal(tanggal: string | null): string {
   }
 }
 
+const PRESTASI_SELECT = `
+  *,
+  students(id,nama,kelas),
+  event(id,nama_event),
+  juara(id,nama_juara),
+  bidang(id,nama_bidang),
+  kategori_prestasi(id,nama_kategori)
+`
+
+const ALLOWED_SORT_FIELDS = [
+  'unit',
+  'waktu',
+  'tempat',
+  'jenis_juara',
+  'tingkat_kejuaraan',
+  'created_at',
+  'siswa_id',
+  'event_id',
+  'juara_id',
+  'bidang_id',
+  'kategori_id',
+] as const
+
+type AllowedSortField = (typeof ALLOWED_SORT_FIELDS)[number]
+
+function resolveSortField(sortField: string): AllowedSortField {
+  if (ALLOWED_SORT_FIELDS.includes(sortField as AllowedSortField)) {
+    return sortField as AllowedSortField
+  }
+  return 'waktu'
+}
+
+async function fetchJuaraList(): Promise<Juara[]> {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('juara')
+    .select('*')
+    .order('nama_juara', { ascending: true })
+
+  if (error) throw new Error(error.message)
+  return (data ?? []) as Juara[]
+}
+
+interface FetchPrestasiPageParams {
+  unit: Unit
+  search?: string
+  kelas?: string
+  juaraId?: string
+  tingkat?: TingkatKejuaraan
+  page: number
+  pageSize: number
+  sortField: string
+  sortDirection: 'asc' | 'desc'
+}
+
+async function fetchPrestasiPageData(
+  params: FetchPrestasiPageParams
+): Promise<{ data: Prestasi[]; total: number }> {
+  const supabase = createClient()
+  let studentIds: string[] | null = null
+
+  if (params.search || (params.kelas && params.kelas !== 'all')) {
+    let studentQuery = supabase
+      .from('students')
+      .select('id')
+      .eq('unit', params.unit)
+
+    if (params.search) {
+      studentQuery = studentQuery.ilike('nama', `%${params.search}%`)
+    }
+
+    if (params.kelas && params.kelas !== 'all') {
+      studentQuery = studentQuery.eq('kelas', params.kelas)
+    }
+
+    const { data, error } = await studentQuery
+
+    if (error) throw new Error(error.message)
+
+    studentIds = (data ?? []).map((row) => row.id)
+
+    if (studentIds.length === 0) {
+      return { data: [], total: 0 }
+    }
+  }
+
+  const from = (params.page - 1) * params.pageSize
+  const to = from + params.pageSize - 1
+  const sortField = resolveSortField(params.sortField)
+  const ascending = params.sortDirection !== 'desc'
+
+  let countQuery = supabase
+    .from('prestasi')
+    .select('*', { count: 'exact', head: true })
+    .eq('unit', params.unit)
+
+  if (studentIds) {
+    countQuery = countQuery.in('siswa_id', studentIds)
+  }
+
+  if (params.juaraId) {
+    countQuery = countQuery.eq('juara_id', params.juaraId)
+  }
+
+  if (params.tingkat) {
+    countQuery = countQuery.eq('tingkat_kejuaraan', params.tingkat)
+  }
+
+  const { count, error: countError } = await countQuery
+
+  if (countError) throw new Error(countError.message)
+
+  let dataQuery = supabase
+    .from('prestasi')
+    .select(PRESTASI_SELECT)
+    .eq('unit', params.unit)
+
+  if (studentIds) {
+    dataQuery = dataQuery.in('siswa_id', studentIds)
+  }
+
+  if (params.juaraId) {
+    dataQuery = dataQuery.eq('juara_id', params.juaraId)
+  }
+
+  if (params.tingkat) {
+    dataQuery = dataQuery.eq('tingkat_kejuaraan', params.tingkat)
+  }
+
+  const { data, error } = await dataQuery
+    .order(sortField, { ascending })
+    .range(from, to)
+
+  if (error) throw new Error(error.message)
+
+  return {
+    data: (data ?? []) as Prestasi[],
+    total: count ?? 0,
+  }
+}
+
 export default function PrestasiDataPage() {
   const queryClient = useQueryClient()
   const { profile } = useAuth()
@@ -115,8 +258,12 @@ export default function PrestasiDataPage() {
   const [pageSize, setPageSize] = useState(10)
   const [sortField, setSortField] = useState('waktu')
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc')
+  const [activeUnit, setActiveUnit] = useState<Unit>('SD')
   const [selectedRows, setSelectedRows] = useState<string[]>([])
   const [search, setSearch] = useState('')
+  const [selectedClassFilter, setSelectedClassFilter] = useState<string>('all')
+  const [selectedJuaraFilter, setSelectedJuaraFilter] = useState<string>('all')
+  const [selectedTingkatFilter, setSelectedTingkatFilter] = useState<string>('all')
 
   const [isAddOpen, setIsAddOpen] = useState(false)
   const [isEditOpen, setIsEditOpen] = useState(false)
@@ -169,18 +316,46 @@ export default function PrestasiDataPage() {
 
   const queryFilters = useMemo(
     () => ({
+      unit: activeUnit,
       search: debouncedSearch || undefined,
+      kelas: selectedClassFilter,
+      juaraId:
+        selectedJuaraFilter !== 'all' ? selectedJuaraFilter : undefined,
+      tingkat:
+        selectedTingkatFilter !== 'all'
+          ? (selectedTingkatFilter as TingkatKejuaraan)
+          : undefined,
       page,
       pageSize,
       sortField,
       sortDirection,
     }),
-    [debouncedSearch, page, pageSize, sortField, sortDirection]
+    [
+      activeUnit,
+      debouncedSearch,
+      selectedClassFilter,
+      selectedJuaraFilter,
+      selectedTingkatFilter,
+      page,
+      pageSize,
+      sortField,
+      sortDirection,
+    ]
   )
+
+  const { data: studentClasses = [] } = useQuery({
+    queryKey: ['students', 'classes', activeUnit],
+    queryFn: () => getStudentClasses(activeUnit),
+  })
+
+  const { data: juaraFilterList = [] } = useQuery({
+    queryKey: ['juara-list'],
+    queryFn: fetchJuaraList,
+  })
 
   const { data, isLoading } = useQuery({
     queryKey: ['prestasi', queryFilters],
-    queryFn: () => getPrestasi(queryFilters),
+    queryFn: () => fetchPrestasiPageData(queryFilters),
   })
 
   const { isLoading: studentSearchLoading } = useQuery({
@@ -431,6 +606,15 @@ export default function PrestasiDataPage() {
     setStudentSearch('')
   }
 
+  const handleActiveUnitChange = (unit: Unit) => {
+    setActiveUnit(unit)
+    setPage(1)
+    setSelectedRows([])
+    setSelectedClassFilter('all')
+    setSelectedJuaraFilter('all')
+    setSelectedTingkatFilter('all')
+  }
+
   const openAddDialog = () => {
     setEditingItem(null)
     resetFormDefaults()
@@ -630,17 +814,91 @@ export default function PrestasiDataPage() {
         }
       />
 
-      <div className="relative max-w-sm">
-        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-tertiary)]" />
-        <Input
-          placeholder="Cari nama siswa..."
-          value={search}
-          onChange={(e) => {
-            setSearch(e.target.value)
-            setPage(1)
-          }}
-          className="pl-9"
-        />
+      <Tabs
+        value={activeUnit}
+        onValueChange={(value) => handleActiveUnitChange(value as Unit)}
+      >
+        <TabsList>
+          {UNITS.map((unit) => (
+            <TabsTrigger key={unit} value={unit}>
+              {unit}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+      </Tabs>
+
+      <div className="flex flex-col gap-3 xl:flex-row xl:items-center">
+        <div className="flex flex-1 flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-center">
+          <div className="relative min-w-[200px] max-w-sm flex-1">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-tertiary)]" />
+            <Input
+              placeholder="Cari nama siswa..."
+              value={search}
+              onChange={(e) => {
+                setSearch(e.target.value)
+                setPage(1)
+              }}
+              className="pl-9"
+            />
+          </div>
+          <Select
+            value={selectedClassFilter}
+            onValueChange={(value) => {
+              setSelectedClassFilter(value)
+              setPage(1)
+            }}
+          >
+            <SelectTrigger className="w-full sm:w-[150px]">
+              <SelectValue placeholder="Semua Kelas" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Semua Kelas</SelectItem>
+              {studentClasses.map((kelas) => (
+                <SelectItem key={kelas} value={kelas}>
+                  {kelas}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select
+            value={selectedJuaraFilter}
+            onValueChange={(value) => {
+              setSelectedJuaraFilter(value)
+              setPage(1)
+            }}
+          >
+            <SelectTrigger className="w-full sm:w-[150px]">
+              <SelectValue placeholder="Semua Juara" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Semua Juara</SelectItem>
+              {juaraFilterList.map((juara) => (
+                <SelectItem key={juara.id} value={juara.id}>
+                  {juara.nama_juara}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select
+            value={selectedTingkatFilter}
+            onValueChange={(value) => {
+              setSelectedTingkatFilter(value)
+              setPage(1)
+            }}
+          >
+            <SelectTrigger className="w-full sm:w-[180px]">
+              <SelectValue placeholder="Semua Tingkat" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Semua Tingkat</SelectItem>
+              {TINGKAT_KEJUARAAN.map((tingkat) => (
+                <SelectItem key={tingkat} value={tingkat}>
+                  {tingkat}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
       {selectedRows.length > 0 && (
