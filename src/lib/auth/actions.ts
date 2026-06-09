@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 
 interface SignupFormData {
@@ -72,15 +73,38 @@ export async function login(
   }
 }
 
+function isAuthUserAlreadyExists(message: string): boolean {
+  const normalized = message.toLowerCase()
+  return (
+    normalized.includes('already') ||
+    normalized.includes('registered') ||
+    normalized.includes('exists')
+  )
+}
+
 export async function signup(
   formData: SignupFormData
 ): Promise<{ error?: string; success?: boolean }> {
-  const supabase = await createClient()
+  let admin
+  try {
+    admin = createAdminClient()
+  } catch {
+    return {
+      error:
+        'Konfigurasi server tidak lengkap. Tambahkan SUPABASE_SERVICE_ROLE_KEY di environment.',
+    }
+  }
 
-  const { data: existingProfile, error: checkError } = await supabase
+  const supabase = await createClient()
+  const normalizedUsername = formData.username.trim().toLowerCase()
+  const email = formData.email.trim().toLowerCase()
+  const namaLengkap = formData.nama_lengkap.trim()
+  const guruMapel = formData.guru_mapel.trim()
+
+  const { data: existingProfile, error: checkError } = await admin
     .from('profiles')
     .select('id')
-    .eq('username', formData.username)
+    .ilike('username', normalizedUsername)
     .maybeSingle()
 
   if (checkError) {
@@ -91,30 +115,91 @@ export async function signup(
     return { error: 'Username sudah digunakan' }
   }
 
+  const { data: existingEmailProfile } = await admin
+    .from('profiles')
+    .select('id')
+    .eq('email', email)
+    .maybeSingle()
+
+  if (existingEmailProfile) {
+    return { error: 'Email sudah terdaftar' }
+  }
+
+  let userId: string
+
   const { data: authData, error: signUpError } = await supabase.auth.signUp({
-    email: formData.email,
+    email,
     password: formData.password,
+    options: {
+      data: {
+        nama_lengkap: namaLengkap,
+        username: normalizedUsername,
+      },
+    },
   })
 
   if (signUpError) {
-    return { error: signUpError.message }
-  }
+    if (!isAuthUserAlreadyExists(signUpError.message)) {
+      return { error: signUpError.message }
+    }
 
-  if (!authData.user) {
+    const { data: signInData, error: signInError } =
+      await supabase.auth.signInWithPassword({
+        email,
+        password: formData.password,
+      })
+
+    if (signInError || !signInData.user) {
+      return {
+        error:
+          'Email sudah terdaftar. Gunakan email lain atau hubungi administrator.',
+      }
+    }
+
+    userId = signInData.user.id
+    await supabase.auth.signOut()
+
+    const { data: existingUserProfile } = await admin
+      .from('profiles')
+      .select('id')
+      .eq('user_id', userId)
+      .maybeSingle()
+
+    if (existingUserProfile) {
+      return { error: 'Akun sudah terdaftar. Silakan login.' }
+    }
+  } else if (!authData.user) {
     return { error: 'Gagal membuat akun' }
+  } else {
+    userId = authData.user.id
+    await supabase.auth.signOut()
   }
 
-  const { error: insertError } = await supabase.from('profiles').insert({
-    user_id: authData.user.id,
-    nama_lengkap: formData.nama_lengkap,
-    guru_mapel: formData.guru_mapel,
-    username: formData.username,
-    email: formData.email,
+  const { error: insertError } = await admin.from('profiles').insert({
+    user_id: userId,
+    nama_lengkap: namaLengkap,
+    guru_mapel: guruMapel,
+    username: normalizedUsername,
+    email,
     role: 'user',
     is_approved: false,
   })
 
   if (insertError) {
+    if (insertError.code === '23505') {
+      const { data: recoveredProfile } = await admin
+        .from('profiles')
+        .select('id')
+        .eq('user_id', userId)
+        .maybeSingle()
+
+      if (recoveredProfile) {
+        return { success: true }
+      }
+
+      return { error: 'Username sudah digunakan' }
+    }
+
     return { error: 'Gagal membuat profil akun' }
   }
 
