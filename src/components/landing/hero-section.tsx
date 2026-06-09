@@ -10,17 +10,14 @@ interface ScreenshotCardProps {
   title: string
   src: string
   alt: string
-  delayMs: number
+  delayClass: string
 }
 
-function ScreenshotCard({ title, src, alt, delayMs }: ScreenshotCardProps) {
+function ScreenshotCard({ title, src, alt, delayClass }: ScreenshotCardProps) {
   const [hasError, setHasError] = useState(false)
 
   return (
-    <div
-      className="group relative animate-fade-in-up"
-      style={{ animationDelay: `${delayMs}ms` }}
-    >
+    <div className={cn('group relative animate-fade-in-up', delayClass)}>
       <p className="mb-3 text-center text-xs font-medium uppercase tracking-wider text-text-secondary">
         {title}
       </p>
@@ -57,16 +54,25 @@ function ScreenshotCard({ title, src, alt, delayMs }: ScreenshotCardProps) {
 
 export function HeroSection() {
   const router = useRouter()
+  const [bgError, setBgError] = useState(false)
 
   return (
     <section className="relative flex min-h-screen flex-col items-center overflow-hidden px-6 pb-20 pt-28">
+      {!bgError && (
+        <div className="pointer-events-none absolute inset-0 z-0" aria-hidden="true">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/images/hero-bg.jpg"
+            alt=""
+            className="h-full w-full object-cover opacity-[0.18] dark:opacity-[0.12]"
+            onError={() => setBgError(true)}
+          />
+          <div className="absolute inset-0 bg-gradient-to-b from-background/70 via-background/85 to-background" />
+        </div>
+      )}
+
       <div
-        className="pointer-events-none absolute inset-0 z-0 opacity-50"
-        style={{
-          backgroundImage:
-            'radial-gradient(circle, var(--border) 1px, transparent 1px)',
-          backgroundSize: '24px 24px',
-        }}
+        className="pointer-events-none absolute inset-0 z-0 bg-[radial-gradient(circle,var(--border)_1px,transparent_1px)] bg-[length:24px_24px] opacity-50"
         aria-hidden="true"
       />
       <div
@@ -79,33 +85,21 @@ export function HeroSection() {
       />
 
       <div className="relative z-10 flex w-full flex-col items-center">
-        <div
-          className="animate-fade-in-up mb-6 inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary-light px-3 py-1 text-xs font-medium text-primary"
-          style={{ animationDelay: '0ms' }}
-        >
+        <div className="animate-fade-in-up mb-6 inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary-light px-3 py-1 text-xs font-medium text-primary [animation-delay:0ms]">
           <Sparkles className="h-3 w-3" />
           Platform Manajemen Guru Digital
         </div>
 
         <h1 className="text-center tracking-tight">
-          <span
-            className="animate-fade-in-up block text-5xl font-bold text-text-primary md:text-6xl"
-            style={{ animationDelay: '100ms' }}
-          >
+          <span className="animate-fade-in-up block text-5xl font-bold text-text-primary [animation-delay:100ms] md:text-6xl">
             Kelola Sekolah
           </span>
-          <span
-            className="animate-fade-in-up block bg-gradient-to-r from-primary to-secondary bg-clip-text text-5xl font-bold text-transparent md:text-6xl"
-            style={{ animationDelay: '100ms' }}
-          >
+          <span className="animate-fade-in-up block bg-gradient-to-r from-primary to-secondary bg-clip-text text-5xl font-bold text-transparent [animation-delay:100ms] md:text-6xl">
             Lebih Cerdas
           </span>
         </h1>
 
-        <p
-          className="animate-fade-in-up mt-4 max-w-xl text-center text-lg text-text-secondary"
-          style={{ animationDelay: '200ms' }}
-        >
+        <p className="animate-fade-in-up mt-4 max-w-xl text-center text-lg text-text-secondary [animation-delay:200ms]">
           Platform Digital Yang Membantu Guru Di Lingkungan Sekolah Quran Asy
           Syahid
         </p>
@@ -113,18 +107,14 @@ export function HeroSection() {
         <Button
           type="button"
           size="lg"
-          className="animate-fade-in-up mt-8 gap-2"
-          style={{ animationDelay: '300ms' }}
+          className="animate-fade-in-up mt-8 gap-2 bg-primary [animation-delay:300ms] hover:bg-primary-hover"
           onClick={() => router.push('/login')}
         >
           Masuk Ke Aplikasi
           <ArrowRight className="h-4 w-4" />
         </Button>
 
-        <p
-          className="animate-fade-in-up mt-4 text-center text-xs text-text-tertiary"
-          style={{ animationDelay: '400ms' }}
-        >
+        <p className="animate-fade-in-up mt-4 text-center text-xs text-text-tertiary [animation-delay:400ms]">
           Dibuat dengan hati oleh : Unggul Sulaiman, S.Kom (Guru Informatika),
           2026
         </p>
@@ -134,33 +124,16 @@ export function HeroSection() {
             title="Dashboard Kedisiplinan"
             src="/screenshots/dashboard-kedisiplinan.png"
             alt="Dashboard Kedisiplinan SQA Platform"
-            delayMs={500}
+            delayClass="[animation-delay:500ms]"
           />
           <ScreenshotCard
             title="Dashboard Prestasi"
             src="/screenshots/dashboard-prestasi.png"
             alt="Dashboard Prestasi SQA Platform"
-            delayMs={600}
+            delayClass="[animation-delay:600ms]"
           />
         </div>
       </div>
-
-      <style jsx>{`
-        @keyframes fadeInUp {
-          from {
-            opacity: 0;
-            transform: translateY(20px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
-
-        :global(.animate-fade-in-up) {
-          animation: fadeInUp 0.6s ease-out both;
-        }
-      `}</style>
     </section>
   )
 }

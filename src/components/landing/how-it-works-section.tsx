@@ -4,6 +4,8 @@ import {
   UserPlus,
   type LucideIcon,
 } from 'lucide-react'
+import { Card } from '@/components/ui/card'
+import { cn } from '@/lib/utils'
 
 interface Step {
   number: string
@@ -52,24 +54,25 @@ export function HowItWorksSection() {
           </p>
         </div>
 
-        <div className="relative mt-12 grid grid-cols-1 gap-8 md:grid-cols-3">
-          <div
-            className="absolute left-1/6 right-1/6 top-8 hidden h-px bg-border md:block"
-            aria-hidden="true"
-          />
-
+        <div className="mt-12 grid grid-cols-1 gap-6 md:grid-cols-3">
           {steps.map((step) => (
-            <div key={step.number} className="relative text-center">
+            <Card
+              key={step.number}
+              className={cn(
+                'p-6 text-center transition-all duration-200',
+                'hover:border-primary/40 hover:shadow-md'
+              )}
+            >
               <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-primary text-xl font-bold text-white shadow-lg shadow-primary/20">
                 {step.number}
               </div>
-              <h3 className="mt-3 text-lg font-semibold text-text-primary">
+              <h3 className="text-lg font-semibold text-text-primary">
                 {step.title}
               </h3>
-              <p className="mx-auto mt-2 max-w-xs text-sm leading-relaxed text-text-secondary">
+              <p className="mx-auto mt-2 text-sm leading-relaxed text-text-secondary">
                 {step.description}
               </p>
-            </div>
+            </Card>
           ))}
         </div>
       </div>
