@@ -37,6 +37,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   Table,
   TableBody,
@@ -68,10 +69,12 @@ import type {
   Kedisiplinan,
   Pasal,
   StatusKedisiplinan,
+  Unit,
 } from '@/lib/supabase/types'
 import { formatDivisiLabel } from '@/lib/utils'
 
 const PAGE_SIZE_OPTIONS = [10, 20, 30, 40, 50] as const
+const UNITS: Unit[] = ['SD', 'SMP', 'SMA']
 const STATUS_OPTIONS: StatusKedisiplinan[] = [
   'Belum Diproses',
   'Pending',
@@ -149,6 +152,7 @@ export default function KedisiplinanDataPage() {
   const queryClient = useQueryClient()
   const { profile } = useAuth()
 
+  const [activeUnit, setActiveUnit] = useState<Unit>('SD')
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
   const [sortField, setSortField] = useState('tanggal')
@@ -217,6 +221,7 @@ export default function KedisiplinanDataPage() {
 
   const queryFilters = useMemo(
     () => ({
+      unit: [activeUnit],
       search: debouncedSearch || undefined,
       status:
         filters.status !== 'all' ? [filters.status] : undefined,
@@ -230,6 +235,7 @@ export default function KedisiplinanDataPage() {
       sortDirection,
     }),
     [
+      activeUnit,
       debouncedSearch,
       filters.status,
       filters.kategori_id,
@@ -252,14 +258,14 @@ export default function KedisiplinanDataPage() {
   })
 
   const { data: divisiFilterList = [] } = useQuery({
-    queryKey: ['divisi'],
-    queryFn: () => getDivisi(),
+    queryKey: ['divisi', activeUnit],
+    queryFn: () => getDivisi(activeUnit),
   })
 
   const { isLoading: studentSearchLoading } = useQuery({
-    queryKey: ['students-search', debouncedStudentSearch],
+    queryKey: ['students-search', debouncedStudentSearch, activeUnit],
     queryFn: async () => {
-      const results = await searchStudents(debouncedStudentSearch)
+      const results = await searchStudents(debouncedStudentSearch, activeUnit)
       setStudentOptions(
         results.map((s) => ({
           value: s.id,
@@ -582,6 +588,13 @@ export default function KedisiplinanDataPage() {
     setEditingItem(null)
     resetFormDefaults()
     resetComboboxState()
+  }
+
+  const handleActiveUnitChange = (unit: Unit) => {
+    setActiveUnit(unit)
+    setPage(1)
+    setSelectedRows([])
+    setFilters((prev) => ({ ...prev, divisi_id: 'all' }))
   }
 
   const openAddDialog = () => {
@@ -1020,6 +1033,19 @@ export default function KedisiplinanDataPage() {
           </>
         }
       />
+
+      <Tabs
+        value={activeUnit}
+        onValueChange={(value) => handleActiveUnitChange(value as Unit)}
+      >
+        <TabsList>
+          {UNITS.map((unit) => (
+            <TabsTrigger key={unit} value={unit}>
+              {unit}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+      </Tabs>
 
       <div className="flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-center">
         <div className="relative max-w-sm flex-1">
