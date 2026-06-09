@@ -1,23 +1,37 @@
 'use client'
 
+import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { type ColumnDef } from '@tanstack/react-table'
-import { format, parseISO } from 'date-fns'
-import { Trash2, UserCheck, UserCog, UserX } from 'lucide-react'
+import { Search, UserCheck } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useForm } from 'react-hook-form'
+import { z } from 'zod'
+import { createAdminUsersColumns } from '@/app/(app)/admin/users/columns'
 import { PageHeader } from '@/components/layout/page-header'
 import { ConfirmDialog } from '@/components/shared/confirm-dialog'
 import { DataTable } from '@/components/shared/data-table'
 import { LoadingSpinner } from '@/components/shared/loading-spinner'
-import { Badge } from '@/components/ui/badge'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import {
   Select,
   SelectContent,
@@ -25,54 +39,62 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import {
+  TooltipProvider,
+} from '@/components/ui/tooltip'
 import { toast } from '@/components/ui/use-toast'
 import { useAuth } from '@/hooks/use-auth'
+import { useDebounce } from '@/hooks/use-debounce'
 import {
   approveUser,
   changeUserRole,
   deleteProfile,
-  getAllProfiles,
+  getManageableProfiles,
   revokeUser,
+  updateManageableProfile,
 } from '@/lib/queries/admin'
-import type { Profile, Role } from '@/lib/supabase/types'
+import type { ManageableRole } from '@/lib/queries/users'
+import type { Profile } from '@/lib/supabase/types'
 
 const PAGE_SIZE_OPTIONS = [10, 20, 30, 40, 50] as const
-const ASSIGNABLE_ROLES: Role[] = ['user', 'admin']
 
-type RoleFilter = 'all' | Role
+type RoleFilter = 'all' | ManageableRole
 type StatusFilter = 'all' | 'active' | 'pending'
 
-function formatTanggal(value: string): string {
-  try {
-    return format(parseISO(value), 'dd/MM/yyyy')
-  } catch {
-    return format(new Date(value), 'dd/MM/yyyy')
-  }
+const editProfileSchema = z.object({
+  nama_lengkap: z.string().min(2, 'Nama minimal 2 karakter'),
+  username: z
+    .string()
+    .min(3, 'Username minimal 3 karakter')
+    .regex(
+      /^[a-zA-Z0-9_]+$/,
+      'Username hanya boleh huruf, angka, dan underscore'
+    ),
+  email: z.string().email('Format email tidak valid'),
+  guru_mapel: z.string().min(1, 'Guru mapel wajib diisi'),
+  role: z.enum(['user', 'admin']),
+})
+
+type EditProfileFormValues = z.infer<typeof editProfileSchema>
+
+interface RoleChangeTarget {
+  profile: Profile
+  newRole: ManageableRole
 }
 
-function getRoleBadgeVariant(role: string): 'default' | 'secondary' | 'outline' {
-  switch (role) {
-    case 'admin':
-      return 'secondary'
-    case 'user':
-    case 'superadmin':
-      return 'default'
-    default:
-      return 'outline'
-  }
+function matchesSearch(profile: Profile, search: string): boolean {
+  const term = search.trim().toLowerCase()
+  if (!term) return true
+
+  return (
+    profile.nama_lengkap.toLowerCase().includes(term) ||
+    profile.username.toLowerCase().includes(term) ||
+    (profile.email?.toLowerCase().includes(term) ?? false)
+  )
 }
 
-function getRoleLabel(role: string): string {
-  switch (role) {
-    case 'superadmin':
-      return 'Superadmin'
-    case 'admin':
-      return 'Admin'
-    case 'user':
-      return 'User'
-    default:
-      return role
-  }
+function getRoleChangeLabel(newRole: ManageableRole): string {
+  return newRole === 'admin' ? 'Admin' : 'User'
 }
 
 export default function AdminUsersPage() {
@@ -84,10 +106,29 @@ export default function AdminUsersPage() {
   const [pageSize, setPageSize] = useState(10)
   const [roleFilter, setRoleFilter] = useState<RoleFilter>('all')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
+  const [search, setSearch] = useState('')
+  const debouncedSearch = useDebounce(search, 300)
+
   const [selectedRows, setSelectedRows] = useState<string[]>([])
   const [deleteTargetIds, setDeleteTargetIds] = useState<string[]>([])
   const [isDeleteOpen, setIsDeleteOpen] = useState(false)
   const [isBulkDeleteOpen, setIsBulkDeleteOpen] = useState(false)
+
+  const [roleChangeTarget, setRoleChangeTarget] =
+    useState<RoleChangeTarget | null>(null)
+  const [editingProfile, setEditingProfile] = useState<Profile | null>(null)
+  const [isEditOpen, setIsEditOpen] = useState(false)
+
+  const editForm = useForm<EditProfileFormValues>({
+    resolver: zodResolver(editProfileSchema),
+    defaultValues: {
+      nama_lengkap: '',
+      username: '',
+      email: '',
+      guru_mapel: '',
+      role: 'user',
+    },
+  })
 
   useEffect(() => {
     if (!authLoading && !isAdmin) {
@@ -95,24 +136,36 @@ export default function AdminUsersPage() {
     }
   }, [authLoading, isAdmin, router])
 
-  const queryOptions = useMemo(
+  useEffect(() => {
+    setPage(1)
+  }, [debouncedSearch, roleFilter, statusFilter])
+
+  const profileFilters = useMemo(
     () => ({
       role: roleFilter === 'all' ? undefined : roleFilter,
       isApproved:
         statusFilter === 'all'
           ? undefined
           : statusFilter === 'active',
-      page,
-      pageSize,
     }),
-    [roleFilter, statusFilter, page, pageSize]
+    [roleFilter, statusFilter]
   )
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['admin-profiles', queryOptions],
-    queryFn: () => getAllProfiles(queryOptions),
+  const { data: allProfiles = [], isLoading } = useQuery({
+    queryKey: ['admin-profiles-manageable', profileFilters],
+    queryFn: () => getManageableProfiles(profileFilters),
     enabled: isAdmin,
   })
+
+  const filteredProfiles = useMemo(
+    () => allProfiles.filter((item) => matchesSearch(item, debouncedSearch)),
+    [allProfiles, debouncedSearch]
+  )
+
+  const paginatedProfiles = useMemo(() => {
+    const from = (page - 1) * pageSize
+    return filteredProfiles.slice(from, from + pageSize)
+  }, [filteredProfiles, page, pageSize])
 
   const getUserId = useCallback((): string => {
     const userId = profile?.user_id
@@ -121,6 +174,7 @@ export default function AdminUsersPage() {
   }, [profile?.user_id])
 
   const invalidateProfiles = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ['admin-profiles-manageable'] })
     queryClient.invalidateQueries({ queryKey: ['admin-profiles'] })
     queryClient.invalidateQueries({ queryKey: ['admin-stats'] })
     queryClient.invalidateQueries({ queryKey: ['admin-pending-users'] })
@@ -171,13 +225,41 @@ export default function AdminUsersPage() {
       newRole,
     }: {
       profileId: string
-      newRole: Role
+      newRole: ManageableRole
     }) => changeUserRole(profileId, newRole, getUserId()),
     onSuccess: () => {
       invalidateProfiles()
+      setRoleChangeTarget(null)
       toast({
         title: 'Berhasil',
         description: 'Role user berhasil diubah',
+      })
+    },
+    onError: (error: Error) => {
+      toast({
+        title: 'Gagal',
+        description: error.message,
+        variant: 'destructive',
+      })
+    },
+  })
+
+  const updateProfileMutation = useMutation({
+    mutationFn: ({
+      profileId,
+      values,
+    }: {
+      profileId: string
+      values: EditProfileFormValues
+    }) => updateManageableProfile(profileId, values, getUserId()),
+    onSuccess: () => {
+      invalidateProfiles()
+      setIsEditOpen(false)
+      setEditingProfile(null)
+      editForm.reset()
+      toast({
+        title: 'Berhasil',
+        description: 'Data pengguna berhasil diperbarui',
       })
     },
     onError: (error: Error) => {
@@ -237,164 +319,81 @@ export default function AdminUsersPage() {
     },
   })
 
-  const handleSortChange = useCallback(() => {
-    // Sorting handled server-side via created_at DESC in query
-  }, [])
+  const isActionPending =
+    approveMutation.isPending ||
+    revokeMutation.isPending ||
+    changeRoleMutation.isPending ||
+    updateProfileMutation.isPending ||
+    deleteMutation.isPending
 
-  const columns = useMemo<ColumnDef<Profile>[]>(() => {
-    const rowOffset = (page - 1) * pageSize
+  const handleApproveToggle = useCallback(
+    (item: Profile) => {
+      if (item.is_approved) {
+        revokeMutation.mutate(item.id)
+      } else {
+        approveMutation.mutate(item.id)
+      }
+    },
+    [approveMutation, revokeMutation]
+  )
 
-    return [
-      {
-        id: 'no',
-        header: 'No',
-        enableSorting: false,
-        cell: ({ row }) => rowOffset + row.index + 1,
-      },
-      {
-        accessorKey: 'nama_lengkap',
-        header: 'Nama',
-        enableSorting: false,
-      },
-      {
-        accessorKey: 'username',
-        header: 'Username',
-        enableSorting: false,
-        cell: ({ row }) => `@${row.original.username}`,
-      },
-      {
-        accessorKey: 'email',
-        header: 'Email',
-        enableSorting: false,
-        cell: ({ row }) => row.original.email ?? '-',
-      },
-      {
-        accessorKey: 'guru_mapel',
-        header: 'Guru Mapel',
-        enableSorting: false,
-        cell: ({ row }) => row.original.guru_mapel ?? '-',
-      },
-      {
-        accessorKey: 'role',
-        header: 'Role',
-        enableSorting: false,
-        cell: ({ row }) => (
-          <Badge variant={getRoleBadgeVariant(row.original.role ?? '')}>
-            {row.original.role || 'Belum Ada Role'}
-          </Badge>
-        ),
-      },
-      {
-        accessorKey: 'is_approved',
-        header: 'Status',
-        enableSorting: false,
-        cell: ({ row }) => {
-          const isApproved = row.original.is_approved === true
-          return (
-            <Badge variant={isApproved ? 'success' : 'warning'}>
-              {isApproved ? 'Aktif' : 'Pending'}
-            </Badge>
-          )
+  const handleOpenEdit = useCallback(
+    (item: Profile) => {
+      setEditingProfile(item)
+      editForm.reset({
+        nama_lengkap: item.nama_lengkap,
+        username: item.username,
+        email: item.email ?? '',
+        guru_mapel: item.guru_mapel ?? '',
+        role: item.role === 'admin' ? 'admin' : 'user',
+      })
+      setIsEditOpen(true)
+    },
+    [editForm]
+  )
+
+  const columns = useMemo(
+    () =>
+      createAdminUsersColumns({
+        page,
+        pageSize,
+        onApproveToggle: handleApproveToggle,
+        onRequestRoleChange: (profileItem, newRole) =>
+          setRoleChangeTarget({ profile: profileItem, newRole }),
+        onEdit: handleOpenEdit,
+        onDelete: (profileId) => {
+          setDeleteTargetIds([profileId])
+          setIsDeleteOpen(true)
         },
-      },
-      {
-        accessorKey: 'created_at',
-        header: 'Tgl Daftar',
-        enableSorting: false,
-        cell: ({ row }) => formatTanggal(row.original.created_at),
-      },
-      {
-        id: 'actions',
-        header: 'Aksi',
-        enableSorting: false,
-        cell: ({ row }) => {
-          const item = row.original
-          const isSuperadmin = item.role === 'superadmin'
-
-          return (
-            <div className="flex items-center gap-1">
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                aria-label={
-                  item.is_approved ? 'Cabut persetujuan' : 'Setujui user'
-                }
-                onClick={() => {
-                  if (item.is_approved) {
-                    revokeMutation.mutate(item.id)
-                  } else {
-                    approveMutation.mutate(item.id)
-                  }
-                }}
-                disabled={
-                  approveMutation.isPending || revokeMutation.isPending
-                }
-              >
-                {item.is_approved ? (
-                  <UserX className="h-4 w-4" />
-                ) : (
-                  <UserCheck className="h-4 w-4" />
-                )}
-              </Button>
-
-              {!isSuperadmin && (
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      aria-label="Ubah role"
-                    >
-                      <UserCog className="h-4 w-4" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    {ASSIGNABLE_ROLES.map((role) => (
-                      <DropdownMenuItem
-                        key={role}
-                        disabled={item.role === role}
-                        onClick={() =>
-                          changeRoleMutation.mutate({
-                            profileId: item.id,
-                            newRole: role,
-                          })
-                        }
-                      >
-                        Jadikan {getRoleLabel(role)}
-                      </DropdownMenuItem>
-                    ))}
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              )}
-
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                aria-label="Hapus user"
-                onClick={() => {
-                  setDeleteTargetIds([item.id])
-                  setIsDeleteOpen(true)
-                }}
-              >
-                <Trash2 className="h-4 w-4 text-status-red" />
-              </Button>
-            </div>
-          )
-        },
-      },
+        isActionPending,
+      }),
+    [
+      page,
+      pageSize,
+      handleApproveToggle,
+      handleOpenEdit,
+      isActionPending,
     ]
-  }, [page, pageSize, approveMutation, revokeMutation, changeRoleMutation])
+  )
 
   const selectedPendingIds = useMemo(() => {
-    const rows = data?.data ?? []
     return selectedRows.filter((id) => {
-      const item = rows.find((row) => row.id === id)
+      const item = filteredProfiles.find((row) => row.id === id)
       return item && !item.is_approved
     })
-  }, [data?.data, selectedRows])
+  }, [filteredProfiles, selectedRows])
+
+  const handleSortChange = useCallback(() => {
+    // Client-side table without server sort
+  }, [])
+
+  const onSubmitEdit = (values: EditProfileFormValues) => {
+    if (!editingProfile) return
+    updateProfileMutation.mutate({
+      profileId: editingProfile.id,
+      values,
+    })
+  }
 
   if (authLoading || !isAdmin) {
     return (
@@ -405,114 +404,278 @@ export default function AdminUsersPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <PageHeader title="Kelola User" />
+    <TooltipProvider delayDuration={200}>
+      <div className="space-y-6">
+        <PageHeader title="Kelola User" />
 
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-        <Select
-          value={roleFilter}
-          onValueChange={(value) => {
-            setRoleFilter(value as RoleFilter)
-            setPage(1)
-          }}
-        >
-          <SelectTrigger className="w-full sm:w-[180px]">
-            <SelectValue placeholder="Role" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Semua Role</SelectItem>
-            <SelectItem value="user">User</SelectItem>
-            <SelectItem value="admin">Admin</SelectItem>
-            <SelectItem value="superadmin">Superadmin</SelectItem>
-          </SelectContent>
-        </Select>
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div className="relative max-w-md flex-1">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-tertiary)]" />
+            <Input
+              placeholder="Cari nama, username, atau email..."
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              className="pl-9"
+            />
+          </div>
 
-        <Select
-          value={statusFilter}
-          onValueChange={(value) => {
-            setStatusFilter(value as StatusFilter)
-            setPage(1)
-          }}
-        >
-          <SelectTrigger className="w-full sm:w-[180px]">
-            <SelectValue placeholder="Status" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Semua</SelectItem>
-            <SelectItem value="active">Aktif</SelectItem>
-            <SelectItem value="pending">Pending</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            <Select
+              value={roleFilter}
+              onValueChange={(value) => setRoleFilter(value as RoleFilter)}
+            >
+              <SelectTrigger className="w-full sm:w-[180px]">
+                <SelectValue placeholder="Role" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Semua Role</SelectItem>
+                <SelectItem value="user">User</SelectItem>
+                <SelectItem value="admin">Admin</SelectItem>
+              </SelectContent>
+            </Select>
 
-      {selectedRows.length > 0 && (
-        <div className="flex flex-wrap items-center gap-3 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-4 py-3">
-          <span className="text-sm text-[var(--text-primary)]">
-            {selectedRows.length} item terpilih
-          </span>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            disabled={
-              selectedPendingIds.length === 0 || bulkApproveMutation.isPending
-            }
-            onClick={() => bulkApproveMutation.mutate(selectedPendingIds)}
-          >
-            <UserCheck className="mr-2 h-4 w-4" />
-            Setujui Terpilih
-          </Button>
-          <Button
-            type="button"
-            variant="destructive"
-            size="sm"
-            onClick={() => setIsBulkDeleteOpen(true)}
-          >
-            <Trash2 className="mr-2 h-4 w-4" />
-            Hapus Terpilih
-          </Button>
+            <Select
+              value={statusFilter}
+              onValueChange={(value) =>
+                setStatusFilter(value as StatusFilter)
+              }
+            >
+              <SelectTrigger className="w-full sm:w-[180px]">
+                <SelectValue placeholder="Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Semua</SelectItem>
+                <SelectItem value="active">Aktif</SelectItem>
+                <SelectItem value="pending">Pending</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </div>
-      )}
 
-      <DataTable
-        columns={columns}
-        data={data?.data ?? []}
-        pagination={{
-          page,
-          pageSize,
-          total: data?.total ?? 0,
-        }}
-        pageSizeOptions={[...PAGE_SIZE_OPTIONS]}
-        onPageChange={setPage}
-        onPageSizeChange={(size) => {
-          setPageSize(size)
-          setPage(1)
-        }}
-        onSortChange={handleSortChange}
-        selectedRows={selectedRows}
-        onSelectRows={setSelectedRows}
-        isLoading={isLoading}
-      />
+        {selectedRows.length > 0 && (
+          <div className="flex flex-wrap items-center gap-3 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-4 py-3">
+            <span className="text-sm text-[var(--text-primary)]">
+              {selectedRows.length} item terpilih
+            </span>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={
+                selectedPendingIds.length === 0 ||
+                bulkApproveMutation.isPending
+              }
+              onClick={() => bulkApproveMutation.mutate(selectedPendingIds)}
+            >
+              <UserCheck className="mr-2 h-4 w-4" />
+              Setujui Terpilih
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              size="sm"
+              onClick={() => setIsBulkDeleteOpen(true)}
+            >
+              Hapus Terpilih
+            </Button>
+          </div>
+        )}
 
-      <ConfirmDialog
-        open={isDeleteOpen}
-        onOpenChange={setIsDeleteOpen}
-        title="Hapus User"
-        description="Apakah Anda yakin ingin menghapus profil user ini? Akun autentikasi tidak dihapus dari sistem."
-        variant="destructive"
-        isLoading={deleteMutation.isPending}
-        onConfirm={() => deleteMutation.mutate(deleteTargetIds)}
-      />
+        <DataTable
+          columns={columns}
+          data={paginatedProfiles}
+          pagination={{
+            page,
+            pageSize,
+            total: filteredProfiles.length,
+          }}
+          pageSizeOptions={[...PAGE_SIZE_OPTIONS]}
+          onPageChange={setPage}
+          onPageSizeChange={(size) => {
+            setPageSize(size)
+            setPage(1)
+          }}
+          onSortChange={handleSortChange}
+          selectedRows={selectedRows}
+          onSelectRows={setSelectedRows}
+          isLoading={isLoading}
+        />
 
-      <ConfirmDialog
-        open={isBulkDeleteOpen}
-        onOpenChange={setIsBulkDeleteOpen}
-        title="Hapus User Terpilih"
-        description={`Apakah Anda yakin ingin menghapus ${selectedRows.length} profil user terpilih? Tindakan ini tidak dapat dibatalkan.`}
-        variant="destructive"
-        isLoading={deleteMutation.isPending}
-        onConfirm={() => deleteMutation.mutate(selectedRows)}
-      />
-    </div>
+        <AlertDialog
+          open={roleChangeTarget !== null}
+          onOpenChange={(open) => {
+            if (!open) setRoleChangeTarget(null)
+          }}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Ubah Hak Akses</AlertDialogTitle>
+              <AlertDialogDescription>
+                {roleChangeTarget
+                  ? `Apakah Anda yakin ingin mengubah hak akses ${roleChangeTarget.profile.nama_lengkap} menjadi ${getRoleChangeLabel(roleChangeTarget.newRole)}?`
+                  : ''}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={changeRoleMutation.isPending}>
+                Batal
+              </AlertDialogCancel>
+              <AlertDialogAction
+                disabled={changeRoleMutation.isPending}
+                onClick={(event) => {
+                  event.preventDefault()
+                  if (!roleChangeTarget) return
+                  changeRoleMutation.mutate({
+                    profileId: roleChangeTarget.profile.id,
+                    newRole: roleChangeTarget.newRole,
+                  })
+                }}
+              >
+                {changeRoleMutation.isPending ? 'Memproses...' : 'Ya, Ubah'}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        <Dialog
+          open={isEditOpen}
+          onOpenChange={(open) => {
+            if (!open) {
+              setIsEditOpen(false)
+              setEditingProfile(null)
+              editForm.reset()
+            }
+          }}
+        >
+          <DialogContent className="max-w-lg">
+            <DialogHeader>
+              <DialogTitle>Edit Data Pengguna</DialogTitle>
+            </DialogHeader>
+            <form
+              onSubmit={editForm.handleSubmit(onSubmitEdit)}
+              className="space-y-4"
+            >
+              <div className="space-y-2">
+                <Label htmlFor="edit-nama_lengkap">Nama Lengkap</Label>
+                <Input
+                  id="edit-nama_lengkap"
+                  {...editForm.register('nama_lengkap')}
+                />
+                {editForm.formState.errors.nama_lengkap && (
+                  <p className="text-xs text-status-red">
+                    {editForm.formState.errors.nama_lengkap.message}
+                  </p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="edit-username">Username</Label>
+                <Input
+                  id="edit-username"
+                  {...editForm.register('username')}
+                />
+                {editForm.formState.errors.username && (
+                  <p className="text-xs text-status-red">
+                    {editForm.formState.errors.username.message}
+                  </p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="edit-email">Email</Label>
+                <Input
+                  id="edit-email"
+                  type="email"
+                  {...editForm.register('email')}
+                />
+                {editForm.formState.errors.email && (
+                  <p className="text-xs text-status-red">
+                    {editForm.formState.errors.email.message}
+                  </p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="edit-guru_mapel">Guru Mapel</Label>
+                <Input
+                  id="edit-guru_mapel"
+                  {...editForm.register('guru_mapel')}
+                />
+                {editForm.formState.errors.guru_mapel && (
+                  <p className="text-xs text-status-red">
+                    {editForm.formState.errors.guru_mapel.message}
+                  </p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="edit-role">Role</Label>
+                <Select
+                  value={editForm.watch('role')}
+                  onValueChange={(value) =>
+                    editForm.setValue('role', value as ManageableRole, {
+                      shouldValidate: true,
+                    })
+                  }
+                >
+                  <SelectTrigger id="edit-role">
+                    <SelectValue placeholder="Pilih role" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="user">User</SelectItem>
+                    <SelectItem value="admin">Admin</SelectItem>
+                  </SelectContent>
+                </Select>
+                {editForm.formState.errors.role && (
+                  <p className="text-xs text-status-red">
+                    {editForm.formState.errors.role.message}
+                  </p>
+                )}
+              </div>
+
+              <DialogFooter>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    setIsEditOpen(false)
+                    setEditingProfile(null)
+                    editForm.reset()
+                  }}
+                >
+                  Batal
+                </Button>
+                <Button
+                  type="submit"
+                  isLoading={updateProfileMutation.isPending}
+                >
+                  Simpan Perubahan
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
+
+        <ConfirmDialog
+          open={isDeleteOpen}
+          onOpenChange={setIsDeleteOpen}
+          title="Hapus User"
+          description="Apakah Anda yakin ingin menghapus profil user ini? Akun autentikasi tidak dihapus dari sistem."
+          variant="destructive"
+          isLoading={deleteMutation.isPending}
+          onConfirm={() => deleteMutation.mutate(deleteTargetIds)}
+        />
+
+        <ConfirmDialog
+          open={isBulkDeleteOpen}
+          onOpenChange={setIsBulkDeleteOpen}
+          title="Hapus User Terpilih"
+          description={`Apakah Anda yakin ingin menghapus ${selectedRows.length} profil user terpilih? Tindakan ini tidak dapat dibatalkan.`}
+          variant="destructive"
+          isLoading={deleteMutation.isPending}
+          onConfirm={() => deleteMutation.mutate(selectedRows)}
+        />
+      </div>
+    </TooltipProvider>
   )
 }

@@ -7,13 +7,24 @@ import type {
   Role,
 } from '@/lib/supabase/types'
 
-export { approveUser, changeUserRole, revokeUser } from '@/lib/queries/users'
+export {
+  approveUser,
+  changeUserRole,
+  getManageableProfiles,
+  revokeUser,
+  updateManageableProfile,
+} from '@/lib/queries/users'
+export type {
+  ManageableRole,
+  UpdateManageableProfileInput,
+} from '@/lib/queries/users'
 
 export interface GetAllProfilesOptions {
   role?: Role
   isApproved?: boolean
   page?: number
   pageSize?: number
+  manageableOnly?: boolean
 }
 
 export interface AdminStats {
@@ -82,9 +93,14 @@ async function fetchProfileById(profileId: string): Promise<Profile> {
 function applyProfileFilters<
   T extends {
     eq: (column: string, value: Role | boolean) => T
+    in: (column: string, values: Role[]) => T
   },
 >(query: T, options?: GetAllProfilesOptions): T {
   let filteredQuery = query
+
+  if (options?.manageableOnly) {
+    filteredQuery = filteredQuery.in('role', ['user', 'admin'])
+  }
 
   if (options?.role !== undefined) {
     filteredQuery = filteredQuery.eq('role', options.role)
