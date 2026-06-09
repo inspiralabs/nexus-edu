@@ -101,16 +101,26 @@ export default function LoginPage() {
     <Card className="mx-auto w-full max-w-sm">
       <CardHeader className="text-center">
         <div className="mb-2 flex justify-center">
-          <Image
-            src="/SQA.png"
-            alt="Logo SQA"
-            width={120}
-            height={40}
-            className="h-8 w-auto object-contain"
-            priority
-          />
+        <Link 
+          href="/" 
+          className="transition-opacity hover:opacity-80 block mx-auto w-fit"
+          aria-label="Kembali ke Beranda"
+        >
+            <Image
+              src="/SQA.png"
+              alt="Logo SQA"
+              width={120}
+              height={40}
+              className="h-8 w-auto object-contain"
+              priority
+            />
+          </Link>
         </div>
-        <CardDescription>Masuk ke akun Anda</CardDescription>
+        <CardDescription>
+        <span className="text-sm font-medium tracking-tight text-slate-600 dark:text-slate-800">
+          Masuk ke akun Anda
+        </span>
+        </CardDescription>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">

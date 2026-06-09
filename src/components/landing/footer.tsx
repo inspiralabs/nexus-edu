@@ -12,9 +12,9 @@ export function Footer() {
             height={40}
             className="h-8 w-auto object-contain"
           />
-          <p className="text-xs text-slate-600">
-            Sekolah Quran Asy Syahid
-          </p>
+          <span className="block text-sm font-medium tracking-tight text-slate-500 dark:text-slate-400">
+            NexusEdu - SQA
+          </span>
         </div>
 
         <p className="text-center text-xs text-slate-600 md:text-right">

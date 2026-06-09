@@ -519,7 +519,9 @@ function Sidebar() {
             className="h-8 w-auto object-contain"
             priority
           />
-          <p className="mt-1 text-xs text-[var(--text-tertiary)]">Platform</p>
+          <span className="block pr-[110px] text-[12px] font-medium uppercase tracking-widest text-slate-500 text-center dark:text-slate-400">
+            Platform
+          </span>
         </div>
 
         <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">

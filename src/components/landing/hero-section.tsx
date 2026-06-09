@@ -118,15 +118,15 @@ export function HeroSection() {
           <div className="animate-fade-in-up mt-6 flex flex-wrap items-center justify-center gap-x-8 gap-y-3 text-sm font-medium text-slate-400 [animation-delay:400ms]">
             <div className="flex items-center gap-2">
               <Zap className="h-4 w-4 text-primary" />
-              <span>Lebih Efisien</span>
+              <span className='text-slate-500 dark:text-slate-400'>Lebih Efisien</span>
             </div>
             <div className="flex items-center gap-2">
               <Shield className="h-4 w-4 text-primary" />
-              <span>Data Terjaga</span>
+              <span className='text-slate-500 dark:text-slate-400'>Data Terjaga</span>
             </div>
             <div className="flex items-center gap-2">
               <Clock className="h-4 w-4 text-primary" />
-              <span>Hemat Waktu</span>
+              <span className='text-slate-500 dark:text-slate-400'>Hemat Waktu</span>
             </div>
           </div>
         </div>

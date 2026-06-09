@@ -15,21 +15,21 @@ const features: Feature[] = [
     title: 'Data Siswa',
     description:
       'Simpan dan kelola database siswa SD, SMP, hingga SMA secara terpusat. Dilengkapi fitur import massal sekali klik untuk menghemat waktu Anda',
-    highlights: ['CRUD lengkap', 'Import massal', 'Filter per unit'],
+    highlights: ['CRUD lengkap', 'Import massal', 'Filter Mudah'],
   },
   {
     icon: ShieldAlert,
     title: 'Kedisiplinan',
     description:
       'Rekam setiap poin pelanggaran maupun penghargaan siswa secara digital. Pantau grafik kedisiplinan dan terbitkan laporan instan kapan saja.',
-    highlights: ['Status tracking', 'Filter & laporan', 'Multi kategori'],
+    highlights: ['Status tracking', 'Rekap Poin', 'Multi kategori'],
   },
   {
     icon: Trophy,
     title: 'Prestasi',
     description:
       'Catat dan dokumentasikan pencapaian gemilang siswa mulai tingkat lokal hingga internasional demi reputasi sekolah yang akurat.',
-    highlights: ['8 tingkat kejuaraan', 'Laporan cetak', 'Dashboard analitik'],
+    highlights: ['Filter & Laporan', 'Dashboard Analitik', 'Lengkap'],
   },
 ]
 
@@ -71,7 +71,7 @@ export function FeaturesSection() {
                 <p className="mt-2 text-sm leading-relaxed text-slate-600 dark:text-slate-400">
                   {feature.description}
                 </p>
-                <div className="mt-4 flex flex-wrap gap-2">
+                <div className="mt-4 mb-4 flex flex-wrap gap-2">
                   {feature.highlights.map((highlight) => (
                     <span
                       key={highlight}
