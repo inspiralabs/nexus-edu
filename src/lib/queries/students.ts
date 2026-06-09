@@ -145,6 +145,43 @@ export async function bulkCreateStudents(
   return (result ?? []) as Student[]
 }
 
+export interface KelasOption {
+  value: string
+  label: string
+}
+
+export async function getKelasOptionsByUnits(
+  units?: Unit[]
+): Promise<KelasOption[]> {
+  const supabase = createClient()
+
+  let query = supabase.from('students').select('kelas')
+
+  if (units && units.length > 0) {
+    query = query.in('unit', units)
+  }
+
+  const { data, error } = await query
+
+  if (error) throw new Error(error.message)
+
+  const uniqueKelas = [
+    ...new Set(
+      (data ?? [])
+        .map((row) => row.kelas)
+        .filter(
+          (kelas): kelas is string =>
+            typeof kelas === 'string' && kelas.length > 0
+        )
+    ),
+  ].sort((a, b) => a.localeCompare(b, 'id'))
+
+  return uniqueKelas.map((kelas) => ({
+    value: kelas,
+    label: kelas,
+  }))
+}
+
 export async function getStudentClasses(unit: Unit): Promise<string[]> {
   const supabase = createClient()
 

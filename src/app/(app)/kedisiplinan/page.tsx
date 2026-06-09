@@ -24,9 +24,15 @@ import {
   YAxis,
 } from 'recharts'
 import { StatCard } from '@/components/shared/stat-card'
+import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Label } from '@/components/ui/label'
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
   getDivisi,
@@ -34,6 +40,7 @@ import {
   getKedisiplinanDashboard,
   type KedisiplinanDashboardFilters,
 } from '@/lib/queries/kedisiplinan'
+import { getKelasOptionsByUnits } from '@/lib/queries/students'
 import type { StatusKedisiplinan, Unit } from '@/lib/supabase/types'
 import { cn, formatDivisiLabel } from '@/lib/utils'
 
@@ -95,6 +102,68 @@ function ChartSkeleton({ className }: { className?: string }) {
   return <Skeleton className={className ?? 'h-[300px] w-full'} />
 }
 
+interface FilterOption {
+  value: string
+  label: string
+}
+
+interface FilterMultiSelectProps {
+  label: string
+  emptyLabel: string
+  options: FilterOption[]
+  selectedValues: string[]
+  onToggle: (value: string) => void
+  idPrefix: string
+}
+
+function FilterMultiSelect({
+  label,
+  emptyLabel,
+  options,
+  selectedValues,
+  onToggle,
+  idPrefix,
+}: FilterMultiSelectProps) {
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          variant="outline"
+          className="h-9 min-w-[140px] justify-start font-normal"
+        >
+          {selectedValues.length > 0
+            ? `${label} (${selectedValues.length})`
+            : emptyLabel}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-56 p-3" align="start">
+        <div className="max-h-60 space-y-2 overflow-y-auto">
+          {options.length === 0 ? (
+            <p className="text-sm text-text-secondary">Tidak ada opsi</p>
+          ) : (
+            options.map((option) => (
+              <div key={option.value} className="flex items-center gap-2">
+                <Checkbox
+                  id={`${idPrefix}-${option.value}`}
+                  checked={selectedValues.includes(option.value)}
+                  onCheckedChange={() => onToggle(option.value)}
+                />
+                <Label
+                  htmlFor={`${idPrefix}-${option.value}`}
+                  className="font-normal"
+                >
+                  {option.label}
+                </Label>
+              </div>
+            ))
+          )}
+        </div>
+      </PopoverContent>
+    </Popover>
+  )
+}
+
 interface StatusStatCardProps {
   title: string
   value: number
@@ -141,6 +210,7 @@ export default function KedisiplinanDashboardPage() {
 
   const [selectedYears, setSelectedYears] = useState<number[]>([currentYear])
   const [selectedUnits, setSelectedUnits] = useState<Unit[]>([...UNITS])
+  const [selectedKelas, setSelectedKelas] = useState<string[]>([])
   const [selectedKategori, setSelectedKategori] = useState<string[]>([])
   const [selectedDivisi, setSelectedDivisi] = useState<string[]>([])
 
@@ -154,15 +224,30 @@ export default function KedisiplinanDashboardPage() {
     queryFn: () => getDivisi(),
   })
 
+  const { data: kelasOptions = [] } = useQuery({
+    queryKey: ['kedisiplinan-dashboard-kelas', selectedUnits],
+    queryFn: () =>
+      getKelasOptionsByUnits(
+        selectedUnits.length > 0 ? selectedUnits : undefined
+      ),
+  })
+
   const dashboardFilters = useMemo<KedisiplinanDashboardFilters>(
     () => ({
       tahun: selectedYears.length > 0 ? selectedYears : undefined,
       unit: selectedUnits.length > 0 ? selectedUnits : undefined,
+      kelas: selectedKelas.length > 0 ? selectedKelas : undefined,
       kategori_id:
         selectedKategori.length > 0 ? selectedKategori : undefined,
       divisi_id: selectedDivisi.length > 0 ? selectedDivisi : undefined,
     }),
-    [selectedYears, selectedUnits, selectedKategori, selectedDivisi]
+    [
+      selectedYears,
+      selectedUnits,
+      selectedKelas,
+      selectedKategori,
+      selectedDivisi,
+    ]
   )
 
   const { data, isLoading } = useQuery({
@@ -208,6 +293,15 @@ export default function KedisiplinanDashboardPage() {
     setSelectedUnits((prev) =>
       prev.includes(unit) ? prev.filter((u) => u !== unit) : [...prev, unit]
     )
+    setSelectedKelas([])
+  }
+
+  const toggleKelas = (kelas: string) => {
+    setSelectedKelas((prev) =>
+      prev.includes(kelas)
+        ? prev.filter((k) => k !== kelas)
+        : [...prev, kelas]
+    )
   }
 
   const toggleKategori = (id: string) => {
@@ -235,91 +329,96 @@ export default function KedisiplinanDashboardPage() {
         <CardHeader>
           <CardTitle className="text-base">Filter Data</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label className="text-sm font-medium">Tahun</Label>
-            <div className="flex flex-wrap gap-4">
-              {yearOptions.map((year) => (
-                <div key={year} className="flex items-center gap-2">
-                  <Checkbox
-                    id={`year-${year}`}
-                    checked={selectedYears.includes(year)}
-                    onCheckedChange={() => toggleYear(year)}
-                  />
-                  <Label htmlFor={`year-${year}`} className="font-normal">
-                    {year}
-                  </Label>
-                </div>
-              ))}
-            </div>
-          </div>
+        <CardContent className="flex w-full flex-col gap-3 p-4 sm:flex-row sm:flex-wrap sm:items-center">
+          <FilterMultiSelect
+            label="Tahun"
+            emptyLabel="Semua Tahun"
+            idPrefix="kedisiplinan-year"
+            selectedValues={selectedYears.map(String)}
+            onToggle={(value) => toggleYear(Number.parseInt(value, 10))}
+            options={yearOptions.map((year) => ({
+              value: String(year),
+              label: String(year),
+            }))}
+          />
 
-          <div className="space-y-2">
-            <Label className="text-sm font-medium">Unit Sekolah</Label>
-            <div className="flex flex-wrap gap-4">
-              {UNITS.map((unit) => (
-                <div key={unit} className="flex items-center gap-2">
-                  <Checkbox
-                    id={`unit-${unit}`}
-                    checked={selectedUnits.includes(unit)}
-                    onCheckedChange={() => toggleUnit(unit)}
-                  />
-                  <Label htmlFor={`unit-${unit}`} className="font-normal">
-                    {unit}
-                  </Label>
-                </div>
-              ))}
-            </div>
-          </div>
+          <FilterMultiSelect
+            label="Unit"
+            emptyLabel="Semua Unit"
+            idPrefix="kedisiplinan-unit"
+            selectedValues={selectedUnits}
+            onToggle={(value) => toggleUnit(value as Unit)}
+            options={UNITS.map((unit) => ({
+              value: unit,
+              label: unit,
+            }))}
+          />
 
-          <div className="space-y-2">
-            <Label className="text-sm font-medium">Kategori</Label>
-            <div className="flex flex-wrap gap-4">
-              {(kategoriList ?? []).map((kategori) => (
-                <div key={kategori.id} className="flex items-center gap-2">
-                  <Checkbox
-                    id={`kategori-${kategori.id}`}
-                    checked={selectedKategori.includes(kategori.id)}
-                    onCheckedChange={() => toggleKategori(kategori.id)}
-                  />
-                  <Label
-                    htmlFor={`kategori-${kategori.id}`}
-                    className="font-normal"
-                  >
-                    {kategori.nama_kategori}
-                  </Label>
-                </div>
-              ))}
-              {(kategoriList ?? []).length === 0 && (
-                <p className="text-sm text-[var(--text-tertiary)]">
-                  Belum ada kategori
-                </p>
-              )}
-            </div>
-          </div>
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button
+                type="button"
+                variant="outline"
+                className="h-9 min-w-[140px] justify-start font-normal"
+              >
+                {selectedKelas.length > 0
+                  ? `Kelas (${selectedKelas.length})`
+                  : 'Semua Kelas'}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-56 p-3" align="start">
+              <div className="max-h-60 space-y-2 overflow-y-auto">
+                {kelasOptions.length === 0 ? (
+                  <p className="text-sm text-text-secondary">
+                    Tidak ada kelas tersedia
+                  </p>
+                ) : (
+                  kelasOptions.map((option) => (
+                    <div
+                      key={option.value}
+                      className="flex items-center gap-2"
+                    >
+                      <Checkbox
+                        id={`kedisiplinan-kelas-${option.value}`}
+                        checked={selectedKelas.includes(option.value)}
+                        onCheckedChange={() => toggleKelas(option.value)}
+                      />
+                      <Label
+                        htmlFor={`kedisiplinan-kelas-${option.value}`}
+                        className="font-normal"
+                      >
+                        {option.label}
+                      </Label>
+                    </div>
+                  ))
+                )}
+              </div>
+            </PopoverContent>
+          </Popover>
 
-          <div className="space-y-2">
-            <Label className="text-sm font-medium">Divisi</Label>
-            <div className="flex flex-wrap gap-4">
-              {(divisiList ?? []).map((divisi) => (
-                <div key={divisi.id} className="flex items-center gap-2">
-                  <Checkbox
-                    id={`divisi-${divisi.id}`}
-                    checked={selectedDivisi.includes(divisi.id)}
-                    onCheckedChange={() => toggleDivisi(divisi.id)}
-                  />
-                  <Label htmlFor={`divisi-${divisi.id}`} className="font-normal">
-                    {formatDivisiLabel(divisi.nama_divisi, divisi.unit)}
-                  </Label>
-                </div>
-              ))}
-              {(divisiList ?? []).length === 0 && (
-                <p className="text-sm text-[var(--text-tertiary)]">
-                  Belum ada divisi
-                </p>
-              )}
-            </div>
-          </div>
+          <FilterMultiSelect
+            label="Kategori"
+            emptyLabel="Semua Kategori"
+            idPrefix="kedisiplinan-kategori"
+            selectedValues={selectedKategori}
+            onToggle={toggleKategori}
+            options={(kategoriList ?? []).map((kategori) => ({
+              value: kategori.id,
+              label: kategori.nama_kategori,
+            }))}
+          />
+
+          <FilterMultiSelect
+            label="Divisi"
+            emptyLabel="Semua Divisi"
+            idPrefix="kedisiplinan-divisi"
+            selectedValues={selectedDivisi}
+            onToggle={toggleDivisi}
+            options={(divisiList ?? []).map((divisi) => ({
+              value: divisi.id,
+              label: formatDivisiLabel(divisi.nama_divisi, divisi.unit),
+            }))}
+          />
         </CardContent>
       </Card>
 

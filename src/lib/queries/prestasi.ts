@@ -41,6 +41,7 @@ export interface PrestasiFilters {
 export interface PrestasiDashboardFilters {
   tahun?: number[]
   unit?: Unit[]
+  kelas?: string[]
   juara_id?: string[]
   kategori_id?: string[]
   tingkat_kejuaraan?: TingkatKejuaraan[]
@@ -295,17 +296,62 @@ export async function deletePrestasi(ids: string[]): Promise<void> {
   if (error) throw new Error(error.message)
 }
 
+async function getDashboardStudentIdsByKelas(
+  filters?: Pick<PrestasiDashboardFilters, 'unit' | 'kelas'>
+): Promise<string[] | null> {
+  const hasKelasFilter = Boolean(filters?.kelas && filters.kelas.length > 0)
+
+  if (!hasKelasFilter) {
+    return null
+  }
+
+  const supabase = createClient()
+  let query = supabase.from('students').select('id').in('kelas', filters!.kelas!)
+
+  if (filters?.unit && filters.unit.length > 0) {
+    query = query.in('unit', filters.unit)
+  }
+
+  const { data, error } = await query
+
+  if (error) throw new Error(error.message)
+
+  return (data ?? []).map((row) => (row as StudentIdRow).id)
+}
+
 export async function getPrestasiDashboard(
   filters?: PrestasiDashboardFilters
 ): Promise<PrestasiDashboardResult> {
   const supabase = createClient()
   const monthStart = startOfMonth(new Date()).toISOString().split('T')[0]
 
+  const kelasStudentIds = await getDashboardStudentIdsByKelas({
+    unit: filters?.unit,
+    kelas: filters?.kelas,
+  })
+
+  if (kelasStudentIds && kelasStudentIds.length === 0) {
+    return {
+      totalPrestasi: 0,
+      thisMonth: 0,
+      juara1: 0,
+      nasionalPlus: 0,
+      trenBulanan: [],
+      perTingkat: [],
+      perBidang: [],
+      individuVsKelompok: [],
+    }
+  }
+
   let dashboardQuery = supabase
     .from('prestasi')
     .select(
       'waktu, jenis_juara, tingkat_kejuaraan, juara(nama_juara), bidang(nama_bidang)'
     )
+
+  if (kelasStudentIds) {
+    dashboardQuery = dashboardQuery.in('siswa_id', kelasStudentIds)
+  }
 
   if (filters?.unit && filters.unit.length > 0) {
     dashboardQuery = dashboardQuery.in('unit', filters.unit)

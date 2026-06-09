@@ -38,6 +38,7 @@ export interface KedisiplinanFilters {
 export interface KedisiplinanDashboardFilters {
   tahun?: number[]
   unit?: Unit[]
+  kelas?: string[]
   kategori_id?: string[]
   divisi_id?: string[]
 }
@@ -106,12 +107,13 @@ function resolveSortField(sortField?: string): AllowedSortField {
 }
 
 async function getFilteredStudentIds(
-  filters?: Pick<KedisiplinanFilters, 'unit' | 'search'>
+  filters?: Pick<KedisiplinanFilters, 'unit' | 'search'> & { kelas?: string[] }
 ): Promise<string[] | null> {
   const hasUnitFilter = Boolean(filters?.unit && filters.unit.length > 0)
   const hasSearchFilter = Boolean(filters?.search && filters.search.length > 0)
+  const hasKelasFilter = Boolean(filters?.kelas && filters.kelas.length > 0)
 
-  if (!hasUnitFilter && !hasSearchFilter) {
+  if (!hasUnitFilter && !hasSearchFilter && !hasKelasFilter) {
     return null
   }
 
@@ -120,6 +122,10 @@ async function getFilteredStudentIds(
 
   if (hasUnitFilter && filters?.unit) {
     query = query.in('unit', filters.unit)
+  }
+
+  if (hasKelasFilter && filters?.kelas) {
+    query = query.in('kelas', filters.kelas)
   }
 
   if (hasSearchFilter && filters?.search) {
@@ -314,6 +320,7 @@ export async function getKedisiplinanDashboard(
 
   const studentIds = await getFilteredStudentIds({
     unit: filters?.unit,
+    kelas: filters?.kelas,
   })
 
   if (studentIds && studentIds.length === 0) {
