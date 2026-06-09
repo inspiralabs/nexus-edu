@@ -2,6 +2,7 @@
 
 import { LogOut, Menu, Moon, Sun, User } from 'lucide-react'
 import { useRouter } from 'next/navigation'
+import { useCallback, useMemo } from 'react'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import {
@@ -14,6 +15,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { useTheme } from '@/components/providers/theme-provider'
 import { useAuth } from '@/hooks/use-auth'
+import { createClient } from '@/lib/supabase/client'
 
 interface HeaderProps {
   title: string
@@ -31,8 +33,15 @@ function getInitials(name: string): string {
 
 function Header({ title, onMobileMenuToggle }: HeaderProps) {
   const router = useRouter()
+  const supabase = useMemo(() => createClient(), [])
   const { theme, setTheme } = useTheme()
-  const { profile, logout } = useAuth()
+  const { profile } = useAuth()
+
+  const handleLogout = useCallback(async () => {
+    await supabase.auth.signOut()
+    router.push('/login')
+    router.refresh()
+  }, [router, supabase])
 
   return (
     <header className="sticky top-0 z-40 flex h-14 items-center gap-3 border-b border-[var(--border)] bg-[var(--surface)] px-4">
@@ -108,7 +117,7 @@ function Header({ title, onMobileMenuToggle }: HeaderProps) {
             <DropdownMenuItem
               variant="destructive"
               className="text-status-red"
-              onClick={() => logout()}
+              onClick={() => void handleLogout()}
             >
               <LogOut className="h-4 w-4" />
               Keluar

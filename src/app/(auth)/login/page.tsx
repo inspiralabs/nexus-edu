@@ -3,7 +3,8 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import { AlertCircle, Eye, EyeOff } from 'lucide-react'
 import Link from 'next/link'
-import { useState, useTransition } from 'react'
+import { useRouter } from 'next/navigation'
+import { useMemo, useState, useTransition } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { Button } from '@/components/ui/button'
@@ -16,7 +17,7 @@ import {
 } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { login } from '@/lib/auth/actions'
+import { createClient } from '@/lib/supabase/client'
 
 const loginSchema = z.object({
   username: z.string().min(1, 'Username wajib diisi'),
@@ -26,6 +27,8 @@ const loginSchema = z.object({
 type LoginFormValues = z.infer<typeof loginSchema>
 
 export default function LoginPage() {
+  const router = useRouter()
+  const supabase = useMemo(() => createClient(), [])
   const [showPassword, setShowPassword] = useState(false)
   const [serverError, setServerError] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
@@ -45,10 +48,52 @@ export default function LoginPage() {
   const onSubmit = (values: LoginFormValues) => {
     setServerError(null)
     startTransition(async () => {
-      const result = await login(values.username, values.password)
-      if (result.error) {
-        setServerError(result.error)
+      const normalizedUsername = values.username.trim().toLowerCase()
+
+      const { data: profileByUsername, error: profileError } = await supabase
+        .from('profiles')
+        .select('email')
+        .ilike('username', normalizedUsername)
+        .single()
+
+      if (profileError || !profileByUsername?.email) {
+        setServerError('Username tidak ditemukan')
+        return
       }
+
+      const { data: authData, error: authError } =
+        await supabase.auth.signInWithPassword({
+          email: profileByUsername.email,
+          password: values.password,
+        })
+
+      if (authError || !authData.user) {
+        setServerError('Password salah')
+        return
+      }
+
+      const { data: profile, error: approvalError } = await supabase
+        .from('profiles')
+        .select('is_approved')
+        .eq('user_id', authData.user.id)
+        .single()
+
+      if (approvalError || !profile) {
+        await supabase.auth.signOut()
+        setServerError('Username tidak ditemukan')
+        return
+      }
+
+      if (!profile.is_approved) {
+        await supabase.auth.signOut()
+        setServerError(
+          'Akun belum disetujui oleh Admin. Silakan hubungi administrator.'
+        )
+        return
+      }
+
+      router.push('/dashboard')
+      router.refresh()
     })
   }
 
