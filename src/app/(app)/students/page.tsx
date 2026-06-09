@@ -16,7 +16,6 @@ import { z } from 'zod'
 import { PageHeader } from '@/components/layout/page-header'
 import { ConfirmDialog } from '@/components/shared/confirm-dialog'
 import { DataTable } from '@/components/shared/data-table'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -59,7 +58,6 @@ import {
   type CreateStudentInput,
 } from '@/lib/queries/students'
 import type { AuditAction, JenisKelamin, Student, Unit } from '@/lib/supabase/types'
-import { cn } from '@/lib/utils'
 
 const PAGE_SIZE_OPTIONS = [10, 20, 30, 40, 50] as const
 const UNITS: Unit[] = ['SD', 'SMP', 'SMA']
@@ -74,14 +72,8 @@ const studentSchema = z.object({
 
 type StudentFormValues = z.infer<typeof studentSchema>
 
-interface BulkParseError {
-  line: number
-  message: string
-}
-
-interface BulkParseResult {
-  valid: CreateStudentInput[]
-  errors: BulkParseError[]
+interface PendingStudentQueueItem extends CreateStudentInput {
+  localId: string
 }
 
 function studentToRecord(student: Student): Record<string, unknown> {
@@ -101,68 +93,6 @@ function formatJenisKelamin(jk: JenisKelamin | null): string {
   return '-'
 }
 
-function parseBulkImport(
-  text: string,
-  unit: Unit
-): BulkParseResult {
-  const lines = text
-    .split('\n')
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0)
-
-  const valid: CreateStudentInput[] = []
-  const errors: BulkParseError[] = []
-
-  lines.forEach((line, index) => {
-    const lineNumber = index + 1
-    const parts = line.split(',').map((part) => part.trim())
-
-    if (parts.length !== 3) {
-      errors.push({
-        line: lineNumber,
-        message: 'Format harus: Nama,Kelas,JenisKelamin',
-      })
-      return
-    }
-
-    const [nama, kelas, jenisKelaminRaw] = parts
-
-    if (nama.length < 2) {
-      errors.push({
-        line: lineNumber,
-        message: 'Nama minimal 2 karakter',
-      })
-      return
-    }
-
-    if (kelas.length < 1) {
-      errors.push({
-        line: lineNumber,
-        message: 'Kelas wajib diisi',
-      })
-      return
-    }
-
-    const jenisKelamin = jenisKelaminRaw.toUpperCase()
-    if (jenisKelamin !== 'L' && jenisKelamin !== 'P') {
-      errors.push({
-        line: lineNumber,
-        message: 'Jenis kelamin harus L atau P',
-      })
-      return
-    }
-
-    valid.push({
-      nama,
-      kelas,
-      jenis_kelamin: jenisKelamin as JenisKelamin,
-      unit,
-    })
-  })
-
-  return { valid, errors }
-}
-
 export default function StudentsPage() {
   const queryClient = useQueryClient()
   const { profile } = useAuth()
@@ -179,14 +109,17 @@ export default function StudentsPage() {
   const [isAddOpen, setIsAddOpen] = useState(false)
   const [isEditOpen, setIsEditOpen] = useState(false)
   const [isDeleteOpen, setIsDeleteOpen] = useState(false)
-  const [isBulkImportOpen, setIsBulkImportOpen] = useState(false)
+  const [isBulkAddOpen, setIsBulkAddOpen] = useState(false)
   const [isBulkEditOpen, setIsBulkEditOpen] = useState(false)
+
+  const [studentsQueue, setStudentsQueue] = useState<PendingStudentQueueItem[]>(
+    []
+  )
 
   const [editingStudent, setEditingStudent] = useState<Student | null>(null)
   const [bulkEditData, setBulkEditData] = useState({ kelas: '' })
   const [deleteTargetIds, setDeleteTargetIds] = useState<string[]>([])
   const [deletingStudents, setDeletingStudents] = useState<Student[]>([])
-  const [bulkImportText, setBulkImportText] = useState('')
 
   const debouncedSearch = useDebounce(search, 300)
 
@@ -228,11 +161,6 @@ export default function StudentsPage() {
       jenis_kelamin: 'L',
     },
   })
-
-  const bulkParseResult = useMemo(
-    () => parseBulkImport(bulkImportText, activeUnit),
-    [bulkImportText, activeUnit]
-  )
 
   const invalidateStudents = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: ['students'] })
@@ -397,7 +325,7 @@ export default function StudentsPage() {
     },
   })
 
-  const bulkImportMutation = useMutation({
+  const bulkCreateMutation = useMutation({
     mutationFn: (items: CreateStudentInput[]) => bulkCreateStudents(items),
     onSuccess: async (results) => {
       const userId = getUserId()
@@ -405,7 +333,7 @@ export default function StudentsPage() {
         for (const result of results) {
           await logAudit(
             userId,
-            'CREATE',
+            'BULK_CREATE' as AuditAction,
             'students',
             result.id,
             null,
@@ -416,10 +344,9 @@ export default function StudentsPage() {
       invalidateStudents()
       toast({
         title: 'Berhasil',
-        description: `${results.length} siswa berhasil diimport`,
+        description: `Berhasil menambahkan ${results.length} siswa baru`,
       })
-      setIsBulkImportOpen(false)
-      setBulkImportText('')
+      closeBulkAddDialog()
     },
     onError: (error: Error) => {
       toast({
@@ -475,6 +402,40 @@ export default function StudentsPage() {
   const openBulkEdit = () => {
     setBulkEditData({ kelas: '' })
     setIsBulkEditOpen(true)
+  }
+
+  const resetFormDefaults = () => {
+    form.reset({ nama: '', kelas: '', jenis_kelamin: 'L' })
+  }
+
+  const closeBulkAddDialog = () => {
+    setIsBulkAddOpen(false)
+    setStudentsQueue([])
+    resetFormDefaults()
+  }
+
+  const openBulkAdd = () => {
+    resetFormDefaults()
+    setStudentsQueue([])
+    setIsBulkAddOpen(true)
+  }
+
+  const addToStudentsQueue = (values: StudentFormValues) => {
+    setStudentsQueue((prev) => [
+      ...prev,
+      {
+        localId: crypto.randomUUID(),
+        nama: values.nama,
+        kelas: values.kelas,
+        jenis_kelamin: values.jenis_kelamin,
+        unit: activeUnit,
+      },
+    ])
+    resetFormDefaults()
+    toast({
+      title: 'Ditambahkan',
+      description: 'Item ditambahkan ke daftar. Isi form untuk menambah lagi.',
+    })
   }
 
   const handleBulkEditSubmit = () => {
@@ -564,7 +525,106 @@ export default function StudentsPage() {
   )
 
   const isFormSubmitting = createMutation.isPending || updateMutation.isPending
+  const isBulkCreateSubmitting = bulkCreateMutation.isPending
   const isFormOpen = isAddOpen || isEditOpen
+
+  const renderStudentFormFields = (showAddToListButton = false) => (
+    <div className="space-y-4">
+      {showAddToListButton && (
+        <div className="space-y-2">
+          <Label htmlFor="bulk-unit">Unit</Label>
+          <Input id="bulk-unit" value={activeUnit} disabled readOnly />
+        </div>
+      )}
+
+      <div className="space-y-2">
+        <Label htmlFor="nama">Nama Siswa</Label>
+        <Input id="nama" {...form.register('nama')} />
+        {form.formState.errors.nama && (
+          <p className="text-xs text-status-red">
+            {form.formState.errors.nama.message}
+          </p>
+        )}
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor={showAddToListButton ? 'bulk-kelas' : 'kelas'}>
+          Kelas
+        </Label>
+        <Input
+          id={showAddToListButton ? 'bulk-kelas' : 'kelas'}
+          list={showAddToListButton ? 'kelas-suggestions' : undefined}
+          {...form.register('kelas')}
+        />
+        {showAddToListButton && studentClasses.length > 0 && (
+          <datalist id="kelas-suggestions">
+            {studentClasses.map((kelas) => (
+              <option key={kelas} value={kelas} />
+            ))}
+          </datalist>
+        )}
+        {form.formState.errors.kelas && (
+          <p className="text-xs text-status-red">
+            {form.formState.errors.kelas.message}
+          </p>
+        )}
+      </div>
+
+      <div className="space-y-2">
+        <Label>Jenis Kelamin</Label>
+        <RadioGroup
+          value={form.watch('jenis_kelamin')}
+          onValueChange={(value) =>
+            form.setValue('jenis_kelamin', value as JenisKelamin, {
+              shouldValidate: true,
+            })
+          }
+          className="flex gap-4"
+        >
+          <div className="flex items-center gap-2">
+            <RadioGroupItem
+              value="L"
+              id={showAddToListButton ? 'bulk-jk-l' : 'jk-l'}
+            />
+            <Label
+              htmlFor={showAddToListButton ? 'bulk-jk-l' : 'jk-l'}
+              className="font-normal"
+            >
+              Laki-laki
+            </Label>
+          </div>
+          <div className="flex items-center gap-2">
+            <RadioGroupItem
+              value="P"
+              id={showAddToListButton ? 'bulk-jk-p' : 'jk-p'}
+            />
+            <Label
+              htmlFor={showAddToListButton ? 'bulk-jk-p' : 'jk-p'}
+              className="font-normal"
+            >
+              Perempuan
+            </Label>
+          </div>
+        </RadioGroup>
+        {form.formState.errors.jenis_kelamin && (
+          <p className="text-xs text-status-red">
+            {form.formState.errors.jenis_kelamin.message}
+          </p>
+        )}
+      </div>
+
+      {showAddToListButton && (
+        <Button
+          type="button"
+          variant="outline"
+          className="w-full"
+          onClick={form.handleSubmit(addToStudentsQueue)}
+        >
+          Tambah ke Daftar
+        </Button>
+      )}
+    </div>
+  )
 
   return (
     <div className="space-y-6">
@@ -576,13 +636,9 @@ export default function StudentsPage() {
               <Plus className="mr-2 h-4 w-4" />
               Tambah Siswa
             </Button>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setIsBulkImportOpen(true)}
-            >
+            <Button type="button" variant="outline" onClick={openBulkAdd}>
               <Upload className="mr-2 h-4 w-4" />
-              Import Banyak
+              Tambah Banyak
             </Button>
           </>
         }
@@ -710,56 +766,7 @@ export default function StudentsPage() {
             onSubmit={form.handleSubmit(onSubmitForm)}
             className="space-y-4"
           >
-            <div className="space-y-2">
-              <Label htmlFor="nama">Nama</Label>
-              <Input id="nama" {...form.register('nama')} />
-              {form.formState.errors.nama && (
-                <p className="text-xs text-status-red">
-                  {form.formState.errors.nama.message}
-                </p>
-              )}
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="kelas">Kelas</Label>
-              <Input id="kelas" {...form.register('kelas')} />
-              {form.formState.errors.kelas && (
-                <p className="text-xs text-status-red">
-                  {form.formState.errors.kelas.message}
-                </p>
-              )}
-            </div>
-
-            <div className="space-y-2">
-              <Label>Jenis Kelamin</Label>
-              <RadioGroup
-                value={form.watch('jenis_kelamin')}
-                onValueChange={(value) =>
-                  form.setValue('jenis_kelamin', value as JenisKelamin, {
-                    shouldValidate: true,
-                  })
-                }
-                className="flex gap-4"
-              >
-                <div className="flex items-center gap-2">
-                  <RadioGroupItem value="L" id="jk-l" />
-                  <Label htmlFor="jk-l" className="font-normal">
-                    Laki-laki
-                  </Label>
-                </div>
-                <div className="flex items-center gap-2">
-                  <RadioGroupItem value="P" id="jk-p" />
-                  <Label htmlFor="jk-p" className="font-normal">
-                    Perempuan
-                  </Label>
-                </div>
-              </RadioGroup>
-              {form.formState.errors.jenis_kelamin && (
-                <p className="text-xs text-status-red">
-                  {form.formState.errors.jenis_kelamin.message}
-                </p>
-              )}
-            </div>
+            {renderStudentFormFields(false)}
 
             <DialogFooter>
               <Button
@@ -849,102 +856,80 @@ export default function StudentsPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Dialog Bulk Import */}
-      <Dialog open={isBulkImportOpen} onOpenChange={setIsBulkImportOpen}>
-        <DialogContent className="max-w-lg">
+      <Dialog
+        open={isBulkAddOpen}
+        onOpenChange={(open) => {
+          if (!open) closeBulkAddDialog()
+        }}
+      >
+        <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Import Banyak Siswa</DialogTitle>
+            <DialogTitle>Tambah Banyak Data Siswa</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="bulk-import">
-                Format: Nama,Kelas,JenisKelamin (satu baris per siswa)
-              </Label>
-              <textarea
-                id="bulk-import"
-                value={bulkImportText}
-                onChange={(e) => setBulkImportText(e.target.value)}
-                rows={8}
-                placeholder={'Budi Santoso,5A,L\nSiti Aminah,5B,P'}
-                className={cn(
-                  'flex w-full rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] focus:outline-none focus:ring-1 focus:ring-primary'
-                )}
-              />
-            </div>
+            {renderStudentFormFields(true)}
 
-            {bulkParseResult.errors.length > 0 && (
-              <div className="rounded-md border border-status-red/20 bg-status-red-bg px-3 py-2">
-                <p className="mb-1 text-sm font-medium text-status-red">
-                  Baris dengan format salah:
-                </p>
-                <ul className="space-y-1 text-xs text-status-red">
-                  {bulkParseResult.errors.map((err) => (
-                    <li key={err.line}>
-                      Baris {err.line}: {err.message}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            {bulkParseResult.valid.length > 0 && (
+            {studentsQueue.length > 0 && (
               <div className="space-y-2">
                 <p className="text-sm font-medium text-[var(--text-primary)]">
-                  Preview ({bulkParseResult.valid.length} siswa)
+                  Daftar ({studentsQueue.length} item)
                 </p>
                 <Table>
                   <TableHeader>
                     <TableRow>
                       <TableHead>Nama</TableHead>
                       <TableHead>Kelas</TableHead>
-                      <TableHead>JK</TableHead>
+                      <TableHead>Jenis Kelamin</TableHead>
+                      <TableHead className="w-12" />
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {bulkParseResult.valid.slice(0, 5).map((row, index) => (
-                      <TableRow key={`${row.nama}-${index}`}>
-                        <TableCell>{row.nama}</TableCell>
-                        <TableCell>{row.kelas}</TableCell>
+                    {studentsQueue.map((item) => (
+                      <TableRow key={item.localId}>
+                        <TableCell>{item.nama}</TableCell>
+                        <TableCell>{item.kelas}</TableCell>
                         <TableCell>
-                          <Badge variant="outline">
-                            {row.jenis_kelamin === 'L' ? 'Laki-laki' : 'Perempuan'}
-                          </Badge>
+                          {formatJenisKelamin(item.jenis_kelamin)}
+                        </TableCell>
+                        <TableCell>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            onClick={() =>
+                              setStudentsQueue((prev) =>
+                                prev.filter((p) => p.localId !== item.localId)
+                              )
+                            }
+                            aria-label="Hapus dari daftar"
+                          >
+                            <Trash2 className="h-4 w-4 text-status-red" />
+                          </Button>
                         </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
                 </Table>
-                {bulkParseResult.valid.length > 5 && (
-                  <p className="text-xs text-[var(--text-secondary)]">
-                    ...dan {bulkParseResult.valid.length - 5} lainnya
-                  </p>
-                )}
               </div>
             )}
           </div>
           <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => {
-                setIsBulkImportOpen(false)
-                setBulkImportText('')
-              }}
-            >
+            <Button type="button" variant="outline" onClick={closeBulkAddDialog}>
               Batal
             </Button>
             <Button
               type="button"
-              isLoading={bulkImportMutation.isPending}
-              disabled={
-                bulkParseResult.valid.length === 0 ||
-                bulkParseResult.errors.length > 0
-              }
+              isLoading={isBulkCreateSubmitting}
+              disabled={studentsQueue.length === 0}
               onClick={() =>
-                bulkImportMutation.mutate(bulkParseResult.valid)
+                bulkCreateMutation.mutate(
+                  studentsQueue.map(
+                    ({ localId: _localId, ...payload }) => payload
+                  )
+                )
               }
             >
-              Import
+              Simpan Semua ({studentsQueue.length})
             </Button>
           </DialogFooter>
         </DialogContent>
