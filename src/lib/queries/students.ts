@@ -16,6 +16,7 @@ export interface UpdateStudentInput {
 
 export interface GetStudentsOptions {
   search?: string
+  kelas?: string
   page?: number
   pageSize?: number
   sortField?: string
@@ -43,6 +44,10 @@ export async function getStudents(
     countQuery = countQuery.ilike('nama', `%${options.search}%`)
   }
 
+  if (options?.kelas) {
+    countQuery = countQuery.eq('kelas', options.kelas)
+  }
+
   const { count, error: countError } = await countQuery
 
   if (countError) throw new Error(countError.message)
@@ -54,6 +59,10 @@ export async function getStudents(
 
   if (options?.search) {
     dataQuery = dataQuery.ilike('nama', `%${options.search}%`)
+  }
+
+  if (options?.kelas) {
+    dataQuery = dataQuery.eq('kelas', options.kelas)
   }
 
   const { data, error } = await dataQuery
@@ -110,6 +119,17 @@ export async function deleteStudents(ids: string[]): Promise<void> {
   if (error) throw new Error(error.message)
 }
 
+export async function bulkUpdateStudents(
+  ids: string[],
+  data: { kelas?: string; unit?: Unit }
+): Promise<void> {
+  const supabase = createClient()
+
+  const { error } = await supabase.from('students').update(data).in('id', ids)
+
+  if (error) throw new Error(error.message)
+}
+
 export async function bulkCreateStudents(
   data: CreateStudentInput[]
 ): Promise<Student[]> {
@@ -123,6 +143,30 @@ export async function bulkCreateStudents(
   if (error) throw new Error(error.message)
 
   return (result ?? []) as Student[]
+}
+
+export async function getStudentClasses(unit: Unit): Promise<string[]> {
+  const supabase = createClient()
+
+  const { data, error } = await supabase
+    .from('students')
+    .select('kelas')
+    .eq('unit', unit)
+
+  if (error) throw new Error(error.message)
+
+  const classes = [
+    ...new Set(
+      (data ?? [])
+        .map((row) => row.kelas)
+        .filter(
+          (kelas): kelas is string =>
+            typeof kelas === 'string' && kelas.length > 0
+        )
+    ),
+  ]
+
+  return classes.sort((a, b) => a.localeCompare(b, 'id'))
 }
 
 export async function searchStudents(

@@ -29,6 +29,13 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import {
   Table,
   TableBody,
   TableCell,
@@ -43,13 +50,15 @@ import { useDebounce } from '@/hooks/use-debounce'
 import { logAudit } from '@/lib/audit/log'
 import {
   bulkCreateStudents,
+  bulkUpdateStudents,
   createStudent,
   deleteStudents,
+  getStudentClasses,
   getStudents,
   updateStudent,
   type CreateStudentInput,
 } from '@/lib/queries/students'
-import type { JenisKelamin, Student, Unit } from '@/lib/supabase/types'
+import type { AuditAction, JenisKelamin, Student, Unit } from '@/lib/supabase/types'
 import { cn } from '@/lib/utils'
 
 const PAGE_SIZE_OPTIONS = [10, 20, 30, 40, 50] as const
@@ -162,6 +171,7 @@ export default function StudentsPage() {
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
   const [search, setSearch] = useState('')
+  const [selectedClassFilter, setSelectedClassFilter] = useState<string>('all')
   const [sortField, setSortField] = useState('nama')
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
   const [selectedRows, setSelectedRows] = useState<string[]>([])
@@ -170,8 +180,10 @@ export default function StudentsPage() {
   const [isEditOpen, setIsEditOpen] = useState(false)
   const [isDeleteOpen, setIsDeleteOpen] = useState(false)
   const [isBulkImportOpen, setIsBulkImportOpen] = useState(false)
+  const [isBulkEditOpen, setIsBulkEditOpen] = useState(false)
 
   const [editingStudent, setEditingStudent] = useState<Student | null>(null)
+  const [bulkEditData, setBulkEditData] = useState({ kelas: '' })
   const [deleteTargetIds, setDeleteTargetIds] = useState<string[]>([])
   const [deletingStudents, setDeletingStudents] = useState<Student[]>([])
   const [bulkImportText, setBulkImportText] = useState('')
@@ -184,6 +196,7 @@ export default function StudentsPage() {
     page,
     pageSize,
     debouncedSearch,
+    selectedClassFilter,
     sortField,
     sortDirection,
   ] as const
@@ -193,11 +206,18 @@ export default function StudentsPage() {
     queryFn: () =>
       getStudents(activeUnit, {
         search: debouncedSearch || undefined,
+        kelas:
+          selectedClassFilter !== 'all' ? selectedClassFilter : undefined,
         page,
         pageSize,
         sortField,
         sortDirection,
       }),
+  })
+
+  const { data: studentClasses = [] } = useQuery({
+    queryKey: ['students', 'classes', activeUnit],
+    queryFn: () => getStudentClasses(activeUnit),
   })
 
   const form = useForm<StudentFormValues>({
@@ -333,6 +353,50 @@ export default function StudentsPage() {
     },
   })
 
+  const bulkUpdateMutation = useMutation({
+    mutationFn: ({
+      ids,
+      kelas,
+    }: {
+      ids: string[]
+      kelas: string
+      oldStudents: Student[]
+    }) => bulkUpdateStudents(ids, { kelas }),
+    onSuccess: async (_, variables) => {
+      const userId = getUserId()
+      if (userId) {
+        for (const oldStudent of variables.oldStudents) {
+          await logAudit(
+            userId,
+            'BULK_UPDATE' as AuditAction,
+            'students',
+            oldStudent.id,
+            studentToRecord(oldStudent),
+            {
+              ...studentToRecord(oldStudent),
+              kelas: variables.kelas,
+            }
+          )
+        }
+      }
+      invalidateStudents()
+      toast({
+        title: 'Berhasil',
+        description: `${variables.ids.length} siswa berhasil diperbarui`,
+      })
+      setSelectedRows([])
+      setIsBulkEditOpen(false)
+      setBulkEditData({ kelas: '' })
+    },
+    onError: (error: Error) => {
+      toast({
+        title: 'Gagal',
+        description: error.message,
+        variant: 'destructive',
+      })
+    },
+  })
+
   const bulkImportMutation = useMutation({
     mutationFn: (items: CreateStudentInput[]) => bulkCreateStudents(items),
     onSuccess: async (results) => {
@@ -370,6 +434,7 @@ export default function StudentsPage() {
     setActiveUnit(unit)
     setPage(1)
     setSelectedRows([])
+    setSelectedClassFilter('all')
   }
 
   const handleSortChange = (field: string, direction: 'asc' | 'desc') => {
@@ -405,6 +470,32 @@ export default function StudentsPage() {
     setDeleteTargetIds(selectedRows)
     setDeletingStudents(studentsToDelete)
     setIsDeleteOpen(true)
+  }
+
+  const openBulkEdit = () => {
+    setBulkEditData({ kelas: '' })
+    setIsBulkEditOpen(true)
+  }
+
+  const handleBulkEditSubmit = () => {
+    const kelas = bulkEditData.kelas.trim()
+    if (kelas.length < 1) {
+      toast({
+        title: 'Validasi gagal',
+        description: 'Kelas wajib diisi',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    const oldStudents =
+      data?.data.filter((s) => selectedRows.includes(s.id)) ?? []
+
+    bulkUpdateMutation.mutate({
+      ids: selectedRows,
+      kelas,
+      oldStudents,
+    })
   }
 
   const onSubmitForm = (values: StudentFormValues) => {
@@ -511,17 +602,38 @@ export default function StudentsPage() {
       </Tabs>
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="relative max-w-sm flex-1">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-tertiary)]" />
-          <Input
-            placeholder="Cari nama siswa..."
-            value={search}
-            onChange={(e) => {
-              setSearch(e.target.value)
+        <div className="flex flex-1 flex-col gap-3 sm:flex-row sm:items-center">
+          <div className="relative max-w-sm flex-1">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-tertiary)]" />
+            <Input
+              placeholder="Cari nama siswa..."
+              value={search}
+              onChange={(e) => {
+                setSearch(e.target.value)
+                setPage(1)
+              }}
+              className="pl-9"
+            />
+          </div>
+          <Select
+            value={selectedClassFilter}
+            onValueChange={(value) => {
+              setSelectedClassFilter(value)
               setPage(1)
             }}
-            className="pl-9"
-          />
+          >
+            <SelectTrigger className="w-full sm:w-[180px]">
+              <SelectValue placeholder="Semua Kelas" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Semua Kelas</SelectItem>
+              {studentClasses.map((kelas) => (
+                <SelectItem key={kelas} value={kelas}>
+                  {kelas}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
         {selectedRows.length > 0 && (
           <p className="text-sm text-[var(--text-secondary)]">
@@ -535,6 +647,15 @@ export default function StudentsPage() {
           <span className="text-sm text-[var(--text-primary)]">
             {selectedRows.length} item terpilih
           </span>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={openBulkEdit}
+          >
+            <Edit className="mr-2 h-4 w-4" />
+            Edit Kelas Terpilih
+          </Button>
           <Button
             type="button"
             variant="destructive"
@@ -675,6 +796,58 @@ export default function StudentsPage() {
         isLoading={deleteMutation.isPending}
         onConfirm={() => deleteMutation.mutate(deleteTargetIds)}
       />
+
+      {/* Dialog Bulk Edit */}
+      <Dialog
+        open={isBulkEditOpen}
+        onOpenChange={(open) => {
+          setIsBulkEditOpen(open)
+          if (!open) {
+            setBulkEditData({ kelas: '' })
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Kelas Massal</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-[var(--text-secondary)]">
+              Mengedit {selectedRows.length} siswa terpilih
+            </p>
+            <div className="space-y-2">
+              <Label htmlFor="bulk-edit-kelas">Kelas Baru</Label>
+              <Input
+                id="bulk-edit-kelas"
+                placeholder="Masukkan kelas baru..."
+                value={bulkEditData.kelas}
+                onChange={(e) =>
+                  setBulkEditData({ kelas: e.target.value })
+                }
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setIsBulkEditOpen(false)
+                setBulkEditData({ kelas: '' })
+              }}
+            >
+              Batal
+            </Button>
+            <Button
+              type="button"
+              isLoading={bulkUpdateMutation.isPending}
+              onClick={handleBulkEditSubmit}
+            >
+              Simpan Perubahan
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Dialog Bulk Import */}
       <Dialog open={isBulkImportOpen} onOpenChange={setIsBulkImportOpen}>
