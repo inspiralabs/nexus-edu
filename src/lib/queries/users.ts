@@ -30,6 +30,15 @@ export interface UpdateManageableProfileInput {
   role: ManageableRole
 }
 
+export interface CreateManageableUserInput {
+  nama_lengkap: string
+  username: string
+  email: string
+  password: string
+  guru_mapel: string
+  role: ManageableRole
+}
+
 export interface GetManageableProfilesOptions {
   role?: ManageableRole
   isApproved?: boolean

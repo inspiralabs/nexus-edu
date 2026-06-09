@@ -2,7 +2,7 @@
 
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Search, UserCheck } from 'lucide-react'
+import { Plus, Search, UserCheck } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useForm } from 'react-hook-form'
@@ -43,6 +43,7 @@ import {
   TooltipProvider,
 } from '@/components/ui/tooltip'
 import { toast } from '@/components/ui/use-toast'
+import { createManageableUserByAdmin } from '@/lib/auth/actions'
 import { useAuth } from '@/hooks/use-auth'
 import { useDebounce } from '@/hooks/use-debounce'
 import {
@@ -76,6 +77,12 @@ const editProfileSchema = z.object({
 })
 
 type EditProfileFormValues = z.infer<typeof editProfileSchema>
+
+const createUserSchema = editProfileSchema.extend({
+  password: z.string().min(8, 'Password minimal 8 karakter'),
+})
+
+type CreateUserFormValues = z.infer<typeof createUserSchema>
 
 interface RoleChangeTarget {
   profile: Profile
@@ -118,6 +125,8 @@ export default function AdminUsersPage() {
     useState<RoleChangeTarget | null>(null)
   const [editingProfile, setEditingProfile] = useState<Profile | null>(null)
   const [isEditOpen, setIsEditOpen] = useState(false)
+  const [approvalTarget, setApprovalTarget] = useState<Profile | null>(null)
+  const [isAddOpen, setIsAddOpen] = useState(false)
 
   const editForm = useForm<EditProfileFormValues>({
     resolver: zodResolver(editProfileSchema),
@@ -125,6 +134,18 @@ export default function AdminUsersPage() {
       nama_lengkap: '',
       username: '',
       email: '',
+      guru_mapel: '',
+      role: 'user',
+    },
+  })
+
+  const createUserForm = useForm<CreateUserFormValues>({
+    resolver: zodResolver(createUserSchema),
+    defaultValues: {
+      nama_lengkap: '',
+      username: '',
+      email: '',
+      password: '',
       guru_mapel: '',
       role: 'user',
     },
@@ -186,6 +207,7 @@ export default function AdminUsersPage() {
       approveUser(profileId, getUserId()),
     onSuccess: () => {
       invalidateProfiles()
+      setApprovalTarget(null)
       toast({
         title: 'Berhasil',
         description: 'User berhasil disetujui',
@@ -205,6 +227,7 @@ export default function AdminUsersPage() {
       revokeUser(profileId, getUserId()),
     onSuccess: () => {
       invalidateProfiles()
+      setApprovalTarget(null)
       toast({
         title: 'Berhasil',
         description: 'Persetujuan user berhasil dicabut',
@@ -299,6 +322,36 @@ export default function AdminUsersPage() {
     },
   })
 
+  const createUserMutation = useMutation({
+    mutationFn: (values: CreateUserFormValues) =>
+      createManageableUserByAdmin(values),
+    onSuccess: (result) => {
+      if (result.error) {
+        toast({
+          title: 'Gagal',
+          description: result.error,
+          variant: 'destructive',
+        })
+        return
+      }
+
+      invalidateProfiles()
+      setIsAddOpen(false)
+      createUserForm.reset()
+      toast({
+        title: 'Berhasil',
+        description: 'Pengguna baru berhasil ditambahkan',
+      })
+    },
+    onError: (error: Error) => {
+      toast({
+        title: 'Gagal',
+        description: error.message,
+        variant: 'destructive',
+      })
+    },
+  })
+
   const bulkApproveMutation = useMutation({
     mutationFn: (profileIds: string[]) =>
       Promise.all(profileIds.map((id) => approveUser(id, getUserId()))),
@@ -324,18 +377,8 @@ export default function AdminUsersPage() {
     revokeMutation.isPending ||
     changeRoleMutation.isPending ||
     updateProfileMutation.isPending ||
-    deleteMutation.isPending
-
-  const handleApproveToggle = useCallback(
-    (item: Profile) => {
-      if (item.is_approved) {
-        revokeMutation.mutate(item.id)
-      } else {
-        approveMutation.mutate(item.id)
-      }
-    },
-    [approveMutation, revokeMutation]
-  )
+    deleteMutation.isPending ||
+    createUserMutation.isPending
 
   const handleOpenEdit = useCallback(
     (item: Profile) => {
@@ -357,7 +400,7 @@ export default function AdminUsersPage() {
       createAdminUsersColumns({
         page,
         pageSize,
-        onApproveToggle: handleApproveToggle,
+        onRequestApprovalChange: setApprovalTarget,
         onRequestRoleChange: (profileItem, newRole) =>
           setRoleChangeTarget({ profile: profileItem, newRole }),
         onEdit: handleOpenEdit,
@@ -370,7 +413,6 @@ export default function AdminUsersPage() {
     [
       page,
       pageSize,
-      handleApproveToggle,
       handleOpenEdit,
       isActionPending,
     ]
@@ -395,6 +437,13 @@ export default function AdminUsersPage() {
     })
   }
 
+  const onSubmitCreateUser = (values: CreateUserFormValues) => {
+    createUserMutation.mutate(values)
+  }
+
+  const isApprovalPending =
+    approveMutation.isPending || revokeMutation.isPending
+
   if (authLoading || !isAdmin) {
     return (
       <div className="flex h-64 items-center justify-center">
@@ -409,14 +458,24 @@ export default function AdminUsersPage() {
         <PageHeader title="Kelola User" />
 
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <div className="relative max-w-md flex-1">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-tertiary)]" />
-            <Input
-              placeholder="Cari nama, username, atau email..."
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              className="pl-9"
-            />
+          <div className="flex flex-1 flex-col gap-3 sm:flex-row sm:items-center">
+            <div className="relative max-w-md flex-1">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-tertiary)]" />
+              <Input
+                placeholder="Cari nama, username, atau email..."
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                className="pl-9"
+              />
+            </div>
+            <Button
+              type="button"
+              onClick={() => setIsAddOpen(true)}
+              className="shrink-0"
+            >
+              <Plus className="mr-2 h-4 w-4" />
+              Tambah Pengguna
+            </Button>
           </div>
 
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -502,6 +561,50 @@ export default function AdminUsersPage() {
         />
 
         <AlertDialog
+          open={approvalTarget !== null}
+          onOpenChange={(open) => {
+            if (!open) setApprovalTarget(null)
+          }}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>
+                {approvalTarget?.is_approved
+                  ? 'Cabut Persetujuan Pengguna'
+                  : 'Setujui Pengguna'}
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                {approvalTarget
+                  ? approvalTarget.is_approved
+                    ? `Apakah Anda yakin ingin mencabut persetujuan dan menonaktifkan akun ${approvalTarget.nama_lengkap} ini?`
+                    : `Apakah Anda yakin ingin menyetujui akun ${approvalTarget.nama_lengkap} ini?`
+                  : ''}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={isApprovalPending}>
+                Batal
+              </AlertDialogCancel>
+              <AlertDialogAction
+                disabled={isApprovalPending}
+                onClick={(event) => {
+                  event.preventDefault()
+                  if (!approvalTarget) return
+
+                  if (approvalTarget.is_approved) {
+                    revokeMutation.mutate(approvalTarget.id)
+                  } else {
+                    approveMutation.mutate(approvalTarget.id)
+                  }
+                }}
+              >
+                {isApprovalPending ? 'Memproses...' : 'Ya, Lanjutkan'}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        <AlertDialog
           open={roleChangeTarget !== null}
           onOpenChange={(open) => {
             if (!open) setRoleChangeTarget(null)
@@ -536,6 +639,138 @@ export default function AdminUsersPage() {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+
+        <Dialog
+          open={isAddOpen}
+          onOpenChange={(open) => {
+            if (!open) {
+              setIsAddOpen(false)
+              createUserForm.reset()
+            }
+          }}
+        >
+          <DialogContent className="max-w-lg">
+            <DialogHeader>
+              <DialogTitle>Tambah Pengguna Baru</DialogTitle>
+            </DialogHeader>
+            <form
+              onSubmit={createUserForm.handleSubmit(onSubmitCreateUser)}
+              className="space-y-4"
+            >
+              <div className="space-y-2">
+                <Label htmlFor="create-nama_lengkap">Nama Lengkap</Label>
+                <Input
+                  id="create-nama_lengkap"
+                  {...createUserForm.register('nama_lengkap')}
+                />
+                {createUserForm.formState.errors.nama_lengkap && (
+                  <p className="text-xs text-status-red">
+                    {createUserForm.formState.errors.nama_lengkap.message}
+                  </p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="create-username">Username</Label>
+                <Input
+                  id="create-username"
+                  {...createUserForm.register('username')}
+                />
+                {createUserForm.formState.errors.username && (
+                  <p className="text-xs text-status-red">
+                    {createUserForm.formState.errors.username.message}
+                  </p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="create-email">Email</Label>
+                <Input
+                  id="create-email"
+                  type="email"
+                  {...createUserForm.register('email')}
+                />
+                {createUserForm.formState.errors.email && (
+                  <p className="text-xs text-status-red">
+                    {createUserForm.formState.errors.email.message}
+                  </p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="create-password">Password</Label>
+                <Input
+                  id="create-password"
+                  type="password"
+                  autoComplete="new-password"
+                  {...createUserForm.register('password')}
+                />
+                {createUserForm.formState.errors.password && (
+                  <p className="text-xs text-status-red">
+                    {createUserForm.formState.errors.password.message}
+                  </p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="create-guru_mapel">Guru Mapel / Jabatan</Label>
+                <Input
+                  id="create-guru_mapel"
+                  {...createUserForm.register('guru_mapel')}
+                />
+                {createUserForm.formState.errors.guru_mapel && (
+                  <p className="text-xs text-status-red">
+                    {createUserForm.formState.errors.guru_mapel.message}
+                  </p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="create-role">Role</Label>
+                <Select
+                  value={createUserForm.watch('role')}
+                  onValueChange={(value) =>
+                    createUserForm.setValue('role', value as ManageableRole, {
+                      shouldValidate: true,
+                    })
+                  }
+                >
+                  <SelectTrigger id="create-role">
+                    <SelectValue placeholder="Pilih role" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="user">User</SelectItem>
+                    <SelectItem value="admin">Admin</SelectItem>
+                  </SelectContent>
+                </Select>
+                {createUserForm.formState.errors.role && (
+                  <p className="text-xs text-status-red">
+                    {createUserForm.formState.errors.role.message}
+                  </p>
+                )}
+              </div>
+
+              <DialogFooter>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    setIsAddOpen(false)
+                    createUserForm.reset()
+                  }}
+                >
+                  Batal
+                </Button>
+                <Button
+                  type="submit"
+                  isLoading={createUserMutation.isPending}
+                >
+                  Simpan Pengguna
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
 
         <Dialog
           open={isEditOpen}

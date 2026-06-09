@@ -1,7 +1,9 @@
 'use server'
 
+import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
+import type { CreateManageableUserInput } from '@/lib/queries/users'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 
@@ -204,6 +206,186 @@ export async function signup(
   }
 
   return { success: true }
+}
+
+function createIsolatedAuthClient() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+
+  if (!url || !anonKey) {
+    throw new Error('Konfigurasi Supabase tidak lengkap')
+  }
+
+  return createSupabaseClient(url, anonKey, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+    },
+  })
+}
+
+async function assertAdminAccess(): Promise<
+  { error: string } | { adminUserId: string }
+> {
+  const supabase = await createClient()
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser()
+
+  if (userError || !user) {
+    return { error: 'Anda harus login sebagai admin' }
+  }
+
+  let admin
+  try {
+    admin = createAdminClient()
+  } catch {
+    return {
+      error:
+        'Konfigurasi server tidak lengkap. Tambahkan SUPABASE_SERVICE_ROLE_KEY di environment.',
+    }
+  }
+
+  const { data: profile, error: profileError } = await admin
+    .from('profiles')
+    .select('role')
+    .eq('user_id', user.id)
+    .maybeSingle()
+
+  if (profileError || !profile) {
+    return { error: 'Profil admin tidak ditemukan' }
+  }
+
+  if (profile.role !== 'admin' && profile.role !== 'superadmin') {
+    return { error: 'Akses ditolak. Hanya admin yang dapat menambah pengguna.' }
+  }
+
+  return { adminUserId: user.id }
+}
+
+export async function createManageableUserByAdmin(
+  formData: CreateManageableUserInput
+): Promise<{ error?: string; success?: boolean; profileId?: string }> {
+  const access = await assertAdminAccess()
+  if ('error' in access) {
+    return { error: access.error }
+  }
+
+  let admin
+  try {
+    admin = createAdminClient()
+  } catch {
+    return {
+      error:
+        'Konfigurasi server tidak lengkap. Tambahkan SUPABASE_SERVICE_ROLE_KEY di environment.',
+    }
+  }
+
+  const normalizedUsername = formData.username.trim().toLowerCase()
+  const email = formData.email.trim().toLowerCase()
+  const namaLengkap = formData.nama_lengkap.trim()
+  const guruMapel = formData.guru_mapel.trim()
+  const roleValue = formData.role === 'admin' ? 'admin' : 'user'
+
+  const { data: existingProfile, error: checkError } = await admin
+    .from('profiles')
+    .select('id')
+    .ilike('username', normalizedUsername)
+    .maybeSingle()
+
+  if (checkError) {
+    return { error: 'Gagal memeriksa username' }
+  }
+
+  if (existingProfile) {
+    return { error: 'Username sudah digunakan' }
+  }
+
+  const { data: existingEmailProfile } = await admin
+    .from('profiles')
+    .select('id')
+    .eq('email', email)
+    .maybeSingle()
+
+  if (existingEmailProfile) {
+    return { error: 'Email sudah terdaftar' }
+  }
+
+  let signUpClient
+  try {
+    signUpClient = createIsolatedAuthClient()
+  } catch {
+    return { error: 'Konfigurasi Supabase tidak lengkap' }
+  }
+
+  const { data: authData, error: signUpError } =
+    await signUpClient.auth.signUp({
+      email,
+      password: formData.password,
+      options: {
+        data: {
+          nama_lengkap: namaLengkap,
+          username: normalizedUsername,
+        },
+      },
+    })
+
+  if (signUpError) {
+    if (isAuthUserAlreadyExists(signUpError.message)) {
+      return { error: 'Email sudah terdaftar di sistem autentikasi' }
+    }
+    return { error: signUpError.message }
+  }
+
+  if (!authData.user) {
+    return { error: 'Gagal membuat akun autentikasi' }
+  }
+
+  const userId = authData.user.id
+
+  const { data: insertedProfile, error: insertError } = await admin
+    .from('profiles')
+    .insert({
+      user_id: userId,
+      nama_lengkap: namaLengkap,
+      guru_mapel: guruMapel,
+      username: normalizedUsername,
+      email,
+      role: roleValue,
+      is_approved: true,
+    })
+    .select('id')
+    .single()
+
+  if (insertError) {
+    if (insertError.code === '23505') {
+      return { error: 'Username atau email sudah digunakan' }
+    }
+    return { error: 'Gagal membuat profil pengguna' }
+  }
+
+  await admin.from('audit_log').insert({
+    user_id: access.adminUserId,
+    action: 'CREATE',
+    table_name: 'profiles',
+    record_id: insertedProfile.id,
+    old_data: null,
+    new_data: {
+      user_id: userId,
+      nama_lengkap: namaLengkap,
+      guru_mapel: guruMapel,
+      username: normalizedUsername,
+      email,
+      role: roleValue,
+      is_approved: true,
+    },
+  })
+
+  revalidatePath('/admin/users')
+
+  return { success: true, profileId: insertedProfile.id }
 }
 
 export async function logout(): Promise<void> {

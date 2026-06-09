@@ -15,6 +15,7 @@ export {
   updateManageableProfile,
 } from '@/lib/queries/users'
 export type {
+  CreateManageableUserInput,
   ManageableRole,
   UpdateManageableProfileInput,
 } from '@/lib/queries/users'

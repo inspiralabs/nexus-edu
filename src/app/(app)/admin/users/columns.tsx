@@ -17,7 +17,7 @@ import { cn } from '@/lib/utils'
 export interface AdminUsersColumnsOptions {
   page: number
   pageSize: number
-  onApproveToggle: (profile: Profile) => void
+  onRequestApprovalChange: (profile: Profile) => void
   onRequestRoleChange: (profile: Profile, newRole: ManageableRole) => void
   onEdit: (profile: Profile) => void
   onDelete: (profileId: string) => void
@@ -125,10 +125,12 @@ export function createAdminUsersColumns(
                   variant="ghost"
                   size="icon"
                   aria-label={
-                    item.is_approved ? 'Cabut persetujuan' : 'Setujui user'
+                    item.is_approved
+                      ? 'Cabut persetujuan'
+                      : 'Setujui dan aktifkan pengguna'
                   }
                   disabled={options.isActionPending}
-                  onClick={() => options.onApproveToggle(item)}
+                  onClick={() => options.onRequestApprovalChange(item)}
                 >
                   {item.is_approved ? (
                     <UserX className="h-4 w-4" />
@@ -138,7 +140,9 @@ export function createAdminUsersColumns(
                 </Button>
               </TooltipTrigger>
               <TooltipContent>
-                {item.is_approved ? 'Cabut Persetujuan' : 'Setujui User'}
+                {item.is_approved
+                  ? 'Cabut Persetujuan/Nonaktifkan Pengguna'
+                  : 'Setujui/Aktifkan Pengguna'}
               </TooltipContent>
             </Tooltip>
 
