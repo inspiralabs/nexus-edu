@@ -72,9 +72,11 @@ function LeaderboardSkeleton() {
 function LeaderboardList({
   items,
   type,
+  onDetail,
 }: {
   items: RekapPoinSiswa[]
   type: 'prestasi' | 'pelanggaran'
+  onDetail: (siswaId: string) => void
 }) {
   if (items.length === 0) {
     return (
@@ -104,18 +106,30 @@ function LeaderboardList({
               <p className="text-xs text-text-secondary">{item.kelas}</p>
             </div>
           </div>
-          <span
-            className={
-              type === 'prestasi'
-                ? 'text-sm font-bold text-status-green'
-                : 'text-sm font-bold text-status-red'
-            }
-          >
-            {type === 'prestasi'
-              ? `+${item.total_poin_prestasi}`
-              : item.total_poin_pelanggaran}{' '}
-            poin
-          </span>
+          <div className="flex shrink-0 items-center gap-2">
+            <span
+              className={
+                type === 'prestasi'
+                  ? 'text-sm font-bold text-status-green'
+                  : 'text-sm font-bold text-status-red'
+              }
+            >
+              {type === 'prestasi'
+                ? `+${item.total_poin_prestasi}`
+                : item.total_poin_pelanggaran}{' '}
+              poin
+            </span>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 text-text-secondary hover:text-text-primary"
+              aria-label={`Detail ${item.nama}`}
+              onClick={() => onDetail(item.siswa_id)}
+            >
+              <Eye className="h-4 w-4" />
+            </Button>
+          </div>
         </li>
       ))}
     </ol>
@@ -374,6 +388,7 @@ export default function RekapPoinPage() {
               <LeaderboardList
                 items={leaderboard?.topPrestasi ?? []}
                 type="prestasi"
+                onDetail={openDetail}
               />
             )}
           </CardContent>
@@ -391,6 +406,7 @@ export default function RekapPoinPage() {
               <LeaderboardList
                 items={leaderboard?.topPelanggaran ?? []}
                 type="pelanggaran"
+                onDetail={openDetail}
               />
             )}
           </CardContent>
@@ -430,22 +446,35 @@ export default function RekapPoinPage() {
         }}
       >
         <SheetContent className="overflow-y-auto">
-          {detailLoading || !detailData ? (
-            <div className="space-y-4 p-6">
-              <Skeleton className="h-8 w-3/4" />
-              <Skeleton className="h-4 w-1/2" />
-              <Skeleton className="h-32 w-full" />
-            </div>
-          ) : (
-            <>
-              <SheetHeader>
-                <SheetTitle>{detailData.siswa.nama}</SheetTitle>
-                <SheetDescription>
-                  {detailData.siswa.kelas} · Unit {detailData.siswa.unit}
-                </SheetDescription>
-              </SheetHeader>
+          <SheetHeader>
+            <SheetTitle asChild>
+              <div className="text-lg font-semibold text-text-primary">
+                {detailLoading ? (
+                  <Skeleton className="h-6 w-48" />
+                ) : (
+                  (detailData?.siswa.nama ?? 'Detail Siswa')
+                )}
+              </div>
+            </SheetTitle>
+            <SheetDescription asChild>
+              <span className="block mt-1 text-sm text-text-secondary">
+                {detailLoading ? (
+                  <Skeleton className="mt-1 h-4 w-32" />
+                ) : (
+                  `${detailData?.siswa.kelas} · Unit ${detailData?.siswa.unit}`
+                )}
+              </span>
+            </SheetDescription>
+          </SheetHeader>
 
-              <SheetBody>
+          <SheetBody>
+            {detailLoading || !detailData ? (
+              <div className="space-y-4">
+                <Skeleton className="h-20 w-full" />
+                <Skeleton className="h-32 w-full" />
+              </div>
+            ) : (
+              <>
                 <div className="mb-4 grid grid-cols-2 gap-3">
                   <div className="rounded-lg border border-border bg-surface-2 p-3 text-center">
                     <p className="text-xs text-text-secondary">Pelanggaran</p>
@@ -581,9 +610,9 @@ export default function RekapPoinPage() {
                     )}
                   </TabsContent>
                 </Tabs>
-              </SheetBody>
-            </>
-          )}
+              </>
+            )}
+          </SheetBody>
         </SheetContent>
       </Sheet>
     </div>
