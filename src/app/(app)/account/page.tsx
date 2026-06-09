@@ -2,6 +2,7 @@
 
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation } from '@tanstack/react-query'
+import { useRouter } from 'next/navigation'
 import { useEffect, useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
@@ -17,7 +18,6 @@ import { useAuth } from '@/hooks/use-auth'
 import { logAudit } from '@/lib/audit/log'
 import {
   changePassword,
-  updateAvatarUrl,
   updateProfile,
   uploadAvatar,
 } from '@/lib/queries/profile'
@@ -90,7 +90,8 @@ async function refreshAuthContext(): Promise<void> {
 }
 
 export default function AccountPage() {
-  const { profile, isLoading } = useAuth()
+  const router = useRouter()
+  const { profile, isLoading, refreshProfile } = useAuth()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null)
 
@@ -125,24 +126,22 @@ export default function AccountPage() {
       if (!profile?.user_id) {
         throw new Error('Profil tidak ditemukan')
       }
-      const publicUrl = await uploadAvatar(profile.user_id, file)
-      await updateAvatarUrl(profile.user_id, publicUrl)
-      await refreshAuthContext()
-      return `${publicUrl}?t=${Date.now()}`
+      return uploadAvatar(profile.user_id, file)
     },
-    onSuccess: async (url) => {
+    onSuccess: async (publicUrl) => {
       if (profile?.user_id) {
-        const cleanUrl = url.split('?')[0]
         await logAudit(
           profile.user_id,
           'UPDATE',
           'profiles',
           profile.id,
           profileToRecord(profile),
-          { ...profileToRecord(profile), avatar_url: cleanUrl }
+          { ...profileToRecord(profile), avatar_url: publicUrl }
         )
       }
-      setAvatarPreview(url)
+      await refreshProfile()
+      router.refresh()
+      setAvatarPreview(publicUrl)
       toast({
         title: 'Berhasil',
         description: 'Foto profil berhasil diperbarui',

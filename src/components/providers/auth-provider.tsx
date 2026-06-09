@@ -16,6 +16,7 @@ interface AuthContextType {
   profile: Profile | null
   isLoading: boolean
   logout: () => Promise<void>
+  refreshProfile: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -58,6 +59,16 @@ function AuthProvider({ children }: { children: React.ReactNode }) {
     router.push('/login')
   }, [router, supabase])
 
+  const refreshProfile = useCallback(async () => {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+
+    if (user) {
+      await fetchProfile(user.id)
+    }
+  }, [fetchProfile, supabase])
+
   useEffect(() => {
     const initSession = async () => {
       const {
@@ -96,8 +107,9 @@ function AuthProvider({ children }: { children: React.ReactNode }) {
       profile,
       isLoading,
       logout,
+      refreshProfile,
     }),
-    [profile, isLoading, logout]
+    [profile, isLoading, logout, refreshProfile]
   )
 
   return (
