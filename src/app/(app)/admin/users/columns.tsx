@@ -20,7 +20,7 @@ export interface AdminUsersColumnsOptions {
   onRequestApprovalChange: (profile: Profile) => void
   onRequestRoleChange: (profile: Profile, newRole: ManageableRole) => void
   onEdit: (profile: Profile) => void
-  onDelete: (profileId: string) => void
+  onRequestDelete: (profile: Profile) => void
   isActionPending: boolean
 }
 
@@ -222,7 +222,7 @@ export function createAdminUsersColumns(
                   size="icon"
                   aria-label="Hapus user"
                   disabled={options.isActionPending}
-                  onClick={() => options.onDelete(item.id)}
+                  onClick={() => options.onRequestDelete(item)}
                 >
                   <Trash2 className="h-4 w-4 text-status-red" />
                 </Button>

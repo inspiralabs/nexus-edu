@@ -277,3 +277,46 @@ export async function changeUserRole(
     profileToAuditData(verifiedProfile)
   )
 }
+
+export async function deleteManageableProfile(
+  profileId: string,
+  deletingUserId: string
+): Promise<void> {
+  const supabase = createClient()
+  const oldProfile = await fetchProfileById(profileId)
+
+  if (oldProfile.role === 'superadmin') {
+    throw new Error('Profil superadmin tidak dapat dihapus dari halaman ini')
+  }
+
+  const { error } = await supabase
+    .from('profiles')
+    .delete()
+    .eq('id', profileId)
+    .in('role', [...MANAGEABLE_ROLES])
+
+  if (error) throw new Error(error.message)
+
+  const { data: remainingProfile, error: verifyError } = await supabase
+    .from('profiles')
+    .select('id')
+    .eq('id', profileId)
+    .maybeSingle()
+
+  if (verifyError) throw new Error(verifyError.message)
+
+  if (remainingProfile) {
+    throw new Error(
+      'Gagal menghapus user. Pastikan hak akses admin dan kebijakan RLS mengizinkan delete profiles.'
+    )
+  }
+
+  await logAudit(
+    deletingUserId,
+    'DELETE',
+    'profiles',
+    profileId,
+    profileToAuditData(oldProfile),
+    null
+  )
+}

@@ -10,6 +10,7 @@ import type {
 export {
   approveUser,
   changeUserRole,
+  deleteManageableProfile as deleteProfile,
   getManageableProfiles,
   revokeUser,
   updateManageableProfile,
@@ -147,30 +148,6 @@ export async function getAllProfiles(
     data: (data ?? []) as Profile[],
     total: count ?? 0,
   }
-}
-
-export async function deleteProfile(
-  profileId: string,
-  deletingUserId: string
-): Promise<void> {
-  const supabase = createClient()
-  const oldProfile = await fetchProfileById(profileId)
-
-  const { error } = await supabase
-    .from('profiles')
-    .delete()
-    .eq('id', profileId)
-
-  if (error) throw new Error(error.message)
-
-  await logAudit(
-    deletingUserId,
-    'DELETE',
-    'profiles',
-    profileId,
-    profileToAuditData(oldProfile),
-    null
-  )
 }
 
 export async function getPendingUsers(): Promise<Profile[]> {

@@ -117,8 +117,7 @@ export default function AdminUsersPage() {
   const debouncedSearch = useDebounce(search, 300)
 
   const [selectedRows, setSelectedRows] = useState<string[]>([])
-  const [deleteTargetIds, setDeleteTargetIds] = useState<string[]>([])
-  const [isDeleteOpen, setIsDeleteOpen] = useState(false)
+  const [deleteTarget, setDeleteTarget] = useState<Profile | null>(null)
   const [isBulkDeleteOpen, setIsBulkDeleteOpen] = useState(false)
 
   const [roleChangeTarget, setRoleChangeTarget] =
@@ -195,6 +194,7 @@ export default function AdminUsersPage() {
   }, [profile?.user_id])
 
   const invalidateProfiles = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ['users'] })
     queryClient.invalidateQueries({ queryKey: ['admin-profiles-manageable'] })
     queryClient.invalidateQueries({ queryKey: ['admin-profiles'] })
     queryClient.invalidateQueries({ queryKey: ['admin-stats'] })
@@ -302,8 +302,7 @@ export default function AdminUsersPage() {
       setSelectedRows((prev) =>
         prev.filter((id) => !profileIds.includes(id))
       )
-      setDeleteTargetIds([])
-      setIsDeleteOpen(false)
+      setDeleteTarget(null)
       setIsBulkDeleteOpen(false)
       toast({
         title: 'Berhasil',
@@ -404,10 +403,7 @@ export default function AdminUsersPage() {
         onRequestRoleChange: (profileItem, newRole) =>
           setRoleChangeTarget({ profile: profileItem, newRole }),
         onEdit: handleOpenEdit,
-        onDelete: (profileId) => {
-          setDeleteTargetIds([profileId])
-          setIsDeleteOpen(true)
-        },
+        onRequestDelete: setDeleteTarget,
         isActionPending,
       }),
     [
@@ -457,9 +453,9 @@ export default function AdminUsersPage() {
       <div className="space-y-6">
         <PageHeader title="Kelola User" />
 
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex flex-1 flex-col gap-3 sm:flex-row sm:items-center">
-            <div className="relative max-w-md flex-1">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:flex-1">
+            <div className="relative w-full max-w-md sm:flex-1">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-tertiary)]" />
               <Input
                 placeholder="Cari nama, username, atau email..."
@@ -468,17 +464,7 @@ export default function AdminUsersPage() {
                 className="pl-9"
               />
             </div>
-            <Button
-              type="button"
-              onClick={() => setIsAddOpen(true)}
-              className="shrink-0"
-            >
-              <Plus className="mr-2 h-4 w-4" />
-              Tambah Pengguna
-            </Button>
-          </div>
 
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
             <Select
               value={roleFilter}
               onValueChange={(value) => setRoleFilter(value as RoleFilter)}
@@ -509,6 +495,15 @@ export default function AdminUsersPage() {
               </SelectContent>
             </Select>
           </div>
+
+          <Button
+            type="button"
+            onClick={() => setIsAddOpen(true)}
+            className="shrink-0 self-end sm:self-auto"
+          >
+            <Plus className="mr-2 h-4 w-4" />
+            Tambah Pengguna
+          </Button>
         </div>
 
         {selectedRows.length > 0 && (
@@ -891,15 +886,39 @@ export default function AdminUsersPage() {
           </DialogContent>
         </Dialog>
 
-        <ConfirmDialog
-          open={isDeleteOpen}
-          onOpenChange={setIsDeleteOpen}
-          title="Hapus User"
-          description="Apakah Anda yakin ingin menghapus profil user ini? Akun autentikasi tidak dihapus dari sistem."
-          variant="destructive"
-          isLoading={deleteMutation.isPending}
-          onConfirm={() => deleteMutation.mutate(deleteTargetIds)}
-        />
+        <AlertDialog
+          open={deleteTarget !== null}
+          onOpenChange={(open) => {
+            if (!open) setDeleteTarget(null)
+          }}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Hapus Pengguna</AlertDialogTitle>
+              <AlertDialogDescription>
+                {deleteTarget
+                  ? `Apakah Anda yakin ingin menghapus permanen akun ${deleteTarget.nama_lengkap} ini? Tindakan ini tidak dapat dibatalkan.`
+                  : ''}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={deleteMutation.isPending}>
+                Batal
+              </AlertDialogCancel>
+              <AlertDialogAction
+                disabled={deleteMutation.isPending}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                onClick={(event) => {
+                  event.preventDefault()
+                  if (!deleteTarget) return
+                  deleteMutation.mutate([deleteTarget.id])
+                }}
+              >
+                {deleteMutation.isPending ? 'Memproses...' : 'Ya, Hapus'}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
 
         <ConfirmDialog
           open={isBulkDeleteOpen}
