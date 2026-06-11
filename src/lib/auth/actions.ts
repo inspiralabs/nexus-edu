@@ -287,7 +287,7 @@ export async function createManageableUserByAdmin(
   const email = formData.email.trim().toLowerCase()
   const namaLengkap = formData.nama_lengkap.trim()
   const guruMapel = formData.guru_mapel.trim()
-  const roleValue = formData.role === 'admin' ? 'admin' : 'user'
+  const roleValue = formData.role
 
   const { data: existingProfile, error: checkError } = await admin
     .from('profiles')
@@ -366,6 +366,25 @@ export async function createManageableUserByAdmin(
     return { error: 'Gagal membuat profil pengguna' }
   }
 
+  // Lakukan penautan (linking) ke guru atau orangtua jika parameter disediakan
+  if (formData.guru_id) {
+    const { error: linkError } = await admin
+      .from('guru')
+      .update({ profile_id: insertedProfile.id })
+      .eq('id', formData.guru_id)
+    if (linkError) {
+      console.error('Failed to link guru to profile:', linkError.message)
+    }
+  } else if (formData.orangtua_id) {
+    const { error: linkError } = await admin
+      .from('orangtua')
+      .update({ profile_id: insertedProfile.id })
+      .eq('id', formData.orangtua_id)
+    if (linkError) {
+      console.error('Failed to link orangtua to profile:', linkError.message)
+    }
+  }
+
   await admin.from('audit_log').insert({
     user_id: access.adminUserId,
     action: 'CREATE',
@@ -380,6 +399,8 @@ export async function createManageableUserByAdmin(
       email,
       role: roleValue,
       is_approved: true,
+      guru_id: formData.guru_id || null,
+      orangtua_id: formData.orangtua_id || null,
     },
   })
 
