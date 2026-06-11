@@ -6,6 +6,8 @@ export interface CreateStudentInput {
   kelas: string
   jenis_kelamin: JenisKelamin
   unit: Unit
+  kamar?: string
+  nomor_induk?: string
 }
 
 export interface UpdateStudentInput {

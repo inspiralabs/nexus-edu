@@ -6,6 +6,7 @@ import { Header } from '@/components/layout/header'
 import { Sidebar, SidebarProvider, useSidebar } from '@/components/layout/sidebar'
 import { LoadingSpinner } from '@/components/shared/loading-spinner'
 import { useAuth } from '@/hooks/use-auth'
+import { CREATOR_WHATSAPP, INSPIRALABS_URL } from '@/lib/constants'
 
 const PATH_TITLES: Record<string, string> = {
   '/dashboard': 'Dashboard',
@@ -77,7 +78,24 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
           <main className="flex-1 p-6">{children}</main>
           <footer className="mt-auto border-t border-border bg-background/50 px-6 py-4 text-center md:text-right">
             <p className="text-xs font-medium text-slate-500">
-              &copy;2026 InspiraLabs &middot; Unggul Sulaiman, S.Kom
+              &copy;2026{' '}
+              <a
+                href={INSPIRALABS_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-primary hover:underline"
+              >
+                InspiraLabs
+              </a>{' '}
+              &middot;{' '}
+              <a
+                href={CREATOR_WHATSAPP}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-primary hover:underline"
+              >
+                Unggul Sulaiman, S.Kom
+              </a>
             </p>
           </footer>
         </div>

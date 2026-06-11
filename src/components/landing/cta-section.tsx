@@ -1,16 +1,9 @@
 'use client'
 
-import { ArrowRight, MessageCircle } from 'lucide-react'
+import { ArrowRight, ExternalLink, MessageCircle } from 'lucide-react'
 import { buttonVariants } from '@/components/ui/button'
+import { CREATOR_WHATSAPP, INSPIRALABS_URL } from '@/lib/constants'
 import { cn } from '@/lib/utils'
-
-/** Nomor WhatsApp Pak Unggul (format internasional tanpa +) */
-const WHATSAPP_PHONE = '6289635235132'
-
-const WHATSAPP_MESSAGE =
-  'Halo Pak Unggul, saya tertarik dengan jasa pembuatan aplikasi custom untuk kami. Boleh tanya-tanya dulu untuk konsultasi sistemnya, Pak?'
-
-const WHATSAPP_URL = `https://api.whatsapp.com/send?phone=${WHATSAPP_PHONE}&text=${encodeURIComponent(WHATSAPP_MESSAGE)}`
 
 export function CtaSection() {
   return (
@@ -23,9 +16,9 @@ export function CtaSection() {
         <p className="mx-auto mt-4 max-w-4xl text-base text-slate-600 dark:text-slate-400 md:text-lg">
           Kami siap membangun platform custom atau integrasi sistem digital khusus untuk Anda. Konsultasikan kebutuhan IT Anda bersama tim ahli kami secara gratis.
         </p>
-        <div className="mt-8 flex justify-center">
+        <div className="mt-8 flex flex-col items-center justify-center gap-4 sm:flex-row">
           <a
-            href={WHATSAPP_URL}
+            href={CREATOR_WHATSAPP}
             target="_blank"
             rel="noopener noreferrer"
             className={cn(
@@ -35,6 +28,15 @@ export function CtaSection() {
           >
             Konsultasikan Sekarang
             <ArrowRight className="h-5 w-5" />
+          </a>
+          <a
+            href={INSPIRALABS_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 rounded-md border border-secondary px-6 py-2.5 text-sm font-medium text-secondary transition-colors hover:bg-secondary-light dark:hover:bg-secondary/10"
+          >
+            <ExternalLink className="h-4 w-4" />
+            Kunjungi InspiraLabs
           </a>
         </div>
       </div>

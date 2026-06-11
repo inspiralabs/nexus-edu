@@ -68,11 +68,13 @@ const PAGE_SIZE_OPTIONS = [10, 20, 30, 40, 50] as const
 const UNITS: Unit[] = ['SD', 'SMP', 'SMA']
 type TabValue = Unit | 'Alumni'
 
-// Schema tambah siswa baru (tanpa is_alumni)
+// Schema tambah siswa baru (tanpa is_alumni, dengan kamar & nomor_induk opsional)
 const studentAddSchema = z.object({
   nama: z.string().min(2, 'Nama minimal 2 karakter'),
   kelas: z.string().min(1, 'Kelas wajib diisi'),
   jenis_kelamin: z.enum(['L', 'P'], { message: 'Pilih jenis kelamin' }),
+  kamar: z.string().optional(),
+  nomor_induk: z.string().optional(),
 })
 
 // Schema edit siswa — lengkap
@@ -183,7 +185,7 @@ export default function StudentsPage() {
 
   const addForm = useForm<StudentAddFormValues>({
     resolver: zodResolver(studentAddSchema),
-    defaultValues: { nama: '', kelas: '', jenis_kelamin: 'L' },
+    defaultValues: { nama: '', kelas: '', jenis_kelamin: 'L', kamar: '', nomor_induk: '' },
   })
 
   const editForm = useForm<StudentEditFormValues>({
@@ -402,7 +404,7 @@ export default function StudentsPage() {
   }
 
   const openAddDialog = () => {
-    addForm.reset({ nama: '', kelas: '', jenis_kelamin: 'L' })
+    addForm.reset({ nama: '', kelas: '', jenis_kelamin: 'L', kamar: '', nomor_induk: '' })
     setIsAddOpen(true)
   }
 
@@ -448,7 +450,7 @@ export default function StudentsPage() {
   }
 
   const resetAddFormDefaults = () => {
-    addForm.reset({ nama: '', kelas: '', jenis_kelamin: 'L' })
+    addForm.reset({ nama: '', kelas: '', jenis_kelamin: 'L', kamar: '', nomor_induk: '' })
   }
 
   const closeBulkAddDialog = () => {
@@ -471,6 +473,8 @@ export default function StudentsPage() {
         nama: values.nama,
         kelas: values.kelas,
         jenis_kelamin: values.jenis_kelamin,
+        kamar: values.kamar,
+        nomor_induk: values.nomor_induk,
         unit: activeUnit ?? 'SD',
       },
     ])
@@ -672,6 +676,30 @@ export default function StudentsPage() {
         {addForm.formState.errors.jenis_kelamin && (
           <p className="text-xs text-status-red">{addForm.formState.errors.jenis_kelamin.message}</p>
         )}
+      </div>
+
+      {/* Kamar (opsional) */}
+      <div className="space-y-2">
+        <Label htmlFor={showAddToListButton ? 'bulk-kamar' : 'add-kamar'}>
+          Kamar Pesantren <span className="text-[var(--text-tertiary)]">(opsional)</span>
+        </Label>
+        <Input
+          id={showAddToListButton ? 'bulk-kamar' : 'add-kamar'}
+          placeholder="Contoh: Al-Fatih"
+          {...addForm.register('kamar')}
+        />
+      </div>
+
+      {/* Nomor Induk (opsional) */}
+      <div className="space-y-2">
+        <Label htmlFor={showAddToListButton ? 'bulk-nomor-induk' : 'add-nomor-induk'}>
+          Nomor Induk <span className="text-[var(--text-tertiary)]">(opsional)</span>
+        </Label>
+        <Input
+          id={showAddToListButton ? 'bulk-nomor-induk' : 'add-nomor-induk'}
+          placeholder="Contoh: 2024001"
+          {...addForm.register('nomor_induk')}
+        />
       </div>
 
       {showAddToListButton && (
