@@ -13,7 +13,7 @@ export function Footer() {
             className="h-8 w-auto object-contain"
           />
           <span className="block text-sm font-medium tracking-tight text-slate-500 dark:text-slate-400">
-            NexusEdu - SQA
+            AMANAH Platform
           </span>
         </div>
 

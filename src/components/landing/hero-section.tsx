@@ -19,9 +19,9 @@ function ScreenshotCard({ title, src, alt, delayClass }: ScreenshotCardProps) {
   return (
     <div
       className={cn(
-        'group relative animate-fade-in-up overflow-hidden rounded-xl border border-border bg-surface shadow-2xl',
+        'group relative w-full rounded-xl overflow-hidden border border-border bg-surface shadow-2xl',
         'shadow-[0_20px_60px_-10px] shadow-primary/15',
-        'ring-1 ring-primary/20 transition-all duration-300 hover:ring-primary/40',
+        'ring-1 ring-primary/20 transition-all duration-300 hover:ring-primary/40 animate-fade-in-up',
         delayClass
       )}
     >
@@ -40,7 +40,7 @@ function ScreenshotCard({ title, src, alt, delayClass }: ScreenshotCardProps) {
           alt={alt}
           width={640}
           height={400}
-          className="h-auto w-full object-cover object-top"
+          className="w-full h-auto block"
           onError={() => setHasError(true)}
         />
       )}
@@ -61,10 +61,10 @@ export function HeroSection() {
 
   return (
     <div className="w-full bg-background">
-      {/* 1. HERO SECTION - TINGGI DIKUNCI AGAR TIDAK TERIKUT KEATAS */}
-      <section className="relative flex h-[620px] w-full flex-col items-center overflow-hidden px-6 pt-28">
+      {/* 1. HERO SECTION - Menggunakan flex flex-col items-center tanpa absolute/relative overlap */}
+      <section className="relative flex flex-col items-center w-full overflow-hidden px-6 pt-28 pb-10">
         <div
-          className="pointer-events-none absolute inset-0 z-0"
+          className="pointer-events-none absolute inset-0 z-10"
           aria-hidden="true"
         >
           {!bgError && (
@@ -85,22 +85,23 @@ export function HeroSection() {
           <div className="absolute bottom-0 left-0 right-0 h-56 bg-gradient-to-t from-background via-background/40 to-transparent" />
         </div>
 
-        <div className="relative z-10 flex w-full flex-col items-center">
+        {/* Bagian teks */}
+        <div className="z-10 relative w-full text-center flex flex-col items-center">
           <div className="animate-fade-in-up mb-6 inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary-light px-3 py-1 text-xs font-medium text-primary [animation-delay:0ms]">
             <Sparkles className="h-3 w-3" />
             Platform Manajemen Guru Digital
           </div>
 
           <h1 className="text-center tracking-tight">
-            <span className="animate-fade-in-up block text-5xl font-bold text-slate-900 [animation-delay:100ms] md:text-6xl">
+            <span className="animate-fade-in-up block text-4xl font-bold text-slate-900 [animation-delay:100ms] md:text-6xl">
               Pangkas Waktu Administrasi,
             </span>
-            <span className="animate-fade-in-up block bg-gradient-to-r from-primary to-secondary bg-clip-text text-5xl font-bold text-transparent [animation-delay:100ms] md:text-6xl">
+            <span className="animate-fade-in-up block bg-gradient-to-r from-primary to-secondary bg-clip-text text-4xl font-bold text-transparent [animation-delay:100ms] md:text-6xl">
               Fokus Cetak Generasi Berprestasi.
             </span>
           </h1>
 
-          <p className="animate-fade-in-up mt-4 max-w-2xl text-center text-lg text-slate-600 [animation-delay:200ms]">
+          <p className="animate-fade-in-up mt-4 max-w-2xl text-center text-sm md:text-lg text-slate-600 [animation-delay:200ms]">
             Satu platform terintegrasi untuk menyederhanakan rekam data siswa, kedisiplinan, hingga pencapaian prestasi dalam hitungan detik.
           </p>
 
@@ -130,12 +131,10 @@ export function HeroSection() {
             </div>
           </div>
         </div>
-      </section>
 
-      {/* 2. SCREENSHOT BRIDGE - POSITION ABSOLUTE MELAYANG BEBAS */}
-      <section className="relative z-20 w-full px-6">
-        <div className="absolute left-1/2 top-0 w-full max-w-7xl -translate-x-1/2 -translate-y-[100px] px-6">
-          <div className="grid w-full grid-cols-1 gap-6 md:grid-cols-2 md:gap-8">
+        {/* Bagian screenshot - dimasukkan ke dalam normal flow agar tidak bertabrakan */}
+        <div className="w-full mt-10 md:mt-16 px-4 md:px-0 max-w-6xl z-10">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
             <ScreenshotCard
               title="Dashboard Kedisiplinan"
               src="/screenshots/dashboard-kedisiplinan.png"
@@ -150,8 +149,6 @@ export function HeroSection() {
             />
           </div>
         </div>
-        {/* Spacer untuk mendorong konten section berikutnya agar pas */}
-        <div className="h-[260px] md:h-[220px]" aria-hidden="true" />
       </section>
     </div>
   )

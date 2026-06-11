@@ -40,7 +40,7 @@ const steps: Step[] = [
 
 export function HowItWorksSection() {
   return (
-    <section id="how-it-works" className="bg-background px-6 py-24">
+    <section id="how-it-works" className="bg-background mb-28 px-6 py-24">
       <div className="mx-auto max-w-6xl">
         <div className="mb-16 text-center">
           <p className="text-xs font-semibold uppercase tracking-widest text-primary">

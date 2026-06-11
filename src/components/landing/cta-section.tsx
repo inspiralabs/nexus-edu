@@ -15,7 +15,7 @@ const WHATSAPP_URL = `https://api.whatsapp.com/send?phone=${WHATSAPP_PHONE}&text
 export function CtaSection() {
   return (
     <section className="w-full bg-gradient-to-br from-primary-light via-background to-secondary-light pt-20 pb-0">
-      <div className="mx-auto w-full max-w-4xl px-6 pb-20 text-center">
+      <div className="mx-auto w-full max-w-4xl px-4 md:px-6 pb-20 text-center">
         <MessageCircle className="mx-auto mb-6 h-10 w-10 text-primary" />
         <h2 className="text-3xl font-bold text-slate-900 dark:text-slate-50 md:text-4xl">
           Ingin Digitalisasi Sistem Sekolah Lebih Luas?
