@@ -6,8 +6,10 @@ import {
   BarChart2,
   BookMarked,
   BookOpen,
+  BookOpenCheck,
   CalendarDays,
   ChevronDown,
+  ClipboardList,
   Eye,
   FileText,
   Gavel,
@@ -26,6 +28,7 @@ import {
   Shield,
   Sliders,
   Tag,
+  Target,
   TrendingUp,
   Trophy,
   UserCheck,
@@ -88,6 +91,70 @@ const menuItems: MenuItemConfig[] = [
     href: '/students',
     icon: Users,
     minRole: 'user',
+  },
+  {
+    id: 'mutabaah',
+    label: 'Kepesantrenan',
+    icon: BookOpenCheck,
+    minRole: 'user',
+    children: [
+      {
+        id: 'mutabaah-dashboard',
+        label: 'Dashboard Mutabaah',
+        href: '/mutabaah',
+        icon: BarChart2,
+        minRole: 'user',
+      },
+      {
+        id: 'mutabaah-input',
+        label: 'Input Harian',
+        href: '/mutabaah/input',
+        icon: ClipboardList,
+        minRole: 'user',
+      },
+      {
+        id: 'mutabaah-rekap',
+        label: 'Rekap Kegiatan',
+        href: '/mutabaah/rekap',
+        icon: Award,
+        minRole: 'user',
+      },
+      {
+        id: 'mutabaah-target',
+        label: 'Target & Nilai',
+        href: '/mutabaah/target',
+        icon: Target,
+        minRole: 'admin',
+      },
+      {
+        id: 'mutabaah-kegiatan',
+        label: 'Kegiatan',
+        href: '/mutabaah/kegiatan',
+        icon: List,
+        minRole: 'admin',
+      },
+      {
+        id: 'mutabaah-sub-kegiatan',
+        label: 'Sub Kegiatan',
+        href: '/mutabaah/sub-kegiatan',
+        icon: GitBranch,
+        minRole: 'admin',
+      },
+      {
+        id: 'admin-kamar',
+        label: 'Data Kamar',
+        href: '/admin/kamar',
+        icon: Home,
+        minRole: 'admin',
+      },
+      {
+        id: 'mutabaah-cetak',
+        label: 'Cetak Laporan',
+        href: '/mutabaah/cetak',
+        icon: Printer,
+        minRole: 'user',
+      },
+    ],
   },
   {
     id: 'kedisiplinan',
@@ -252,13 +319,6 @@ const menuItems: MenuItemConfig[] = [
         minRole: 'admin',
       },
       {
-        id: 'admin-kamar',
-        label: 'Data Kamar',
-        href: '/admin/kamar',
-        icon: Home,
-        minRole: 'admin',
-      },
-      {
         id: 'admin-semester',
         label: 'Semester & TP',
         href: '/admin/semester',
@@ -374,6 +434,7 @@ const menuItemsOrangtua: MenuItemConfig[] = [
 
 const EXACT_MATCH_HREFS = new Set([
   '/dashboard',
+  '/mutabaah',
   '/kedisiplinan',
   '/prestasi',
   '/superadmin',
@@ -478,7 +539,8 @@ interface SubmenuProps {
 
 function Submenu({ item, pathname, isOpen, onToggle, onNavigate, isCollapsed }: SubmenuProps) {
   const contentRef = useRef<HTMLDivElement>(null)
-  const [contentHeight, setContentHeight] = useState(0)
+  const [heightStyle, setHeightStyle] = useState<string | number>(isOpen ? 'none' : '0px')
+  const isInitial = useRef(true)
 
   const isChildActive = item.children?.some(
     (child) => child.href && isPathActive(pathname, child.href)
@@ -486,10 +548,35 @@ function Submenu({ item, pathname, isOpen, onToggle, onNavigate, isCollapsed }: 
   const isParentActive = isChildActive ?? false
 
   useEffect(() => {
-    if (contentRef.current) {
-      setContentHeight(contentRef.current.scrollHeight)
+    if (isInitial.current) {
+      isInitial.current = false
+      return
     }
-  }, [isOpen, item.children])
+
+    if (isOpen) {
+      if (contentRef.current) {
+        const height = contentRef.current.scrollHeight
+        setHeightStyle(`${height}px`)
+        const timer = setTimeout(() => {
+          setHeightStyle('none')
+        }, 300)
+        return () => clearTimeout(timer)
+      }
+    } else {
+      if (contentRef.current) {
+        const height = contentRef.current.scrollHeight
+        setHeightStyle(`${height}px`)
+        const raf = requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            setHeightStyle('0px')
+          })
+        })
+        return () => cancelAnimationFrame(raf)
+      } else {
+        setHeightStyle('0px')
+      }
+    }
+  }, [isOpen])
 
   const Icon = item.icon
 
@@ -525,8 +612,11 @@ function Submenu({ item, pathname, isOpen, onToggle, onNavigate, isCollapsed }: 
 
       {!isCollapsed && (
         <div
-          className="overflow-hidden transition-[max-height] duration-300 ease-in-out"
-          style={{ maxHeight: isOpen ? `${contentHeight}px` : '0px' }}
+          className={cn(
+            'transition-[max-height] duration-300 ease-in-out',
+            heightStyle === 'none' ? '' : 'overflow-hidden'
+          )}
+          style={{ maxHeight: heightStyle }}
         >
           <div ref={contentRef} className="space-y-0.5 py-1">
             {item.children?.map((child) => {
@@ -704,7 +794,7 @@ function Sidebar() {
           </Button>
         </div>
 
-        <nav className="flex-1 space-y-1 overflow-y-auto px-2 py-4">
+        <nav className="flex-1 space-y-1 overflow-y-auto px-2 pt-4 pb-16">
           {visibleMenuItems.map((item) => {
             if (item.children && item.children.length > 0) {
               return (
