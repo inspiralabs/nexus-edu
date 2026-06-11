@@ -726,15 +726,13 @@ function Sidebar() {
       }
     })
 
-    setOpenMenus((prev) => new Set([...prev, ...activeParents]))
+    setOpenMenus(activeParents)
   }, [pathname, visibleMenuItems])
 
   const toggleSubmenu = (menuId: string) => {
     setOpenMenus((prev) => {
-      const next = new Set(prev)
-      if (next.has(menuId)) {
-        next.delete(menuId)
-      } else {
+      const next = new Set<string>()
+      if (!prev.has(menuId)) {
         next.add(menuId)
       }
       return next
