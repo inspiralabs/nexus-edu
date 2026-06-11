@@ -335,13 +335,13 @@ export async function signupOrangTua(
       tipe_role: 'orangtua',
       is_approved: false,
       pekerjaan,
-      student_ids: siswa_ids,
+      siswa_id: siswa_ids[0] || null,
     })
     .select('id')
     .single()
 
   if (insertError) {
-    return { error: 'Gagal membuat profil akun' }
+    return { error: `Gagal membuat profil akun: ${insertError.message}` }
   }
 
   // 4. INSERT orangtua: nama_lengkap, pekerjaan, email, profile_id
@@ -352,14 +352,13 @@ export async function signupOrangTua(
       pekerjaan,
       email,
       profile_id: insertedProfile.id,
-      student_ids: siswa_ids,
     })
     .select('id')
     .single()
 
   if (ortuError) {
     await admin.from('profiles').delete().eq('id', insertedProfile.id)
-    return { error: 'Gagal membuat data orang tua' }
+    return { error: `Gagal membuat data orang tua: ${ortuError.message}` }
   }
 
   // 5. INSERT orangtua_siswa: untuk setiap siswa_id
@@ -374,7 +373,7 @@ export async function signupOrangTua(
   if (relasiError) {
     await admin.from('orangtua').delete().eq('id', insertedOrangTua.id)
     await admin.from('profiles').delete().eq('id', insertedProfile.id)
-    return { error: 'Gagal membuat relasi orang tua dan siswa' }
+    return { error: `Gagal membuat relasi orang tua dan siswa: ${relasiError.message}` }
   }
 
   return { success: true }
