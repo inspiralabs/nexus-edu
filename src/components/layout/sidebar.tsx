@@ -10,10 +10,13 @@ import {
   FileText,
   Gavel,
   GitBranch,
+  Home,
   Key,
   LayoutDashboard,
   List,
   Megaphone,
+  PanelLeftClose,
+  PanelLeftOpen,
   Printer,
   Scale,
   Settings,
@@ -39,9 +42,12 @@ import {
 } from 'react'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { useAuth } from '@/hooks/use-auth'
 import type { Role } from '@/lib/supabase/types'
 import { cn } from '@/lib/utils'
+
+const LOCALSTORAGE_KEY = 'amanah-sidebar-collapsed'
 
 type MinRole = Role
 
@@ -51,6 +57,8 @@ interface MenuItemConfig {
   href?: string
   icon: LucideIcon
   minRole: MinRole
+  /** Jika diisi, menu hanya tampil untuk role-role tertentu. Jika kosong, pakai minRole. */
+  allowedRoles?: Role[]
   children?: MenuItemConfig[]
 }
 
@@ -58,8 +66,10 @@ const ROLE_LEVEL: Record<Role, number> = {
   user: 0,
   admin: 1,
   superadmin: 2,
+  orangtua: -1, // role terpisah, tidak masuk hierarki
 }
 
+/** Menu umum (untuk user, admin, superadmin) */
 const menuItems: MenuItemConfig[] = [
   {
     id: 'dashboard',
@@ -107,28 +117,28 @@ const menuItems: MenuItemConfig[] = [
         label: 'Kategori',
         href: '/kedisiplinan/kategori',
         icon: Tag,
-        minRole: 'user',
+        minRole: 'admin',
       },
       {
         id: 'kedisiplinan-divisi',
         label: 'Divisi',
         href: '/kedisiplinan/divisi',
         icon: GitBranch,
-        minRole: 'user',
+        minRole: 'admin',
       },
       {
         id: 'kedisiplinan-pasal',
         label: 'Pasal',
         href: '/kedisiplinan/pasal',
         icon: BookOpen,
-        minRole: 'user',
+        minRole: 'admin',
       },
       {
         id: 'kedisiplinan-tindakan',
         label: 'Tindakan',
         href: '/kedisiplinan/tindakan',
         icon: Gavel,
-        minRole: 'user',
+        minRole: 'admin',
       },
       {
         id: 'kedisiplinan-cetak',
@@ -164,28 +174,28 @@ const menuItems: MenuItemConfig[] = [
         label: 'Event',
         href: '/prestasi/event',
         icon: Tag,
-        minRole: 'user',
+        minRole: 'admin',
       },
       {
         id: 'prestasi-juara',
         label: 'Juara',
         href: '/prestasi/juara',
         icon: Trophy,
-        minRole: 'user',
+        minRole: 'admin',
       },
       {
         id: 'prestasi-bidang',
         label: 'Bidang',
         href: '/prestasi/bidang',
         icon: GitBranch,
-        minRole: 'user',
+        minRole: 'admin',
       },
       {
         id: 'prestasi-kategori',
         label: 'Kategori',
         href: '/prestasi/kategori',
         icon: Tag,
-        minRole: 'user',
+        minRole: 'admin',
       },
       {
         id: 'prestasi-cetak',
@@ -270,17 +280,73 @@ const menuItems: MenuItemConfig[] = [
   },
 ]
 
+/** Menu khusus role 'orangtua' */
+const menuItemsOrangtua: MenuItemConfig[] = [
+  {
+    id: 'orangtua-dashboard',
+    label: 'Dashboard',
+    href: '/orangtua',
+    icon: Home,
+    minRole: 'orangtua',
+    allowedRoles: ['orangtua'],
+  },
+  {
+    id: 'orangtua-anak',
+    label: 'Perkembangan Anak',
+    icon: Users,
+    minRole: 'orangtua',
+    allowedRoles: ['orangtua'],
+    children: [
+      {
+        id: 'orangtua-mutabaah',
+        label: 'Mutabaah',
+        href: '/orangtua/mutabaah',
+        icon: BookOpen,
+        minRole: 'orangtua',
+        allowedRoles: ['orangtua'],
+      },
+      {
+        id: 'orangtua-diknas',
+        label: 'Akademik',
+        href: '/orangtua/diknas',
+        icon: FileText,
+        minRole: 'orangtua',
+        allowedRoles: ['orangtua'],
+      },
+      {
+        id: 'orangtua-kedisiplinan',
+        label: 'Kedisiplinan',
+        href: '/orangtua/kedisiplinan',
+        icon: Scale,
+        minRole: 'orangtua',
+        allowedRoles: ['orangtua'],
+      },
+      {
+        id: 'orangtua-prestasi',
+        label: 'Prestasi',
+        href: '/orangtua/prestasi',
+        icon: Trophy,
+        minRole: 'orangtua',
+        allowedRoles: ['orangtua'],
+      },
+    ],
+  },
+]
+
 const EXACT_MATCH_HREFS = new Set([
   '/dashboard',
   '/kedisiplinan',
   '/prestasi',
   '/superadmin',
+  '/orangtua',
 ])
 
 interface SidebarContextValue {
   isMobileOpen: boolean
   toggleMobile: () => void
   closeMobile: () => void
+  isCollapsed: boolean
+  toggleCollapsed: () => void
 }
 
 const SidebarContext = createContext<SidebarContextValue | null>(null)
@@ -295,6 +361,9 @@ function useSidebar(): SidebarContextValue {
 
 function hasRoleAccess(userRole: Role | undefined, minRole: MinRole): boolean {
   if (!userRole) return false
+  // Orangtua tidak masuk hierarki user/admin/superadmin
+  if (userRole === 'orangtua') return minRole === 'orangtua'
+  if (minRole === 'orangtua') return false
   return ROLE_LEVEL[userRole] >= ROLE_LEVEL[minRole]
 }
 
@@ -310,7 +379,12 @@ function filterMenuByRole(
   userRole: Role | undefined
 ): MenuItemConfig[] {
   return items
-    .filter((item) => hasRoleAccess(userRole, item.minRole))
+    .filter((item) => {
+      if (item.allowedRoles) {
+        return userRole ? item.allowedRoles.includes(userRole) : false
+      }
+      return hasRoleAccess(userRole, item.minRole)
+    })
     .map((item) => ({
       ...item,
       children: item.children
@@ -325,6 +399,8 @@ function getRoleBadgeLabel(role: Role): string {
       return 'Superadmin'
     case 'admin':
       return 'Admin'
+    case 'orangtua':
+      return 'Orang Tua'
     default:
       return 'User'
   }
@@ -358,9 +434,10 @@ interface SubmenuProps {
   isOpen: boolean
   onToggle: () => void
   onNavigate: () => void
+  isCollapsed: boolean
 }
 
-function Submenu({ item, pathname, isOpen, onToggle, onNavigate }: SubmenuProps) {
+function Submenu({ item, pathname, isOpen, onToggle, onNavigate, isCollapsed }: SubmenuProps) {
   const contentRef = useRef<HTMLDivElement>(null)
   const [contentHeight, setContentHeight] = useState(0)
 
@@ -382,55 +459,80 @@ function Submenu({ item, pathname, isOpen, onToggle, onNavigate }: SubmenuProps)
       <button
         type="button"
         onClick={onToggle}
+        title={isCollapsed ? item.label : undefined}
         className={cn(
           'flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm text-[var(--text-secondary)] transition-colors hover:bg-[var(--surface-2)] hover:text-[var(--text-primary)]',
           isParentActive && 'bg-primary-light font-medium text-primary'
         )}
       >
         <Icon className="h-4 w-4 shrink-0" />
-        <span className="flex-1 text-left">{item.label}</span>
-        <ChevronDown
+        <span
           className={cn(
-            'h-4 w-4 shrink-0 transition-transform duration-300',
-            isOpen && 'rotate-180'
+            'flex-1 text-left whitespace-nowrap overflow-hidden transition-all duration-200',
+            isCollapsed ? 'w-0 opacity-0' : 'w-auto opacity-100'
           )}
-        />
+        >
+          {item.label}
+        </span>
+        {!isCollapsed && (
+          <ChevronDown
+            className={cn(
+              'h-4 w-4 shrink-0 transition-transform duration-300',
+              isOpen && 'rotate-180'
+            )}
+          />
+        )}
       </button>
 
-      <div
-        className="overflow-hidden transition-[max-height] duration-300 ease-in-out"
-        style={{ maxHeight: isOpen ? `${contentHeight}px` : '0px' }}
-      >
-        <div ref={contentRef} className="space-y-0.5 py-1">
-          {item.children?.map((child) => {
-            if (!child.href) return null
-            const ChildIcon = child.icon
-            const isActive = isPathActive(pathname, child.href)
+      {!isCollapsed && (
+        <div
+          className="overflow-hidden transition-[max-height] duration-300 ease-in-out"
+          style={{ maxHeight: isOpen ? `${contentHeight}px` : '0px' }}
+        >
+          <div ref={contentRef} className="space-y-0.5 py-1">
+            {item.children?.map((child) => {
+              if (!child.href) return null
+              const ChildIcon = child.icon
+              const isActive = isPathActive(pathname, child.href)
 
-            return (
-              <Link
-                key={child.id}
-                href={child.href}
-                onClick={onNavigate}
-                className={cn(
-                  'flex items-center gap-3 rounded-md py-2 pl-9 pr-3 text-sm text-[var(--text-secondary)] transition-colors hover:bg-[var(--surface-2)] hover:text-[var(--text-primary)]',
-                  isActive &&
-                  'bg-primary-light font-medium text-primary'
-                )}
-              >
-                <ChildIcon className="h-4 w-4 shrink-0" />
-                <span>{child.label}</span>
-              </Link>
-            )
-          })}
+              return (
+                <Link
+                  key={child.id}
+                  href={child.href}
+                  onClick={onNavigate}
+                  className={cn(
+                    'flex items-center gap-3 rounded-md py-2 pl-9 pr-3 text-sm text-[var(--text-secondary)] transition-colors hover:bg-[var(--surface-2)] hover:text-[var(--text-primary)]',
+                    isActive &&
+                    'bg-primary-light font-medium text-primary'
+                  )}
+                >
+                  <ChildIcon className="h-4 w-4 shrink-0" />
+                  <span>{child.label}</span>
+                </Link>
+              )
+            })}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }
 
 function SidebarProvider({ children }: { children: React.ReactNode }) {
   const [isMobileOpen, setIsMobileOpen] = useState(false)
+  const [isCollapsed, setIsCollapsed] = useState(false)
+
+  // Baca preferensi dari localStorage saat mount
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(LOCALSTORAGE_KEY)
+      if (saved !== null) {
+        setIsCollapsed(saved === 'true')
+      }
+    } catch {
+      // localStorage mungkin tidak tersedia (SSR / private mode)
+    }
+  }, [])
 
   const toggleMobile = useCallback(() => {
     setIsMobileOpen((prev) => !prev)
@@ -440,13 +542,27 @@ function SidebarProvider({ children }: { children: React.ReactNode }) {
     setIsMobileOpen(false)
   }, [])
 
+  const toggleCollapsed = useCallback(() => {
+    setIsCollapsed((prev) => {
+      const next = !prev
+      try {
+        localStorage.setItem(LOCALSTORAGE_KEY, String(next))
+      } catch {
+        // localStorage mungkin tidak tersedia
+      }
+      return next
+    })
+  }, [])
+
   const value = useMemo(
     () => ({
       isMobileOpen,
       toggleMobile,
       closeMobile,
+      isCollapsed,
+      toggleCollapsed,
     }),
-    [isMobileOpen, toggleMobile, closeMobile]
+    [isMobileOpen, toggleMobile, closeMobile, isCollapsed, toggleCollapsed]
   )
 
   return (
@@ -457,12 +573,15 @@ function SidebarProvider({ children }: { children: React.ReactNode }) {
 function Sidebar() {
   const pathname = usePathname()
   const { profile } = useAuth()
-  const { isMobileOpen, closeMobile } = useSidebar()
+  const { isMobileOpen, closeMobile, isCollapsed, toggleCollapsed } = useSidebar()
   const [openMenus, setOpenMenus] = useState<Set<string>>(new Set())
 
+  const isOrangtua = profile?.role === 'orangtua'
+  const activeMenuItems = isOrangtua ? menuItemsOrangtua : menuItems
+
   const visibleMenuItems = useMemo(
-    () => filterMenuByRole(menuItems, profile?.role),
-    [profile?.role]
+    () => filterMenuByRole(activeMenuItems, profile?.role),
+    [profile?.role, activeMenuItems]
   )
 
   useEffect(() => {
@@ -507,25 +626,46 @@ function Sidebar() {
       <aside
         data-sidebar="true"
         className={cn(
-          'sidebar-container no-print fixed inset-y-0 left-0 z-50 flex h-screen w-60 flex-col border-r border-[var(--border)] bg-[var(--surface)] transition-transform duration-300 md:sticky md:top-0 md:translate-x-0',
+          'sidebar-container no-print fixed inset-y-0 left-0 z-50 flex h-screen flex-col border-r border-[var(--border)] bg-[var(--surface)] transition-all duration-200 ease-in-out md:sticky md:top-0 md:translate-x-0',
+          isCollapsed ? 'w-14' : 'w-60',
           isMobileOpen ? 'translate-x-0' : '-translate-x-full'
         )}
       >
-        <div className="border-b border-[var(--border)] px-4 py-5">
-          <Image
-            src="/SQA.png"
-            alt="Logo SQA"
-            width={120}
-            height={40}
-            className="h-8 w-auto object-contain"
-            priority
-          />
-          <span className="block pr-[110px] text-[12px] font-medium uppercase tracking-widest text-slate-500 text-center dark:text-slate-400">
-            Platform
-          </span>
+        {/* Header sidebar */}
+        <div className={cn('flex items-center border-b border-[var(--border)] px-3 py-4', isCollapsed ? 'justify-center' : 'justify-between')}>
+          {!isCollapsed && (
+            <div className="min-w-0 flex-1 overflow-hidden">
+              <Image
+                src="/SQA.png"
+                alt="Logo AMANAH"
+                width={100}
+                height={32}
+                className="h-7 w-auto object-contain"
+                priority
+              />
+              <span className="block text-[11px] font-medium uppercase tracking-widest text-slate-500 dark:text-slate-400">
+                Platform
+              </span>
+            </div>
+          )}
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            onClick={toggleCollapsed}
+            className="h-8 w-8 shrink-0"
+            aria-label={isCollapsed ? 'Perluas sidebar' : 'Ciutkan sidebar'}
+            title={isCollapsed ? 'Perluas sidebar' : 'Ciutkan sidebar'}
+          >
+            {isCollapsed ? (
+              <PanelLeftOpen className="h-4 w-4" />
+            ) : (
+              <PanelLeftClose className="h-4 w-4" />
+            )}
+          </Button>
         </div>
 
-        <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
+        <nav className="flex-1 space-y-1 overflow-y-auto px-2 py-4">
           {visibleMenuItems.map((item) => {
             if (item.children && item.children.length > 0) {
               return (
@@ -536,6 +676,7 @@ function Sidebar() {
                   isOpen={openMenus.has(item.id)}
                   onToggle={() => toggleSubmenu(item.id)}
                   onNavigate={closeMobile}
+                  isCollapsed={isCollapsed}
                 />
               )
             }
@@ -550,22 +691,30 @@ function Sidebar() {
                 key={item.id}
                 href={item.href}
                 onClick={closeMobile}
+                title={isCollapsed ? item.label : undefined}
                 className={cn(
                   'flex items-center gap-3 rounded-md px-3 py-2 text-sm text-[var(--text-secondary)] transition-colors hover:bg-[var(--surface-2)] hover:text-[var(--text-primary)]',
                   isActive && 'bg-primary-light font-medium text-primary'
                 )}
               >
                 <Icon className="h-4 w-4 shrink-0" />
-                <span>{item.label}</span>
+                <span
+                  className={cn(
+                    'whitespace-nowrap overflow-hidden transition-all duration-200',
+                    isCollapsed ? 'w-0 opacity-0' : 'w-auto opacity-100'
+                  )}
+                >
+                  {item.label}
+                </span>
               </Link>
             )
           })}
         </nav>
 
         {profile && (
-          <div className="border-t border-[var(--border)] px-4 py-4">
-            <div className="flex items-center gap-3">
-              <Avatar className="h-9 w-9">
+          <div className={cn('border-t border-[var(--border)] px-3 py-4', isCollapsed && 'flex justify-center')}>
+            {isCollapsed ? (
+              <Avatar className="h-8 w-8" title={profile.nama_lengkap}>
                 {profile.avatar_url && (
                   <AvatarImage
                     src={profile.avatar_url}
@@ -576,18 +725,32 @@ function Sidebar() {
                   {getInitials(profile.nama_lengkap)}
                 </AvatarFallback>
               </Avatar>
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium text-[var(--text-primary)]">
-                  {profile.nama_lengkap}
-                </p>
-                <Badge
-                  variant={getRoleBadgeVariant(profile.role)}
-                  className="mt-1"
-                >
-                  {getRoleBadgeLabel(profile.role)}
-                </Badge>
+            ) : (
+              <div className="flex items-center gap-3">
+                <Avatar className="h-9 w-9">
+                  {profile.avatar_url && (
+                    <AvatarImage
+                      src={profile.avatar_url}
+                      alt={profile.nama_lengkap}
+                    />
+                  )}
+                  <AvatarFallback>
+                    {getInitials(profile.nama_lengkap)}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium text-[var(--text-primary)]">
+                    {profile.nama_lengkap}
+                  </p>
+                  <Badge
+                    variant={getRoleBadgeVariant(profile.role)}
+                    className="mt-1"
+                  >
+                    {getRoleBadgeLabel(profile.role)}
+                  </Badge>
+                </div>
               </div>
-            </div>
+            )}
           </div>
         )}
       </aside>

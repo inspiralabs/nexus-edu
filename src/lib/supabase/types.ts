@@ -1,6 +1,6 @@
 // src/lib/supabase/types.ts
 
-export type Role = 'user' | 'admin' | 'superadmin'
+export type Role = 'user' | 'admin' | 'superadmin' | 'orangtua'
 export type Unit = 'SD' | 'SMP' | 'SMA'
 export type JenisKelamin = 'L' | 'P'
 export type StatusKedisiplinan = 'Belum Diproses' | 'Pending' | 'Sudah Diproses'
@@ -38,6 +38,9 @@ export interface Student {
   kelas: string
   jenis_kelamin: JenisKelamin | null
   unit: Unit | null
+  is_alumni: boolean | null
+  kamar: string | null
+  nomor_induk: string | null
   created_at: string
 }
 

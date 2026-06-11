@@ -67,7 +67,8 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex h-screen overflow-hidden bg-[var(--background)]">
       <Sidebar />
-      <div className="flex min-h-screen flex-1 flex-col overflow-hidden">
+      {/* flex-1 membuat area konten mengisi sisa ruang otomatis sesuai lebar sidebar */}
+      <div className="flex min-h-screen flex-1 flex-col overflow-hidden min-w-0">
         <Header
           title={getPageTitle(pathname)}
           onMobileMenuToggle={toggleMobile}

@@ -12,6 +12,9 @@ export interface UpdateStudentInput {
   nama?: string
   kelas?: string
   jenis_kelamin?: JenisKelamin
+  kamar?: string
+  nomor_induk?: string
+  is_alumni?: boolean
 }
 
 export interface GetStudentsOptions {
@@ -39,6 +42,7 @@ export async function getStudents(
     .from('students')
     .select('*', { count: 'exact', head: true })
     .eq('unit', unit)
+    .eq('is_alumni', false)
 
   if (options?.search) {
     countQuery = countQuery.ilike('nama', `%${options.search}%`)
@@ -56,6 +60,60 @@ export async function getStudents(
     .from('students')
     .select('*')
     .eq('unit', unit)
+    .eq('is_alumni', false)
+
+  if (options?.search) {
+    dataQuery = dataQuery.ilike('nama', `%${options.search}%`)
+  }
+
+  if (options?.kelas) {
+    dataQuery = dataQuery.eq('kelas', options.kelas)
+  }
+
+  const { data, error } = await dataQuery
+    .order(sortField, { ascending })
+    .range(from, to)
+
+  if (error) throw new Error(error.message)
+
+  return {
+    data: (data ?? []) as Student[],
+    total: count ?? 0,
+  }
+}
+
+export async function getAlumniStudents(
+  options?: GetStudentsOptions
+): Promise<{ data: Student[]; total: number }> {
+  const supabase = createClient()
+  const page = options?.page ?? 1
+  const pageSize = options?.pageSize ?? 10
+  const from = (page - 1) * pageSize
+  const to = from + pageSize - 1
+  const sortField = options?.sortField ?? 'nama'
+  const ascending = options?.sortDirection !== 'desc'
+
+  let countQuery = supabase
+    .from('students')
+    .select('*', { count: 'exact', head: true })
+    .eq('is_alumni', true)
+
+  if (options?.search) {
+    countQuery = countQuery.ilike('nama', `%${options.search}%`)
+  }
+
+  if (options?.kelas) {
+    countQuery = countQuery.eq('kelas', options.kelas)
+  }
+
+  const { count, error: countError } = await countQuery
+
+  if (countError) throw new Error(countError.message)
+
+  let dataQuery = supabase
+    .from('students')
+    .select('*')
+    .eq('is_alumni', true)
 
   if (options?.search) {
     dataQuery = dataQuery.ilike('nama', `%${options.search}%`)
@@ -84,7 +142,7 @@ export async function createStudent(
 
   const { data: result, error } = await supabase
     .from('students')
-    .insert(data)
+    .insert({ ...data, is_alumni: false })
     .select()
     .single()
 
@@ -102,6 +160,21 @@ export async function updateStudent(
   const { data: result, error } = await supabase
     .from('students')
     .update(data)
+    .eq('id', id)
+    .select()
+    .single()
+
+  if (error) throw new Error(error.message)
+
+  return result as Student
+}
+
+export async function restoreStudent(id: string): Promise<Student> {
+  const supabase = createClient()
+
+  const { data: result, error } = await supabase
+    .from('students')
+    .update({ is_alumni: false })
     .eq('id', id)
     .select()
     .single()
@@ -137,7 +210,7 @@ export async function bulkCreateStudents(
 
   const { data: result, error } = await supabase
     .from('students')
-    .insert(data)
+    .insert(data.map((s) => ({ ...s, is_alumni: false })))
     .select()
 
   if (error) throw new Error(error.message)
@@ -189,6 +262,7 @@ export async function getStudentClasses(unit: Unit): Promise<string[]> {
     .from('students')
     .select('kelas')
     .eq('unit', unit)
+    .eq('is_alumni', false)
 
   if (error) throw new Error(error.message)
 
@@ -216,6 +290,7 @@ export async function searchStudents(
     .from('students')
     .select('id, nama, kelas, unit')
     .ilike('nama', `%${query}%`)
+    .eq('is_alumni', false)
     .limit(10)
 
   if (unit) {
