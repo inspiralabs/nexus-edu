@@ -9,7 +9,7 @@ import {
   Trophy,
   X,
 } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useEffect, useCallback } from 'react'
 import {
   Bar,
   BarChart,
@@ -45,10 +45,28 @@ import {
   getKategoriDisiplin,
   getKedisiplinanDashboard,
   tolakAntrianPoin,
+  getPasalByKategori,
+  updateKedisiplinan,
   type AntrianPoinItem,
   type KedisiplinanDashboardFilters,
 } from '@/lib/queries/kedisiplinan'
 import { getKelasOptionsByUnits } from '@/lib/queries/students'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { Input } from '@/components/ui/input'
+import { Combobox } from '@/components/shared/combobox'
 import type { StatusKedisiplinan, Unit } from '@/lib/supabase/types'
 import { cn, formatDivisiLabel } from '@/lib/utils'
 
@@ -86,6 +104,19 @@ function formatBulanLabel(bulan: string): string {
   const monthIndex = Number.parseInt(month, 10) - 1
   if (monthIndex < 0 || monthIndex > 11 || !year) return bulan
   return `${MONTH_LABELS[monthIndex]} ${year}`
+}
+
+function formatTanggal(tanggal: string): string {
+  try {
+    const date = new Date(tanggal)
+    return date.toLocaleDateString('id-ID', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+    })
+  } catch {
+    return tanggal
+  }
 }
 
 function StatCardsSkeleton() {
@@ -223,8 +254,28 @@ export default function KedisiplinanDashboardPage() {
   const [selectedKategori, setSelectedKategori] = useState<string[]>([])
   const [selectedDivisi, setSelectedDivisi] = useState<string[]>([])
 
-  // State untuk antrian poin prestasi
-  const [selectedAntrian, setSelectedAntrian] = useState<string[]>([])
+  // State filter status antrean
+  const [antrianStatusFilter, setAntrianStatusFilter] = useState<'all' | 'Belum Diproses' | 'Pending'>('all')
+
+  // State untuk antrian poin prestasi (checkbox/bulk)
+  const [selectedAntrianIds, setSelectedAntrianIds] = useState<string[]>([])
+
+  // State untuk popup modal aksi pengondisian data
+  const [isActionModalOpen, setIsActionModalOpen] = useState(false)
+  const [selectedAntrian, setSelectedAntrian] = useState<AntrianPoinItem | null>(null)
+
+  const [modalStatus, setModalStatus] = useState<StatusKedisiplinan>('Belum Diproses')
+  const [modalDivisiId, setModalDivisiId] = useState<string>('')
+  const [modalPasalId, setModalPasalId] = useState<string>('')
+
+  // Inisialisasi state modal saat terpilih antrian baru
+  useEffect(() => {
+    if (selectedAntrian) {
+      setModalStatus(selectedAntrian.status)
+      setModalDivisiId(selectedAntrian.divisi_id ?? '')
+      setModalPasalId(selectedAntrian.pasal_id ?? '')
+    }
+  }, [selectedAntrian])
 
   const { data: kategoriList } = useQuery({
     queryKey: ['kategori-disiplin'],
@@ -242,6 +293,17 @@ export default function KedisiplinanDashboardPage() {
       getKelasOptionsByUnits(
         selectedUnits.length > 0 ? selectedUnits : undefined
       ),
+  })
+
+  const kategoriPrestasiId = useMemo(() => {
+    const kat = (kategoriList ?? []).find(k => k.nama_kategori.toLowerCase().includes('prestasi'))
+    return kat?.id ?? null
+  }, [kategoriList])
+
+  const { data: pasalList = [] } = useQuery({
+    queryKey: ['pasal-by-kategori', kategoriPrestasiId],
+    queryFn: () => getPasalByKategori(kategoriPrestasiId!),
+    enabled: !!kategoriPrestasiId,
   })
 
   const dashboardFilters = useMemo<KedisiplinanDashboardFilters>(
@@ -275,6 +337,11 @@ export default function KedisiplinanDashboardPage() {
 
   const antrianList = antrianData?.data ?? []
 
+  const antrianListFiltered = useMemo(() => {
+    if (antrianStatusFilter === 'all') return antrianList
+    return antrianList.filter((item) => item.status === antrianStatusFilter)
+  }, [antrianList, antrianStatusFilter])
+
   const invalidateAntrian = () => {
     queryClient.invalidateQueries({ queryKey: ['antrian-poin-prestasi'] })
     queryClient.invalidateQueries({ queryKey: ['kedisiplinan-dashboard'] })
@@ -284,7 +351,7 @@ export default function KedisiplinanDashboardPage() {
     mutationFn: (ids: string[]) => approveAntrianPoin(ids),
     onSuccess: () => {
       invalidateAntrian()
-      setSelectedAntrian([])
+      setSelectedAntrianIds([])
       toast({ title: 'Berhasil', description: 'Poin prestasi berhasil disetujui' })
     },
     onError: (err: Error) => {
@@ -297,8 +364,31 @@ export default function KedisiplinanDashboardPage() {
       tolakAntrianPoin(id, prestasiId),
     onSuccess: () => {
       invalidateAntrian()
-      setSelectedAntrian([])
+      setSelectedAntrianIds([])
       toast({ title: 'Ditolak', description: 'Antrian poin prestasi telah ditolak' })
+    },
+    onError: (err: Error) => {
+      toast({ title: 'Gagal', description: err.message, variant: 'destructive' })
+    },
+  })
+
+  const updateKedisiplinanMutation = useMutation({
+    mutationFn: ({
+      id,
+      status,
+      divisi_id,
+      pasal_id,
+    }: {
+      id: string
+      status: StatusKedisiplinan
+      divisi_id: string
+      pasal_id: string
+    }) => updateKedisiplinan(id, { status, divisi_id, pasal_id }),
+    onSuccess: () => {
+      invalidateAntrian()
+      setIsActionModalOpen(false)
+      setSelectedAntrian(null)
+      toast({ title: 'Berhasil', description: 'Data kedisiplinan berhasil diperbarui' })
     },
     onError: (err: Error) => {
       toast({ title: 'Gagal', description: err.message, variant: 'destructive' })
@@ -396,27 +486,58 @@ export default function KedisiplinanDashboardPage() {
               </div>
             ) : (
               <>
-                {selectedAntrian.length > 0 && (
-                  <div className="mb-3 flex items-center gap-3 rounded-lg bg-amber-100 px-3 py-2 dark:bg-amber-900/30">
-                    <span className="text-sm text-amber-800 dark:text-amber-200">
-                      {selectedAntrian.length} item terpilih
-                    </span>
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
                     <Button
                       type="button"
+                      variant={antrianStatusFilter === 'all' ? 'default' : 'outline'}
                       size="sm"
-                      className="ml-auto bg-primary"
-                      onClick={() => approveMutation.mutate(selectedAntrian)}
-                      disabled={approveMutation.isPending}
+                      onClick={() => setAntrianStatusFilter('all')}
+                      className="h-8 text-xs"
                     >
-                      <CheckCircle2 className="mr-1 h-3.5 w-3.5" />
-                      Setujui Terpilih
+                      Semua
+                    </Button>
+                    <Button
+                      type="button"
+                      variant={antrianStatusFilter === 'Belum Diproses' ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => setAntrianStatusFilter('Belum Diproses')}
+                      className="h-8 text-xs"
+                    >
+                      Belum Diproses
+                    </Button>
+                    <Button
+                      type="button"
+                      variant={antrianStatusFilter === 'Pending' ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => setAntrianStatusFilter('Pending')}
+                      className="h-8 text-xs"
+                    >
+                      Pending
                     </Button>
                   </div>
-                )}
+
+                  {selectedAntrianIds.length > 0 && (
+                    <div className="flex items-center gap-2 rounded-lg bg-amber-100 px-3 py-1 dark:bg-amber-900/30">
+                      <span className="text-xs text-amber-800 dark:text-amber-200">
+                        {selectedAntrianIds.length} terpilih
+                      </span>
+                      <Button
+                        type="button"
+                        size="sm"
+                        className="bg-primary text-white h-7 text-xs px-2"
+                        onClick={() => approveMutation.mutate(selectedAntrianIds)}
+                        disabled={approveMutation.isPending}
+                      >
+                        Setujui Terpilih
+                      </Button>
+                    </div>
+                  )}
+                </div>
 
                 <div className="max-h-72 overflow-y-auto space-y-2">
-                  {antrianList.map((item: AntrianPoinItem) => {
-                    const isSelected = selectedAntrian.includes(item.id)
+                  {antrianListFiltered.map((item: AntrianPoinItem) => {
+                    const isSelected = selectedAntrianIds.includes(item.id)
                     return (
                       <div
                         key={item.id}
@@ -426,49 +547,181 @@ export default function KedisiplinanDashboardPage() {
                           checked={isSelected}
                           onCheckedChange={(checked) => {
                             if (checked) {
-                              setSelectedAntrian((prev) => [...prev, item.id])
+                              setSelectedAntrianIds((prev) => [...prev, item.id])
                             } else {
-                              setSelectedAntrian((prev) => prev.filter((id) => id !== item.id))
+                              setSelectedAntrianIds((prev) => prev.filter((id) => id !== item.id))
                             }
                           }}
                           id={`antrian-${item.id}`}
                         />
                         <div className="min-w-0 flex-1">
                           <p className="truncate text-sm font-medium text-[var(--text-primary)]">
-                            {item.siswa?.nama ?? 'Siswa tidak diketahui'}
+                            {item.siswa?.nama ?? 'Siswa tidak diketahui'} ({item.siswa?.kelas ?? '-'})
                           </p>
                           <p className="truncate text-xs text-[var(--text-tertiary)]">
                             {item.prestasi?.event?.nama_event ?? '-'} • {item.prestasi?.juara?.nama_juara ?? '-'} • {item.prestasi?.tingkat_kejuaraan ?? '-'}
                           </p>
                         </div>
-                        {item.pasal && (
-                          <Badge variant="outline" className="shrink-0 text-xs">
-                            {item.pasal.poin > 0 ? '+' : ''}{item.pasal.poin} poin
+                        <div className="flex items-center gap-2">
+                          <Badge variant={item.status === 'Belum Diproses' ? 'destructive' : 'warning'} className="text-xs shrink-0">
+                            {item.status}
                           </Badge>
-                        )}
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7 shrink-0 text-status-red hover:bg-red-50 dark:hover:bg-red-950"
-                          disabled={tolakMutation.isPending}
-                          onClick={() => {
-                            if (!item.prestasi_id) return
-                            tolakMutation.mutate({ id: item.id, prestasiId: item.prestasi_id })
-                          }}
-                          title="Tolak"
-                        >
-                          <X className="h-4 w-4" />
-                        </Button>
+                          {item.pasal && (
+                            <Badge variant="outline" className="shrink-0 text-xs">
+                              {item.pasal.poin > 0 ? '+' : ''}{item.pasal.poin} poin
+                            </Badge>
+                          )}
+                          <Button
+                            type="button"
+                            size="sm"
+                            className="bg-primary text-white hover:bg-primary-hover h-8 text-xs px-3"
+                            onClick={() => {
+                              setSelectedAntrian(item)
+                              setIsActionModalOpen(true)
+                            }}
+                          >
+                            Aksi
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 shrink-0 text-status-red hover:bg-red-50 dark:hover:bg-red-950"
+                            disabled={tolakMutation.isPending}
+                            onClick={() => {
+                              if (!item.prestasi_id) return
+                              tolakMutation.mutate({ id: item.id, prestasiId: item.prestasi_id })
+                            }}
+                            title="Tolak"
+                          >
+                            <X className="h-4 w-4" />
+                          </Button>
+                        </div>
                       </div>
                     )
                   })}
+                  {antrianListFiltered.length === 0 && (
+                    <p className="py-4 text-center text-sm text-[var(--text-secondary)]">
+                      Tidak ada antrian data
+                    </p>
+                  )}
                 </div>
               </>
             )}
           </CardContent>
         </Card>
       )}
+
+      {/* ── Dialog Popup Modal Aksi Pengondisian Data ───────────────── */}
+      <Dialog open={isActionModalOpen} onOpenChange={(open) => { if (!open) { setIsActionModalOpen(false); setSelectedAntrian(null); } }}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Aksi Pengondisian Data Kedisiplinan</DialogTitle>
+          </DialogHeader>
+          {selectedAntrian && (
+            <div className="space-y-4 py-2">
+              <div className="grid grid-cols-2 gap-4 rounded-lg bg-[var(--surface-2)] p-3 text-sm">
+                <div>
+                  <span className="block text-xs text-[var(--text-secondary)]">Tanggal</span>
+                  <span className="font-medium text-[var(--text-primary)]">{formatTanggal(selectedAntrian.tanggal)}</span>
+                </div>
+                <div>
+                  <span className="block text-xs text-[var(--text-secondary)]">Diberikan Oleh</span>
+                  <span className="font-medium text-[var(--text-primary)]">{selectedAntrian.diberikan_oleh}</span>
+                </div>
+                <div className="col-span-2 border-t border-[var(--border)] mt-1 pt-2">
+                  <span className="block text-xs text-[var(--text-secondary)]">Nama Siswa</span>
+                  <span className="font-medium text-base text-[var(--text-primary)]">{selectedAntrian.siswa?.nama ?? '-'} ({selectedAntrian.siswa?.kelas ?? '-'})</span>
+                </div>
+                <div className="col-span-2 border-t border-[var(--border)] mt-1 pt-2">
+                  <span className="block text-xs text-[var(--text-secondary)]">Tindakan</span>
+                  <span className="font-medium text-primary">Poin Kebaikan</span>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="modal-status">Status Poin</Label>
+                <Select
+                  value={modalStatus}
+                  onValueChange={(val) => setModalStatus(val as StatusKedisiplinan)}
+                >
+                  <SelectTrigger id="modal-status">
+                    <SelectValue placeholder="Pilih status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Belum Diproses">Belum Diproses</SelectItem>
+                    <SelectItem value="Pending">Pending</SelectItem>
+                    <SelectItem value="Sudah Diproses">Sudah Diproses</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Divisi (Wajib)</Label>
+                <Combobox
+                  options={
+                    (divisiList ?? [])
+                      .filter((d) => !d.unit || d.unit === selectedAntrian.siswa?.unit)
+                      .map((d) => ({
+                        value: d.id,
+                        label: formatDivisiLabel(d.nama_divisi, d.unit),
+                      }))
+                  }
+                  value={modalDivisiId}
+                  onSelect={(val) => setModalDivisiId(val)}
+                  onSearch={() => {}}
+                  placeholder="Pilih divisi..."
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Pasal Poin Prestasi (Wajib)</Label>
+                <Combobox
+                  options={
+                    (pasalList ?? []).map((p) => ({
+                      value: p.id,
+                      label: `${p.nama_pasal} (${p.poin} Poin)`,
+                    }))
+                  }
+                  value={modalPasalId}
+                  onSelect={(val) => setModalPasalId(val)}
+                  onSearch={() => {}}
+                  placeholder="Pilih pasal kebaikan..."
+                />
+              </div>
+            </div>
+          )}
+          <DialogFooter className="mt-4">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setIsActionModalOpen(false)
+                setSelectedAntrian(null)
+              }}
+            >
+              Batal
+            </Button>
+            <Button
+              type="button"
+              className="bg-primary text-white hover:bg-primary-hover"
+              disabled={updateKedisiplinanMutation.isPending || !modalDivisiId || !modalPasalId}
+              onClick={() => {
+                if (selectedAntrian) {
+                  updateKedisiplinanMutation.mutate({
+                    id: selectedAntrian.id,
+                    status: modalStatus,
+                    divisi_id: modalDivisiId,
+                    pasal_id: modalPasalId,
+                  })
+                }
+              }}
+            >
+              Simpan Perubahan
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Card>
         <CardHeader>

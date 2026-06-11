@@ -749,6 +749,7 @@ export interface AntrianPoinItem {
   diberikan_oleh: string
   siswa_id: string | null
   pasal_id: string | null
+  divisi_id: string | null
   sumber: string | null
   prestasi_id: string | null
   status: StatusKedisiplinan
@@ -784,7 +785,7 @@ export async function getAntrianPoinPrestasi(): Promise<{
       { count: 'exact' }
     )
     .eq('sumber', 'prestasi')
-    .eq('status', 'Belum Diproses')
+    .in('status', ['Belum Diproses', 'Pending'])
     .order('created_at', { ascending: false })
 
   if (error) throw new Error(error.message)
@@ -852,6 +853,7 @@ export async function getAntrianPoinPrestasi(): Promise<{
       diberikan_oleh: item.diberikan_oleh,
       siswa_id: item.siswa_id,
       pasal_id: item.pasal_id,
+      divisi_id: item.divisi_id,
       sumber: item.sumber,
       prestasi_id: item.prestasi_id,
       status: item.status,

@@ -352,24 +352,23 @@ export async function createPrestasi(
         .maybeSingle()
 
       if (katData) {
-        // 2. Cari pasal yang sesuai tingkat kejuaraan
-        const { data: pasalData } = await supabase
-          .from('pasal')
-          .select('id, poin')
-          .ilike('nama_pasal', `%${data.tingkat_kejuaraan}%`)
-          .eq('kategori_id', katData.id)
+        // 1.5 Cari tindakan dengan nama 'Poin Kebaikan'
+        const { data: tindakanData } = await supabase
+          .from('tindakan')
+          .select('id')
+          .ilike('nama_tindakan', '%Poin Kebaikan%')
           .limit(1)
           .maybeSingle()
 
-        // 3. Insert ke kedisiplinan
+        // 3. Insert ke kedisiplinan (pasal_id dan divisi_id diset null agar diisi manual via modal aksi)
         await supabase.from('kedisiplinan').insert({
           tanggal: data.waktu ?? new Date().toISOString().split('T')[0],
           diberikan_oleh: pembuatPoin,
           siswa_id: data.siswa_id,
           kategori_id: katData.id,
-          pasal_id: pasalData?.id ?? null,
+          pasal_id: null,
           divisi_id: null,
-          tindakan_id: null,
+          tindakan_id: tindakanData?.id ?? null,
           sumber: 'prestasi',
           prestasi_id: result.id,
           status: 'Belum Diproses',
