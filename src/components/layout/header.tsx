@@ -44,7 +44,10 @@ function Header({ title, onMobileMenuToggle }: HeaderProps) {
   }, [router, supabase])
 
   return (
-    <header className="sticky top-0 z-40 flex h-14 items-center gap-3 border-b border-[var(--border)] bg-[var(--surface)] px-4">
+    <header
+      data-header="true"
+      className="app-header no-print sticky top-0 z-40 flex h-14 items-center gap-3 border-b border-[var(--border)] bg-[var(--surface)] px-4"
+    >
       <Button
         type="button"
         variant="ghost"

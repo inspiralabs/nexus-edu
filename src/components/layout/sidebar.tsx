@@ -415,7 +415,7 @@ function Submenu({ item, pathname, isOpen, onToggle, onNavigate }: SubmenuProps)
                 className={cn(
                   'flex items-center gap-3 rounded-md py-2 pl-9 pr-3 text-sm text-[var(--text-secondary)] transition-colors hover:bg-[var(--surface-2)] hover:text-[var(--text-primary)]',
                   isActive &&
-                    'bg-primary-light font-medium text-primary'
+                  'bg-primary-light font-medium text-primary'
                 )}
               >
                 <ChildIcon className="h-4 w-4 shrink-0" />
@@ -505,8 +505,9 @@ function Sidebar() {
       )}
 
       <aside
+        data-sidebar="true"
         className={cn(
-          'fixed inset-y-0 left-0 z-50 flex h-screen w-60 flex-col border-r border-[var(--border)] bg-[var(--surface)] transition-transform duration-300 md:sticky md:top-0 md:translate-x-0',
+          'sidebar-container no-print fixed inset-y-0 left-0 z-50 flex h-screen w-60 flex-col border-r border-[var(--border)] bg-[var(--surface)] transition-transform duration-300 md:sticky md:top-0 md:translate-x-0',
           isMobileOpen ? 'translate-x-0' : '-translate-x-full'
         )}
       >
