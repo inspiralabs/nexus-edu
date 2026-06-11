@@ -332,7 +332,7 @@ export async function getSiswaByKamar(
 
 // ─── Hari Libur ───────────────────────────────────────────────────────────────
 
-/** Cek apakah tanggal tertentu adalah hari libur */
+/** Cek apakah tanggal tertentu adalah hari libur, dan kembalikan keterangan jika ada */
 export async function isHariLibur(tanggal: string): Promise<boolean> {
   const supabase = createClient()
 
@@ -344,6 +344,24 @@ export async function isHariLibur(tanggal: string): Promise<boolean> {
   if (error) throw new Error(error.message)
 
   return (count ?? 0) > 0
+}
+
+/** Ambil info hari libur (isLibur + keterangan) untuk tanggal tertentu */
+export async function getHariLiburInfo(tanggal: string): Promise<{ isLibur: boolean; keterangan: string | null }> {
+  const supabase = createClient()
+
+  const { data, error } = await supabase
+    .from('hari_libur')
+    .select('keterangan')
+    .eq('tanggal', tanggal)
+    .maybeSingle()
+
+  if (error) throw new Error(error.message)
+
+  return {
+    isLibur: data !== null,
+    keterangan: (data as { keterangan: string | null } | null)?.keterangan ?? null,
+  }
 }
 
 /** Tandai tanggal sebagai hari libur */
@@ -771,4 +789,299 @@ export async function getMutabaahProgress(
   }
 
   return result
+}
+
+// ─── Dashboard Stats ──────────────────────────────────────────────────────────
+
+export interface DashboardMutabaahStats {
+  totalSiswaAktif: number
+  rataRataKehadiran: number
+  totalHariDicatat: number
+  hariLiburBulanIni: number
+}
+
+export interface KehadiranPerKegiatanItem {
+  kegiatan_id: string
+  nama_kegiatan: string
+  total_hadir: number
+  total_tercatat: number
+  persentase: number
+}
+
+export interface TrendHarianItem {
+  tanggal: string
+  persentase_hadir: number
+  total_siswa: number
+  total_hadir: number
+}
+
+/**
+ * Hitung statistik dashboard mutabaah untuk satu bulan tertentu.
+ * bulan: format 'yyyy-MM'
+ */
+export async function getMutabaahDashboardStats(
+  kamarNama?: string,
+  bulan?: string
+): Promise<DashboardMutabaahStats> {
+  const supabase = createClient()
+
+  const now = new Date()
+  const targetBulan = bulan ?? `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+  const [yr, mo] = targetBulan.split('-').map(Number)
+  const tglMulai = `${targetBulan}-01`
+  const lastDay = new Date(yr, mo, 0).getDate()
+  const tglSelesai = `${targetBulan}-${String(lastDay).padStart(2, '0')}`
+
+  let siswaIds: string[]
+  if (kamarNama) {
+    const { data: siswaData, error: siswaErr } = await supabase
+      .from('students')
+      .select('id')
+      .eq('kamar', kamarNama)
+      .eq('is_alumni', false)
+
+    if (siswaErr) throw new Error(siswaErr.message)
+    siswaIds = (siswaData ?? []).map((s: { id: string }) => s.id)
+  } else {
+    const { data: allSiswa, error: allErr } = await supabase
+      .from('students')
+      .select('id')
+      .eq('is_alumni', false)
+
+    if (allErr) throw new Error(allErr.message)
+    siswaIds = (allSiswa ?? []).map((s: { id: string }) => s.id)
+  }
+
+  const totalSiswaAktif = siswaIds.length
+
+  const { count: hariLiburCount, error: liburErr } = await supabase
+    .from('hari_libur')
+    .select('*', { count: 'exact', head: true })
+    .gte('tanggal', tglMulai)
+    .lte('tanggal', tglSelesai)
+
+  if (liburErr) throw new Error(liburErr.message)
+  const hariLiburBulanIni = hariLiburCount ?? 0
+
+  if (siswaIds.length === 0) {
+    return { totalSiswaAktif: 0, rataRataKehadiran: 0, totalHariDicatat: 0, hariLiburBulanIni }
+  }
+
+  let q = supabase
+    .from('mutabaah')
+    .select('tanggal, status, is_libur')
+    .gte('tanggal', tglMulai)
+    .lte('tanggal', tglSelesai)
+    .in('siswa_id', siswaIds)
+
+  const { data: mutData, error: mutErr } = await q
+
+  if (mutErr) throw new Error(mutErr.message)
+
+  const rows = (mutData ?? []) as { tanggal: string; status: MutabaahStatus; is_libur: boolean }[]
+
+  const hariSet = new Set(rows.map((r) => r.tanggal))
+  const totalHariDicatat = hariSet.size
+
+  const nonLibur = rows.filter((r) => !r.is_libur && r.status !== 'L')
+  const totalHadir = nonLibur.filter((r) => r.status === 'Hadir').length
+  const rataRataKehadiran = nonLibur.length > 0 ? Math.round((totalHadir / nonLibur.length) * 100) : 0
+
+  return { totalSiswaAktif, rataRataKehadiran, totalHariDicatat, hariLiburBulanIni }
+}
+
+/**
+ * Ambil total kehadiran per kegiatan dalam satu bulan (untuk BarChart top-N kegiatan).
+ */
+export async function getKehadiranPerKegiatan(
+  kamarNama?: string,
+  bulan?: string,
+  topN = 5
+): Promise<KehadiranPerKegiatanItem[]> {
+  const supabase = createClient()
+
+  const now = new Date()
+  const targetBulan = bulan ?? `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+  const [yr, mo] = targetBulan.split('-').map(Number)
+  const tglMulai = `${targetBulan}-01`
+  const lastDay = new Date(yr, mo, 0).getDate()
+  const tglSelesai = `${targetBulan}-${String(lastDay).padStart(2, '0')}`
+
+  let siswaIds: string[] | null = null
+  if (kamarNama) {
+    const { data: siswaData, error: siswaErr } = await supabase
+      .from('students')
+      .select('id')
+      .eq('kamar', kamarNama)
+      .eq('is_alumni', false)
+
+    if (siswaErr) throw new Error(siswaErr.message)
+    siswaIds = (siswaData ?? []).map((s: { id: string }) => s.id)
+    if (siswaIds.length === 0) return []
+  }
+
+  let q = supabase
+    .from('mutabaah')
+    .select('kegiatan_id, status, is_libur, kegiatan(nama_kegiatan)')
+    .gte('tanggal', tglMulai)
+    .lte('tanggal', tglSelesai)
+
+  if (siswaIds) q = q.in('siswa_id', siswaIds)
+
+  const { data, error } = await q
+
+  if (error) throw new Error(error.message)
+
+  const map = new Map<string, { nama: string; hadir: number; total: number }>()
+
+  for (const row of data ?? []) {
+    const r = row as {
+      kegiatan_id: string
+      status: MutabaahStatus
+      is_libur: boolean
+      kegiatan: { nama_kegiatan: string } | { nama_kegiatan: string }[] | null
+    }
+    const kegiatanRaw = Array.isArray(r.kegiatan) ? r.kegiatan[0] ?? null : r.kegiatan
+    const nama = (kegiatanRaw as { nama_kegiatan: string } | null)?.nama_kegiatan ?? ''
+    const existing = map.get(r.kegiatan_id) ?? { nama, hadir: 0, total: 0 }
+    if (!r.is_libur && r.status !== 'L') {
+      existing.total++
+      if (r.status === 'Hadir') existing.hadir++
+    }
+    map.set(r.kegiatan_id, existing)
+  }
+
+  return Array.from(map.entries())
+    .map(([kegiatan_id, v]) => ({
+      kegiatan_id,
+      nama_kegiatan: v.nama,
+      total_hadir: v.hadir,
+      total_tercatat: v.total,
+      persentase: v.total > 0 ? Math.round((v.hadir / v.total) * 100) : 0,
+    }))
+    .sort((a, b) => b.total_hadir - a.total_hadir)
+    .slice(0, topN)
+}
+
+/**
+ * Ambil tren kehadiran per hari dalam satu bulan (untuk LineChart).
+ */
+export async function getTrendKehadiranHarian(
+  kamarNama?: string,
+  bulan?: string
+): Promise<TrendHarianItem[]> {
+  const supabase = createClient()
+
+  const now = new Date()
+  const targetBulan = bulan ?? `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+  const [yr, mo] = targetBulan.split('-').map(Number)
+  const tglMulai = `${targetBulan}-01`
+  const lastDay = new Date(yr, mo, 0).getDate()
+  const tglSelesai = `${targetBulan}-${String(lastDay).padStart(2, '0')}`
+
+  let siswaIds: string[] | null = null
+  if (kamarNama) {
+    const { data: siswaData, error: siswaErr } = await supabase
+      .from('students')
+      .select('id')
+      .eq('kamar', kamarNama)
+      .eq('is_alumni', false)
+
+    if (siswaErr) throw new Error(siswaErr.message)
+    siswaIds = (siswaData ?? []).map((s: { id: string }) => s.id)
+    if (siswaIds.length === 0) return []
+  }
+
+  let q = supabase
+    .from('mutabaah')
+    .select('tanggal, siswa_id, status, is_libur')
+    .gte('tanggal', tglMulai)
+    .lte('tanggal', tglSelesai)
+
+  if (siswaIds) q = q.in('siswa_id', siswaIds)
+
+  const { data, error } = await q
+
+  if (error) throw new Error(error.message)
+
+  const dayMap = new Map<string, { hadirSet: Set<string>; siswaSet: Set<string> }>()
+
+  for (const row of data ?? []) {
+    const r = row as { tanggal: string; siswa_id: string; status: MutabaahStatus; is_libur: boolean }
+    const existing = dayMap.get(r.tanggal) ?? { hadirSet: new Set<string>(), siswaSet: new Set<string>() }
+    if (!r.is_libur && r.status !== 'L') {
+      existing.siswaSet.add(r.siswa_id)
+      if (r.status === 'Hadir') existing.hadirSet.add(r.siswa_id)
+    }
+    dayMap.set(r.tanggal, existing)
+  }
+
+  return Array.from(dayMap.entries())
+    .map(([tanggal, v]) => ({
+      tanggal,
+      total_siswa: v.siswaSet.size,
+      total_hadir: v.hadirSet.size,
+      persentase_hadir: v.siswaSet.size > 0 ? Math.round((v.hadirSet.size / v.siswaSet.size) * 100) : 0,
+    }))
+    .sort((a, b) => a.tanggal.localeCompare(b.tanggal))
+}
+
+// ─── Rekap untuk Cetak ────────────────────────────────────────────────────────
+
+export interface MutabaahCetakRow {
+  tanggal: string
+  kegiatan_id: string
+  nama_kegiatan: string
+  sub_kegiatan_id: string | null
+  nama_sub: string | null
+  status: MutabaahStatus
+  is_libur: boolean
+}
+
+/**
+ * Ambil data mutabaah satu siswa dalam range tanggal (untuk cetak laporan individual).
+ */
+export async function getMutabaahCetakSiswa(
+  siswaId: string,
+  tanggalDari: string,
+  tanggalSampai: string
+): Promise<MutabaahCetakRow[]> {
+  const supabase = createClient()
+
+  const { data, error } = await supabase
+    .from('mutabaah')
+    .select(`
+      tanggal, kegiatan_id, sub_kegiatan_id, status, is_libur,
+      kegiatan(nama_kegiatan),
+      sub_kegiatan(nama_sub)
+    `)
+    .eq('siswa_id', siswaId)
+    .gte('tanggal', tanggalDari)
+    .lte('tanggal', tanggalSampai)
+    .order('tanggal', { ascending: true })
+
+  if (error) throw new Error(error.message)
+
+  return (data ?? []).map((row) => {
+    const r = row as {
+      tanggal: string
+      kegiatan_id: string
+      sub_kegiatan_id: string | null
+      status: MutabaahStatus
+      is_libur: boolean
+      kegiatan: { nama_kegiatan: string } | { nama_kegiatan: string }[] | null
+      sub_kegiatan: { nama_sub: string } | { nama_sub: string }[] | null
+    }
+    const kegiatanRaw = Array.isArray(r.kegiatan) ? r.kegiatan[0] ?? null : r.kegiatan
+    const subRaw = Array.isArray(r.sub_kegiatan) ? r.sub_kegiatan[0] ?? null : r.sub_kegiatan
+    return {
+      tanggal: r.tanggal,
+      kegiatan_id: r.kegiatan_id,
+      nama_kegiatan: (kegiatanRaw as { nama_kegiatan: string } | null)?.nama_kegiatan ?? '',
+      sub_kegiatan_id: r.sub_kegiatan_id,
+      nama_sub: (subRaw as { nama_sub: string } | null)?.nama_sub ?? null,
+      status: r.status,
+      is_libur: r.is_libur,
+    }
+  })
 }
