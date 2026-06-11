@@ -17,6 +17,7 @@ import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { PageHeader } from '@/components/layout/page-header'
 import { ConfirmDialog } from '@/components/shared/confirm-dialog'
+import { Combobox } from '@/components/shared/combobox'
 import { DataTable } from '@/components/shared/data-table'
 import { Button } from '@/components/ui/button'
 import {
@@ -56,6 +57,7 @@ import {
   createStudent,
   deleteStudents,
   getAlumniStudents,
+  getKamarOptions,
   getStudentClasses,
   getStudents,
   restoreStudent,
@@ -68,12 +70,12 @@ const PAGE_SIZE_OPTIONS = [10, 20, 30, 40, 50] as const
 const UNITS: Unit[] = ['SD', 'SMP', 'SMA']
 type TabValue = Unit | 'Alumni'
 
-// Schema tambah siswa baru (tanpa is_alumni, dengan kamar & nomor_induk opsional)
+// Schema tambah siswa baru (tanpa is_alumni, dengan kamar_id & nomor_induk opsional)
 const studentAddSchema = z.object({
   nama: z.string().min(2, 'Nama minimal 2 karakter'),
   kelas: z.string().min(1, 'Kelas wajib diisi'),
   jenis_kelamin: z.enum(['L', 'P'], { message: 'Pilih jenis kelamin' }),
-  kamar: z.string().optional(),
+  kamar_id: z.string().uuid().optional().nullable(),
   nomor_induk: z.string().optional(),
 })
 
@@ -82,7 +84,7 @@ const studentEditSchema = z.object({
   nama: z.string().min(2, 'Nama minimal 2 karakter'),
   kelas: z.string().min(1, 'Kelas wajib diisi'),
   jenis_kelamin: z.enum(['L', 'P'], { message: 'Pilih jenis kelamin' }),
-  kamar: z.string().optional(),
+  kamar_id: z.string().uuid().optional().nullable(),
   nomor_induk: z.string().optional(),
   is_alumni: z.boolean(),
 })
@@ -103,6 +105,7 @@ function studentToRecord(student: Student): Record<string, unknown> {
     unit: student.unit,
     is_alumni: student.is_alumni,
     kamar: student.kamar,
+    kamar_id: student.kamar_id,
     nomor_induk: student.nomor_induk,
     created_at: student.created_at,
   }
@@ -142,17 +145,37 @@ export default function StudentsPage() {
   const [bulkEditData, setBulkEditData] = useState<{
     kelas: string
     jenis_kelamin: JenisKelamin | ''
-    kamar: string
+    kamar_id: string | null
     nomor_induk: string
-  }>({ kelas: '', jenis_kelamin: '', kamar: '', nomor_induk: '' })
+  }>({ kelas: '', jenis_kelamin: '', kamar_id: null, nomor_induk: '' })
   const [alumniUnitFilter, setAlumniUnitFilter] = useState<Unit | 'all'>('all')
   const [deleteTargetIds, setDeleteTargetIds] = useState<string[]>([])
   const [deletingStudents, setDeletingStudents] = useState<Student[]>([])
+
+  const [kamarSearch, setKamarSearch] = useState('')
 
   const debouncedSearch = useDebounce(search, 300)
 
   const isAlumniTab = activeTab === 'Alumni'
   const activeUnit = isAlumniTab ? null : (activeTab as Unit)
+
+  // Load Kamar Options
+  const { data: kamarData = [], isLoading: isKamarLoading } = useQuery({
+    queryKey: ['kamar-options', activeUnit],
+    queryFn: () => getKamarOptions(activeUnit ? [activeUnit] : undefined),
+    enabled: !isAlumniTab,
+  })
+
+  const filteredKamar = useMemo(() => {
+    if (!kamarSearch) return kamarData
+    return kamarData.filter((k) =>
+      k.nama_kamar.toLowerCase().includes(kamarSearch.toLowerCase())
+    )
+  }, [kamarData, kamarSearch])
+
+  const kamarOptions = useMemo(() => {
+    return filteredKamar.map((k) => ({ value: k.id, label: k.nama_kamar }))
+  }, [filteredKamar])
 
   const queryKey = [
     'students',
@@ -197,7 +220,7 @@ export default function StudentsPage() {
 
   const addForm = useForm<StudentAddFormValues>({
     resolver: zodResolver(studentAddSchema),
-    defaultValues: { nama: '', kelas: '', jenis_kelamin: 'L', kamar: '', nomor_induk: '' },
+    defaultValues: { nama: '', kelas: '', jenis_kelamin: 'L', kamar_id: null, nomor_induk: '' },
   })
 
   const editForm = useForm<StudentEditFormValues>({
@@ -206,7 +229,7 @@ export default function StudentsPage() {
       nama: '',
       kelas: '',
       jenis_kelamin: 'L',
-      kamar: '',
+      kamar_id: null,
       nomor_induk: '',
       is_alumni: false,
     },
@@ -356,7 +379,7 @@ export default function StudentsPage() {
       ids: string[]
       kelas?: string
       jenis_kelamin?: JenisKelamin
-      kamar?: string
+      kamar_id?: string | null
       nomor_induk?: string
       oldStudents: Student[]
     }) => bulkUpdateStudents(ids, payload),
@@ -381,7 +404,7 @@ export default function StudentsPage() {
       })
       setSelectedRows([])
       setIsBulkEditOpen(false)
-      setBulkEditData({ kelas: '', jenis_kelamin: '', kamar: '', nomor_induk: '' })
+      setBulkEditData({ kelas: '', jenis_kelamin: '', kamar_id: null, nomor_induk: '' })
     },
     onError: (error: Error) => {
       toast({ title: 'Gagal', description: error.message, variant: 'destructive' })
@@ -421,7 +444,7 @@ export default function StudentsPage() {
   }
 
   const openAddDialog = () => {
-    addForm.reset({ nama: '', kelas: '', jenis_kelamin: 'L', kamar: '', nomor_induk: '' })
+    addForm.reset({ nama: '', kelas: '', jenis_kelamin: 'L', kamar_id: null, nomor_induk: '' })
     setIsAddOpen(true)
   }
 
@@ -431,7 +454,7 @@ export default function StudentsPage() {
       nama: student.nama,
       kelas: student.kelas,
       jenis_kelamin: student.jenis_kelamin ?? 'L',
-      kamar: student.kamar ?? '',
+      kamar_id: student.kamar_id ?? null,
       nomor_induk: student.nomor_induk ?? '',
       is_alumni: student.is_alumni ?? false,
     })
@@ -452,7 +475,7 @@ export default function StudentsPage() {
   }
 
   const openBulkEdit = () => {
-    setBulkEditData({ kelas: '', jenis_kelamin: '', kamar: '', nomor_induk: '' })
+    setBulkEditData({ kelas: '', jenis_kelamin: '', kamar_id: null, nomor_induk: '' })
     setIsBulkEditOpen(true)
   }
 
@@ -467,7 +490,7 @@ export default function StudentsPage() {
   }
 
   const resetAddFormDefaults = () => {
-    addForm.reset({ nama: '', kelas: '', jenis_kelamin: 'L', kamar: '', nomor_induk: '' })
+    addForm.reset({ nama: '', kelas: '', jenis_kelamin: 'L', kamar_id: null, nomor_induk: '' })
   }
 
   const closeBulkAddDialog = () => {
@@ -490,7 +513,7 @@ export default function StudentsPage() {
         nama: values.nama,
         kelas: values.kelas,
         jenis_kelamin: values.jenis_kelamin,
-        kamar: values.kamar,
+        kamar_id: values.kamar_id,
         nomor_induk: values.nomor_induk,
         unit: activeUnit ?? 'SD',
       },
@@ -503,17 +526,17 @@ export default function StudentsPage() {
     const hasAnyValue =
       bulkEditData.kelas.trim() ||
       bulkEditData.jenis_kelamin ||
-      bulkEditData.kamar.trim() ||
+      bulkEditData.kamar_id ||
       bulkEditData.nomor_induk.trim()
 
     if (!hasAnyValue) {
       toast({ title: 'Validasi gagal', description: 'Isi minimal satu field yang ingin diubah', variant: 'destructive' })
       return
     }
-    const payload: { kelas?: string; jenis_kelamin?: JenisKelamin; kamar?: string; nomor_induk?: string } = {}
+    const payload: { kelas?: string; jenis_kelamin?: JenisKelamin; kamar_id?: string | null; nomor_induk?: string } = {}
     if (bulkEditData.kelas.trim()) payload.kelas = bulkEditData.kelas.trim()
     if (bulkEditData.jenis_kelamin) payload.jenis_kelamin = bulkEditData.jenis_kelamin
-    if (bulkEditData.kamar.trim()) payload.kamar = bulkEditData.kamar.trim()
+    if (bulkEditData.kamar_id) payload.kamar_id = bulkEditData.kamar_id
     if (bulkEditData.nomor_induk.trim()) payload.nomor_induk = bulkEditData.nomor_induk.trim()
 
     const oldStudents = data?.data.filter((s) => selectedRows.includes(s.id)) ?? []
@@ -711,10 +734,20 @@ export default function StudentsPage() {
         <Label htmlFor={showAddToListButton ? 'bulk-kamar' : 'add-kamar'}>
           Kamar Pesantren <span className="text-[var(--text-tertiary)]">(opsional)</span>
         </Label>
-        <Input
-          id={showAddToListButton ? 'bulk-kamar' : 'add-kamar'}
-          placeholder="Contoh: Al-Fatih"
-          {...addForm.register('kamar')}
+        <Combobox
+          options={kamarOptions}
+          value={addForm.watch('kamar_id') || ''}
+          onSelect={(val) => {
+            addForm.setValue('kamar_id', val || null, { shouldValidate: true })
+          }}
+          onSearch={setKamarSearch}
+          placeholder="Pilih Kamar..."
+          isLoading={isKamarLoading}
+          emptyMessage={
+            kamarSearch
+              ? 'Kamar tidak ditemukan'
+              : 'Belum ada kamar untuk unit yang dipilih'
+          }
         />
       </div>
 
@@ -975,7 +1008,21 @@ export default function StudentsPage() {
             {/* Kamar (opsional) */}
             <div className="space-y-2">
               <Label htmlFor="edit-kamar">Kamar Pesantren <span className="text-[var(--text-tertiary)]">(opsional)</span></Label>
-              <Input id="edit-kamar" placeholder="Contoh: Al-Fatih" {...editForm.register('kamar')} />
+              <Combobox
+                options={kamarOptions}
+                value={editForm.watch('kamar_id') || ''}
+                onSelect={(val) => {
+                  editForm.setValue('kamar_id', val || null, { shouldValidate: true })
+                }}
+                onSearch={setKamarSearch}
+                placeholder="Pilih Kamar..."
+                isLoading={isKamarLoading}
+                emptyMessage={
+                  kamarSearch
+                    ? 'Kamar tidak ditemukan'
+                    : 'Belum ada kamar untuk unit yang dipilih'
+                }
+              />
             </div>
 
             {/* Nomor Induk (opsional) */}
@@ -1078,7 +1125,7 @@ export default function StudentsPage() {
         open={isBulkEditOpen}
         onOpenChange={(open) => {
           setIsBulkEditOpen(open)
-          if (!open) setBulkEditData({ kelas: '', jenis_kelamin: '', kamar: '', nomor_induk: '' })
+          if (!open) setBulkEditData({ kelas: '', jenis_kelamin: '', kamar_id: null, nomor_induk: '' })
         }}
       >
         <DialogContent>
@@ -1127,11 +1174,18 @@ export default function StudentsPage() {
             {/* Kamar */}
             <div className="space-y-2">
               <Label htmlFor="bulk-edit-kamar">Kamar Pesantren <span className="text-[var(--text-tertiary)]">(opsional)</span></Label>
-              <Input
-                id="bulk-edit-kamar"
-                placeholder="Contoh: Al-Fatih"
-                value={bulkEditData.kamar}
-                onChange={(e) => setBulkEditData((prev) => ({ ...prev, kamar: e.target.value }))}
+              <Combobox
+                options={kamarOptions}
+                value={bulkEditData.kamar_id || ''}
+                onSelect={(val) => setBulkEditData((prev) => ({ ...prev, kamar_id: val || null }))}
+                onSearch={setKamarSearch}
+                placeholder="Pilih Kamar..."
+                isLoading={isKamarLoading}
+                emptyMessage={
+                  kamarSearch
+                    ? 'Kamar tidak ditemukan'
+                    : 'Belum ada kamar untuk unit yang dipilih'
+                }
               />
             </div>
 
@@ -1152,7 +1206,7 @@ export default function StudentsPage() {
               variant="outline"
               onClick={() => {
                 setIsBulkEditOpen(false)
-                setBulkEditData({ kelas: '', jenis_kelamin: '', kamar: '', nomor_induk: '' })
+                setBulkEditData({ kelas: '', jenis_kelamin: '', kamar_id: null, nomor_induk: '' })
               }}
             >
               Batal

@@ -40,6 +40,7 @@ export interface Student {
   unit: Unit | null
   is_alumni: boolean | null
   kamar: string | null
+  kamar_id: string | null
   nomor_induk: string | null
   created_at: string
 }

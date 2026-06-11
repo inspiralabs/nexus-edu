@@ -6,6 +6,7 @@ export interface CreateStudentInput {
   kelas: string
   jenis_kelamin: JenisKelamin
   unit: Unit
+  kamar_id?: string | null
   kamar?: string
   nomor_induk?: string
 }
@@ -14,6 +15,7 @@ export interface UpdateStudentInput {
   nama?: string
   kelas?: string
   jenis_kelamin?: JenisKelamin
+  kamar_id?: string | null
   kamar?: string
   nomor_induk?: string
   is_alumni?: boolean
@@ -151,9 +153,23 @@ export async function createStudent(
 ): Promise<Student> {
   const supabase = createClient()
 
+  let finalKamarId = data.kamar_id || null
+
+  if (!finalKamarId && data.kamar) {
+    const { data: kamarData } = await supabase
+      .from('kamar')
+      .select('id')
+      .ilike('nama_kamar', data.kamar.trim())
+      .maybeSingle()
+    if (kamarData) {
+      finalKamarId = kamarData.id
+    }
+  }
+
+  const { kamar: _, ...rest } = data
   const { data: result, error } = await supabase
     .from('students')
-    .insert({ ...data, is_alumni: false })
+    .insert({ ...rest, kamar_id: finalKamarId, is_alumni: false })
     .select()
     .single()
 
@@ -168,9 +184,30 @@ export async function updateStudent(
 ): Promise<Student> {
   const supabase = createClient()
 
+  let finalKamarId = data.kamar_id !== undefined ? data.kamar_id : undefined
+
+  if (finalKamarId === undefined && data.kamar) {
+    const { data: kamarData } = await supabase
+      .from('kamar')
+      .select('id')
+      .ilike('nama_kamar', data.kamar.trim())
+      .maybeSingle()
+    if (kamarData) {
+      finalKamarId = kamarData.id
+    } else {
+      finalKamarId = null
+    }
+  }
+
+  const { kamar: _, ...rest } = data
+  const updatePayload: any = { ...rest }
+  if (finalKamarId !== undefined) {
+    updatePayload.kamar_id = finalKamarId
+  }
+
   const { data: result, error } = await supabase
     .from('students')
-    .update(data)
+    .update(updatePayload)
     .eq('id', id)
     .select()
     .single()
@@ -205,11 +242,39 @@ export async function deleteStudents(ids: string[]): Promise<void> {
 
 export async function bulkUpdateStudents(
   ids: string[],
-  data: { kelas?: string; unit?: Unit }
+  data: {
+    kelas?: string
+    unit?: Unit
+    jenis_kelamin?: JenisKelamin
+    kamar_id?: string | null
+    kamar?: string
+    nomor_induk?: string
+  }
 ): Promise<void> {
   const supabase = createClient()
 
-  const { error } = await supabase.from('students').update(data).in('id', ids)
+  let finalKamarId = data.kamar_id !== undefined ? data.kamar_id : undefined
+
+  if (finalKamarId === undefined && data.kamar) {
+    const { data: kamarData } = await supabase
+      .from('kamar')
+      .select('id')
+      .ilike('nama_kamar', data.kamar.trim())
+      .maybeSingle()
+    if (kamarData) {
+      finalKamarId = kamarData.id
+    } else {
+      finalKamarId = null
+    }
+  }
+
+  const { kamar: _, ...rest } = data
+  const updatePayload: any = { ...rest }
+  if (finalKamarId !== undefined) {
+    updatePayload.kamar_id = finalKamarId
+  }
+
+  const { error } = await supabase.from('students').update(updatePayload).in('id', ids)
 
   if (error) throw new Error(error.message)
 }
@@ -219,9 +284,38 @@ export async function bulkCreateStudents(
 ): Promise<Student[]> {
   const supabase = createClient()
 
+  const { data: kamarList, error: kamarErr } = await supabase
+    .from('kamar')
+    .select('id, nama_kamar')
+
+  if (kamarErr) throw new Error(kamarErr.message)
+
+  const kamarMap = new Map<string, string>()
+  if (kamarList) {
+    kamarList.forEach((k) => {
+      kamarMap.set(k.nama_kamar.trim().toLowerCase(), k.id)
+    })
+  }
+
+  const mappedData = data.map((item) => {
+    let finalKamarId = item.kamar_id || null
+
+    if (!finalKamarId && item.kamar) {
+      const trimmedKamar = item.kamar.trim().toLowerCase()
+      finalKamarId = kamarMap.get(trimmedKamar) || null
+    }
+
+    const { kamar: _, ...rest } = item
+    return {
+      ...rest,
+      kamar_id: finalKamarId,
+      is_alumni: false,
+    }
+  })
+
   const { data: result, error } = await supabase
     .from('students')
-    .insert(data.map((s) => ({ ...s, is_alumni: false })))
+    .insert(mappedData)
     .select()
 
   if (error) throw new Error(error.message)
