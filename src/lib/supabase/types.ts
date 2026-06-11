@@ -196,3 +196,12 @@ export interface OrangTuaSiswa {
   hubungan: string
   students?: Student
 }
+
+export interface Kamar {
+  id: string
+  nama_kamar: string
+  musyrif_id: string | null
+  unit: Unit
+  created_at: string
+  profiles?: Profile
+}

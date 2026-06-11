@@ -1,5 +1,5 @@
 import { createClient } from '@/lib/supabase/client'
-import type { JenisKelamin, Student, Unit } from '@/lib/supabase/types'
+import type { JenisKelamin, Student, Unit, MataPelajaran } from '@/lib/supabase/types'
 
 export interface CreateStudentInput {
   nama: string
@@ -313,4 +313,29 @@ export async function searchStudents(
   if (error) throw new Error(error.message)
 
   return (data ?? []) as Student[]
+}
+
+export async function getKamarOptions(): Promise<{ id: string; nama_kamar: string }[]> {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('kamar')
+    .select('id, nama_kamar')
+    .order('nama_kamar', { ascending: true })
+
+  if (error) throw new Error(error.message)
+  return data ?? []
+}
+
+export async function getMataKuliah(units: string[]): Promise<MataPelajaran[]> {
+  const supabase = createClient()
+  if (!units || units.length === 0) return []
+
+  const { data, error } = await supabase
+    .from('mata_pelajaran')
+    .select('*')
+    .in('unit', units)
+    .order('nama_mapel', { ascending: true })
+
+  if (error) throw new Error(error.message)
+  return (data ?? []) as MataPelajaran[]
 }

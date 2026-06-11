@@ -9,7 +9,20 @@ import { createClient } from '@/lib/supabase/server'
 
 interface SignupFormData {
   nama_lengkap: string
-  guru_mapel: string
+  guru_mapel?: string
+  tipe_role: 'guru' | 'musyrif' | 'guru_musyrif'
+  unit_mengajar: ('SD' | 'SMP' | 'SMA')[]
+  mapel_ids?: string[]
+  kamar_ids?: string[]
+  email: string
+  username: string
+  password: string
+}
+
+interface SignupOrangTuaFormData {
+  nama_lengkap: string
+  pekerjaan?: string
+  siswa_ids: string[]
   email: string
   username: string
   password: string
@@ -101,7 +114,7 @@ export async function signup(
   const normalizedUsername = formData.username.trim().toLowerCase()
   const email = formData.email.trim().toLowerCase()
   const namaLengkap = formData.nama_lengkap.trim()
-  const guruMapel = formData.guru_mapel.trim()
+  const guruMapel = (formData.guru_mapel ?? '').trim()
 
   const { data: existingProfile, error: checkError } = await admin
     .from('profiles')
@@ -180,11 +193,17 @@ export async function signup(
   const { error: insertError } = await admin.from('profiles').insert({
     user_id: userId,
     nama_lengkap: namaLengkap,
-    guru_mapel: guruMapel,
+    guru_mapel: guruMapel || null,
     username: normalizedUsername,
     email,
     role: 'user',
     is_approved: false,
+    tipe_role: formData.tipe_role,
+    unit_mengajar: formData.unit_mengajar,
+    mapel_ids: formData.mapel_ids || null,
+    kamar_ids: formData.kamar_ids || null,
+    is_musyrif: formData.tipe_role === 'musyrif' || formData.tipe_role === 'guru_musyrif',
+    is_multi_mapel: formData.mapel_ids && formData.mapel_ids.length > 1 ? true : false,
   })
 
   if (insertError) {
@@ -203,6 +222,159 @@ export async function signup(
     }
 
     return { error: 'Gagal membuat profil akun' }
+  }
+
+  return { success: true }
+}
+
+export async function signupOrangTua(
+  formData: SignupOrangTuaFormData
+): Promise<{ error?: string; success?: boolean }> {
+  let admin
+  try {
+    admin = createAdminClient()
+  } catch {
+    return {
+      error:
+        'Konfigurasi server tidak lengkap. Tambahkan SUPABASE_SERVICE_ROLE_KEY di environment.',
+    }
+  }
+
+  const supabase = await createClient()
+  const normalizedUsername = formData.username.trim().toLowerCase()
+  const email = formData.email.trim().toLowerCase()
+  const namaLengkap = formData.nama_lengkap.trim()
+  const pekerjaan = formData.pekerjaan?.trim() || null
+  const siswa_ids = formData.siswa_ids
+
+  // 1. Cek username unik
+  const { data: existingProfile, error: checkError } = await admin
+    .from('profiles')
+    .select('id')
+    .ilike('username', normalizedUsername)
+    .maybeSingle()
+
+  if (checkError) {
+    return { error: 'Gagal memeriksa username' }
+  }
+
+  if (existingProfile) {
+    return { error: 'Username sudah digunakan' }
+  }
+
+  const { data: existingEmailProfile } = await admin
+    .from('profiles')
+    .select('id')
+    .eq('email', email)
+    .maybeSingle()
+
+  if (existingEmailProfile) {
+    return { error: 'Email sudah terdaftar' }
+  }
+
+  let userId: string
+
+  // 2. supabase.auth.signUp()
+  const { data: authData, error: signUpError } = await supabase.auth.signUp({
+    email,
+    password: formData.password,
+    options: {
+      data: {
+        nama_lengkap: namaLengkap,
+        username: normalizedUsername,
+      },
+    },
+  })
+
+  if (signUpError) {
+    if (!isAuthUserAlreadyExists(signUpError.message)) {
+      return { error: signUpError.message }
+    }
+
+    const { data: signInData, error: signInError } =
+      await supabase.auth.signInWithPassword({
+        email,
+        password: formData.password,
+      })
+
+    if (signInError || !signInData.user) {
+      return {
+        error:
+          'Email sudah terdaftar. Gunakan email lain atau hubungi administrator.',
+      }
+    }
+
+    userId = signInData.user.id
+    await supabase.auth.signOut()
+
+    const { data: existingUserProfile } = await admin
+      .from('profiles')
+      .select('id')
+      .eq('user_id', userId)
+      .maybeSingle()
+
+    if (existingUserProfile) {
+      return { error: 'Akun sudah terdaftar. Silakan login.' }
+    }
+  } else if (!authData.user) {
+    return { error: 'Gagal membuat akun' }
+  } else {
+    userId = authData.user.id
+    await supabase.auth.signOut()
+  }
+
+  // 3. INSERT profiles: role='orangtua', tipe_role='orangtua', is_approved=false
+  const { data: insertedProfile, error: insertError } = await admin
+    .from('profiles')
+    .insert({
+      user_id: userId,
+      nama_lengkap: namaLengkap,
+      username: normalizedUsername,
+      email,
+      role: 'orangtua',
+      tipe_role: 'orangtua',
+      is_approved: false,
+      pekerjaan,
+      student_ids: siswa_ids,
+    })
+    .select('id')
+    .single()
+
+  if (insertError) {
+    return { error: 'Gagal membuat profil akun' }
+  }
+
+  // 4. INSERT orangtua: nama_lengkap, pekerjaan, email, profile_id
+  const { data: insertedOrangTua, error: ortuError } = await admin
+    .from('orangtua')
+    .insert({
+      nama_lengkap: namaLengkap,
+      pekerjaan,
+      email,
+      profile_id: insertedProfile.id,
+      student_ids: siswa_ids,
+    })
+    .select('id')
+    .single()
+
+  if (ortuError) {
+    await admin.from('profiles').delete().eq('id', insertedProfile.id)
+    return { error: 'Gagal membuat data orang tua' }
+  }
+
+  // 5. INSERT orangtua_siswa: untuk setiap siswa_id
+  const relasi = siswa_ids.map((siswa_id) => ({
+    orangtua_id: insertedOrangTua.id,
+    siswa_id,
+    hubungan: 'ayah/ibu',
+  }))
+
+  const { error: relasiError } = await admin.from('orangtua_siswa').insert(relasi)
+
+  if (relasiError) {
+    await admin.from('orangtua').delete().eq('id', insertedOrangTua.id)
+    await admin.from('profiles').delete().eq('id', insertedProfile.id)
+    return { error: 'Gagal membuat relasi orang tua dan siswa' }
   }
 
   return { success: true }

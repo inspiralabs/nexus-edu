@@ -31,6 +31,7 @@ const PATH_TITLES: Record<string, string> = {
   '/admin/guru': 'Data Guru',
   '/admin/orangtua': 'Data Orang Tua',
   '/admin/mapel': 'Mata Pelajaran',
+  '/admin/kamar': 'Data Kamar',
   '/admin/semester': 'Semester & Tahun Pelajaran',
   '/admin/announcements': 'Pengumuman',
   '/superadmin': 'Super Dashboard',

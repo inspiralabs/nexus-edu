@@ -252,6 +252,13 @@ const menuItems: MenuItemConfig[] = [
         minRole: 'admin',
       },
       {
+        id: 'admin-kamar',
+        label: 'Data Kamar',
+        href: '/admin/kamar',
+        icon: Home,
+        minRole: 'admin',
+      },
+      {
         id: 'admin-semester',
         label: 'Semester & TP',
         href: '/admin/semester',
