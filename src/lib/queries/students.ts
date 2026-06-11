@@ -315,15 +315,23 @@ export async function searchStudents(
   return (data ?? []) as Student[]
 }
 
-export async function getKamarOptions(): Promise<{ id: string; nama_kamar: string }[]> {
+export async function getKamarOptions(units?: string[]): Promise<{ id: string; nama_kamar: string; unit?: string }[]> {
   const supabase = createClient()
-  const { data, error } = await supabase
+  if (units && units.length === 0) return []
+
+  let query = supabase
     .from('kamar')
-    .select('id, nama_kamar')
+    .select('id, nama_kamar, unit')
     .order('nama_kamar', { ascending: true })
 
+  if (units && units.length > 0) {
+    query = query.in('unit', units)
+  }
+
+  const { data, error } = await query
+
   if (error) throw new Error(error.message)
-  return data ?? []
+  return (data ?? []) as { id: string; nama_kamar: string; unit?: string }[]
 }
 
 export async function getMataKuliah(units: string[]): Promise<MataPelajaran[]> {

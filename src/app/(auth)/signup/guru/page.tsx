@@ -88,9 +88,9 @@ export default function SignupGuruPage() {
 
   // Load Kamar Options
   const { data: kamarData = [], isLoading: isKamarLoading } = useQuery({
-    queryKey: ['kamar-options'],
-    queryFn: () => getKamarOptions(),
-    enabled: tipeRole === 'musyrif' || tipeRole === 'guru_musyrif',
+    queryKey: ['kamar-options', selectedUnits],
+    queryFn: () => getKamarOptions(selectedUnits),
+    enabled: selectedUnits.length > 0 && (tipeRole === 'musyrif' || tipeRole === 'guru_musyrif'),
   })
 
   // Clear fields depending on dynamic roles
@@ -102,12 +102,12 @@ export default function SignupGuruPage() {
     }
   }, [tipeRole, setValue])
 
-  // Clear mapel if no unit is selected
+  // Reset mapel and kamar selection whenever selected units change
+  const serializedUnits = selectedUnits.join(',')
   useEffect(() => {
-    if (selectedUnits.length === 0) {
-      setValue('mapel_ids', [])
-    }
-  }, [selectedUnits, setValue])
+    setValue('mapel_ids', [])
+    setValue('kamar_ids', [])
+  }, [serializedUnits, setValue])
 
   // Limit kamar selection to 1 if not Checked for multi-rooms
   useEffect(() => {
@@ -388,58 +388,68 @@ export default function SignupGuruPage() {
             <div className="space-y-3 border-t border-[var(--border)] pt-3">
               <div className="flex items-center justify-between">
                 <Label>Kamar Diasuh</Label>
-                <div className="flex items-center gap-2">
-                  <Checkbox
-                    id="multi-kamar"
-                    checked={mengasuhLebihDari1Kamar}
-                    onCheckedChange={(checked) => setMengasuhLebihDari1Kamar(!!checked)}
-                  />
-                  <Label htmlFor="multi-kamar" className="font-normal text-xs cursor-pointer">
-                    Mengasuh lebih dari 1 kamar
-                  </Label>
-                </div>
+                {selectedUnits.length > 0 && (
+                  <div className="flex items-center gap-2">
+                    <Checkbox
+                      id="multi-kamar"
+                      checked={mengasuhLebihDari1Kamar}
+                      onCheckedChange={(checked) => setMengasuhLebihDari1Kamar(!!checked)}
+                    />
+                    <Label htmlFor="multi-kamar" className="font-normal text-xs cursor-pointer">
+                      Mengasuh lebih dari 1 kamar
+                    </Label>
+                  </div>
+                )}
               </div>
-              <div className="relative">
-                <Combobox
-                  options={kamarOptions}
-                  value={selectedKamarIds[0] ?? ''}
-                  onSelect={() => {}}
-                  onSearch={setKamarSearch}
-                  placeholder="Cari kamar..."
-                  isLoading={isKamarLoading}
-                  emptyMessage={
-                    kamarSearch
-                      ? 'Kamar tidak ditemukan'
-                      : 'Tidak ada kamar tersedia'
-                  }
-                />
-              </div>
-              {kamarOptions.length > 0 ? (
-                <div className="mt-2 max-h-36 space-y-1 overflow-y-auto rounded-md border border-[var(--border)] p-2 bg-[var(--surface-2)]">
-                  {kamarOptions.map((opt) => (
-                    <div key={opt.value} className="flex items-center gap-2">
-                      <Checkbox
-                        id={`kamar-${opt.value}`}
-                        checked={selectedKamarIds.includes(opt.value)}
-                        onCheckedChange={() => toggleKamar(opt.value)}
-                      />
-                      <Label htmlFor={`kamar-${opt.value}`} className="font-normal text-sm cursor-pointer">
-                        {opt.label}
-                      </Label>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                kamarSearch && (
-                  <p className="text-xs text-status-red italic mt-2">
-                    Kamar tidak ditemukan
-                  </p>
-                )
-              )}
-              {selectedKamarIds.length > 0 && (
-                <p className="text-xs text-[var(--text-secondary)]">
-                  {selectedKamarIds.length} kamar dipilih
+              {selectedUnits.length === 0 ? (
+                <p className="text-xs text-[var(--text-tertiary)] italic">
+                  Pilih unit mengajar terlebih dahulu untuk menampilkan daftar kamar.
                 </p>
+              ) : (
+                <>
+                  <div className="relative">
+                    <Combobox
+                      options={kamarOptions}
+                      value={selectedKamarIds[0] ?? ''}
+                      onSelect={() => {}}
+                      onSearch={setKamarSearch}
+                      placeholder="Cari kamar..."
+                      isLoading={isKamarLoading}
+                      emptyMessage={
+                        kamarSearch
+                          ? 'Kamar tidak ditemukan'
+                          : 'Belum ada kamar untuk unit yang dipilih'
+                      }
+                    />
+                  </div>
+                  {kamarOptions.length > 0 ? (
+                    <div className="mt-2 max-h-36 space-y-1 overflow-y-auto rounded-md border border-[var(--border)] p-2 bg-[var(--surface-2)]">
+                      {kamarOptions.map((opt) => (
+                        <div key={opt.value} className="flex items-center gap-2">
+                          <Checkbox
+                            id={`kamar-${opt.value}`}
+                            checked={selectedKamarIds.includes(opt.value)}
+                            onCheckedChange={() => toggleKamar(opt.value)}
+                          />
+                          <Label htmlFor={`kamar-${opt.value}`} className="font-normal text-sm cursor-pointer">
+                            {opt.label}
+                          </Label>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    kamarSearch && (
+                      <p className="text-xs text-status-red italic mt-2">
+                        Kamar tidak ditemukan
+                      </p>
+                    )
+                  )}
+                  {selectedKamarIds.length > 0 && (
+                    <p className="text-xs text-[var(--text-secondary)]">
+                      {selectedKamarIds.length} kamar dipilih
+                    </p>
+                  )}
+                </>
               )}
             </div>
           )}
