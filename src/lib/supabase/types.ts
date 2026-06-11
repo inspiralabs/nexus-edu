@@ -121,6 +121,9 @@ export interface Prestasi {
   bidang_id: string | null
   kategori_id: string | null
   tingkat_kejuaraan: TingkatKejuaraan | null
+  tipe: 'siswa' | 'guru' | null
+  guru_id: string | null
+  sudah_dilempar_kedisiplinan: boolean | null
   created_at: string
   students?: Student
   event?: Event

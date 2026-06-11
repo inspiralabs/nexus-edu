@@ -49,6 +49,7 @@ import {
   deletePrestasi,
   searchBidang,
   searchEvent,
+  searchGuru,
   searchJuara,
   searchKategoriPrestasi,
   TINGKAT_KEJUARAAN,
@@ -70,6 +71,9 @@ import type {
 const PAGE_SIZE_OPTIONS = [10, 20, 30, 40, 50] as const
 const UNITS: Unit[] = ['SD', 'SMP', 'SMA']
 
+type TipePrestasi = 'siswa' | 'guru'
+
+// Schema siswa (sama seperti sebelumnya)
 const prestasiSchema = z.object({
   unit: z.enum(['SD', 'SMP', 'SMA']),
   siswa_id: z.string().uuid('Pilih siswa'),
@@ -85,7 +89,24 @@ const prestasiSchema = z.object({
   ),
 })
 
+// Schema guru
+const prestasiGuruSchema = z.object({
+  unit: z.enum(['SD', 'SMP', 'SMA']),
+  guru_id: z.string().uuid('Pilih guru'),
+  event_id: z.string().uuid('Pilih event'),
+  tempat: z.enum(['Offline', 'Online']),
+  waktu: z.date('Pilih waktu'),
+  juara_id: z.string().uuid('Pilih juara'),
+  jenis_juara: z.enum(['Individu', 'Kelompok']),
+  bidang_id: z.string().uuid('Pilih bidang'),
+  kategori_id: z.string().uuid('Pilih kategori'),
+  tingkat_kejuaraan: z.enum(
+    [...TINGKAT_KEJUARAAN] as [TingkatKejuaraan, ...TingkatKejuaraan[]]
+  ),
+})
+
 type PrestasiFormValues = z.infer<typeof prestasiSchema>
+type PrestasiGuruFormValues = z.infer<typeof prestasiGuruSchema>
 
 const bulkPrestasiSchema = z.object({
   event_id: z.string().uuid('Pilih event'),
@@ -338,6 +359,7 @@ export default function PrestasiDataPage() {
   const [sortField, setSortField] = useState('waktu')
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc')
   const [activeUnit, setActiveUnit] = useState<Unit>('SD')
+  const [activeTipe, setActiveTipe] = useState<TipePrestasi>('siswa')
   const [selectedRows, setSelectedRows] = useState<string[]>([])
   const [search, setSearch] = useState('')
   const [selectedClassFilter, setSelectedClassFilter] = useState<string>('all')
@@ -359,6 +381,9 @@ export default function PrestasiDataPage() {
   const [deletingItem, setDeletingItem] = useState<Prestasi | null>(null)
 
   const [kelasDisplay, setKelasDisplay] = useState('')
+
+  const [guruSearch, setGuruSearch] = useState('')
+  const [guruOptions, setGuruOptions] = useState<ComboboxOption[]>([])
 
   const [studentSearch, setStudentSearch] = useState('')
   const [eventSearch, setEventSearch] = useState('')
@@ -387,6 +412,7 @@ export default function PrestasiDataPage() {
   >([])
 
   const debouncedSearch = useDebounce(search, 300)
+  const debouncedGuruSearch = useDebounce(guruSearch, 300)
   const debouncedStudentSearch = useDebounce(studentSearch, 300)
   const debouncedEventSearch = useDebounce(eventSearch, 300)
   const debouncedJuaraSearch = useDebounce(juaraSearch, 300)
@@ -415,6 +441,22 @@ export default function PrestasiDataPage() {
     },
   })
 
+  const guruForm = useForm<PrestasiGuruFormValues>({
+    resolver: zodResolver(prestasiGuruSchema),
+    defaultValues: {
+      unit: 'SD',
+      guru_id: '',
+      event_id: '',
+      tempat: 'Offline',
+      waktu: new Date(),
+      juara_id: '',
+      jenis_juara: 'Individu',
+      bidang_id: '',
+      kategori_id: '',
+      tingkat_kejuaraan: 'Tingkat Sekolah',
+    },
+  })
+
   const bulkForm = useForm<BulkPrestasiFormValues>({
     resolver: zodResolver(bulkPrestasiSchema),
     defaultValues: {
@@ -432,6 +474,7 @@ export default function PrestasiDataPage() {
   const queryFilters = useMemo(
     () => ({
       unit: activeUnit,
+      tipe: activeTipe,
       search: debouncedSearch || undefined,
       kelas: selectedClassFilter,
       juaraId:
@@ -447,6 +490,7 @@ export default function PrestasiDataPage() {
     }),
     [
       activeUnit,
+      activeTipe,
       debouncedSearch,
       selectedClassFilter,
       selectedJuaraFilter,
@@ -485,7 +529,22 @@ export default function PrestasiDataPage() {
       )
       return results
     },
-    enabled: isFormOpen || isBulkAddOpen,
+    enabled: (isFormOpen || isBulkAddOpen) && activeTipe === 'siswa',
+  })
+
+  const { isLoading: guruSearchLoading } = useQuery({
+    queryKey: ['guru-search', debouncedGuruSearch],
+    queryFn: async () => {
+      const results = await searchGuru(debouncedGuruSearch)
+      setGuruOptions(
+        results.map((g) => ({
+          value: g.id,
+          label: g.nama_lengkap,
+        }))
+      )
+      return results
+    },
+    enabled: (isFormOpen || isBulkAddOpen) && activeTipe === 'guru',
   })
 
   useEffect(() => {
@@ -624,7 +683,22 @@ export default function PrestasiDataPage() {
 
   const buildPayload = (values: PrestasiFormValues): CreatePrestasiInput => ({
     unit: values.unit,
+    tipe: 'siswa',
     siswa_id: values.siswa_id,
+    event_id: values.event_id,
+    tempat: values.tempat,
+    waktu: format(values.waktu, 'yyyy-MM-dd'),
+    juara_id: values.juara_id,
+    jenis_juara: values.jenis_juara,
+    bidang_id: values.bidang_id,
+    kategori_id: values.kategori_id,
+    tingkat_kejuaraan: values.tingkat_kejuaraan,
+  })
+
+  const buildGuruPayload = (values: PrestasiGuruFormValues): CreatePrestasiInput => ({
+    unit: values.unit,
+    tipe: 'guru',
+    guru_id: values.guru_id,
     event_id: values.event_id,
     tempat: values.tempat,
     waktu: format(values.waktu, 'yyyy-MM-dd'),
@@ -649,8 +723,8 @@ export default function PrestasiDataPage() {
   })
 
   const createMutation = useMutation({
-    mutationFn: (values: PrestasiFormValues) =>
-      createPrestasi(buildPayload(values)),
+    mutationFn: (input: CreatePrestasiInput) =>
+      createPrestasi(input),
     onSuccess: async (result) => {
       const userId = getUserId()
       if (userId) {
@@ -831,6 +905,8 @@ export default function PrestasiDataPage() {
   })
 
   const resetComboboxState = () => {
+    setGuruSearch('')
+    setGuruOptions([])
     setStudentSearch('')
     setEventSearch('')
     setJuaraSearch('')
@@ -878,6 +954,18 @@ export default function PrestasiDataPage() {
     form.reset({
       unit,
       siswa_id: '',
+      event_id: '',
+      tempat: 'Offline',
+      waktu: new Date(),
+      juara_id: '',
+      jenis_juara: 'Individu',
+      bidang_id: '',
+      kategori_id: '',
+      tingkat_kejuaraan: 'Tingkat Sekolah',
+    })
+    guruForm.reset({
+      unit,
+      guru_id: '',
       event_id: '',
       tempat: 'Offline',
       waktu: new Date(),
@@ -1040,7 +1128,20 @@ export default function PrestasiDataPage() {
         oldItem: editingItem,
       })
     } else {
-      createMutation.mutate({ ...values, unit: activeUnit })
+      createMutation.mutate(buildPayload({ ...values, unit: activeUnit }))
+    }
+  }
+
+  const onSubmitGuruForm = (values: PrestasiGuruFormValues) => {
+    if (isEditOpen && editingItem) {
+      updateMutation.mutate({
+        id: editingItem.id,
+        // reuse updateMutation which accepts PrestasiFormValues; we need to cast via payload
+        values: values as unknown as PrestasiFormValues,
+        oldItem: editingItem,
+      })
+    } else {
+      createMutation.mutate(buildGuruPayload(values))
     }
   }
 
@@ -1148,6 +1249,101 @@ export default function PrestasiDataPage() {
   const isSubmitting = createMutation.isPending || updateMutation.isPending
   const isBulkSubmitting = bulkUpdateMutation.isPending
   const isBulkCreateSubmitting = bulkCreateMutation.isPending
+
+  // Kolom tabel untuk mode guru
+  const guruColumns = useMemo<ColumnDef<Prestasi>[]>(
+    () => [
+      {
+        id: 'no',
+        header: 'No',
+        enableSorting: false,
+        cell: ({ row }) => (page - 1) * pageSize + row.index + 1,
+      },
+      {
+        accessorKey: 'unit',
+        header: 'Unit',
+        cell: ({ row }) => row.original.unit ?? '-',
+      },
+      {
+        id: 'nama_guru',
+        header: 'Nama Guru',
+        enableSorting: false,
+        cell: ({ row }) => row.original.guru_id ? (row.original.guru_id) : '-',
+      },
+      {
+        id: 'event',
+        accessorKey: 'event_id',
+        header: 'Event',
+        cell: ({ row }) => row.original.event?.nama_event ?? '-',
+      },
+      {
+        accessorKey: 'tempat',
+        header: 'Tempat',
+        cell: ({ row }) => row.original.tempat ?? '-',
+      },
+      {
+        accessorKey: 'waktu',
+        header: 'Waktu',
+        cell: ({ row }) => formatTanggal(row.original.waktu),
+      },
+      {
+        id: 'juara',
+        accessorKey: 'juara_id',
+        header: 'Juara',
+        cell: ({ row }) => row.original.juara?.nama_juara ?? '-',
+      },
+      {
+        accessorKey: 'jenis_juara',
+        header: 'Jenis Juara',
+        cell: ({ row }) => row.original.jenis_juara ?? '-',
+      },
+      {
+        id: 'bidang',
+        accessorKey: 'bidang_id',
+        header: 'Bidang',
+        cell: ({ row }) => row.original.bidang?.nama_bidang ?? '-',
+      },
+      {
+        id: 'kategori',
+        accessorKey: 'kategori_id',
+        header: 'Kategori',
+        cell: ({ row }) => row.original.kategori_prestasi?.nama_kategori ?? '-',
+      },
+      {
+        accessorKey: 'tingkat_kejuaraan',
+        header: 'Tingkat',
+        cell: ({ row }) => row.original.tingkat_kejuaraan ?? '-',
+      },
+      {
+        id: 'actions',
+        header: 'Aksi',
+        enableSorting: false,
+        cell: ({ row }) => (
+          <div className="flex items-center gap-1">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              onClick={() => openEditDialog(row.original)}
+              aria-label="Edit prestasi"
+            >
+              <Edit className="h-4 w-4" />
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              onClick={() => openSingleDelete(row.original)}
+              aria-label="Hapus prestasi"
+            >
+              <Trash2 className="h-4 w-4 text-status-red" />
+            </Button>
+          </div>
+        ),
+      },
+    ],
+    [page, pageSize]
+  )
 
   const renderPrestasiFormFields = (showAddToListButton = false) => (
     <div className="space-y-4">
@@ -1408,6 +1604,24 @@ export default function PrestasiDataPage() {
         </TabsList>
       </Tabs>
 
+      {/* Toggle Tipe: Siswa / Guru */}
+      <div className="flex items-center gap-2">
+        <span className="text-sm text-[var(--text-secondary)]">Tipe:</span>
+        <Tabs
+          value={activeTipe}
+          onValueChange={(v) => {
+            setActiveTipe(v as TipePrestasi)
+            setPage(1)
+            setSelectedRows([])
+          }}
+        >
+          <TabsList>
+            <TabsTrigger value="siswa">Siswa</TabsTrigger>
+            <TabsTrigger value="guru">Guru</TabsTrigger>
+          </TabsList>
+        </Tabs>
+      </div>
+
       <div className="flex flex-col gap-3 xl:flex-row xl:items-center">
         <div className="flex flex-1 flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-center">
           <div className="relative min-w-[200px] max-w-sm flex-1">
@@ -1504,7 +1718,7 @@ export default function PrestasiDataPage() {
       )}
 
       <DataTable
-        columns={columns}
+        columns={activeTipe === 'guru' ? guruColumns : columns}
         data={data?.data ?? []}
         pagination={{
           page,
@@ -1536,24 +1750,59 @@ export default function PrestasiDataPage() {
         <DialogContent className="max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
-              {isEditOpen ? 'Edit Prestasi' : 'Tambah Prestasi'}
+              {isEditOpen ? 'Edit Prestasi' : `Tambah Prestasi ${activeTipe === 'guru' ? 'Guru' : 'Siswa'}`}
             </DialogTitle>
           </DialogHeader>
-          <form
-            onSubmit={form.handleSubmit(onSubmitForm)}
-            className="space-y-4"
-          >
-            {renderPrestasiFormFields(false)}
-
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={closeFormDialog}>
-                Batal
-              </Button>
-              <Button type="submit" isLoading={isSubmitting}>
-                {isEditOpen ? 'Simpan' : 'Tambah'}
-              </Button>
-            </DialogFooter>
-          </form>
+          {activeTipe === 'guru' ? (
+            <form
+              onSubmit={guruForm.handleSubmit(onSubmitGuruForm)}
+              className="space-y-4"
+            >
+              {/* Form Guru */}
+              <div className="space-y-2">
+                <Label>Nama Guru</Label>
+                <Combobox
+                  options={guruOptions}
+                  value={guruForm.watch('guru_id')}
+                  onSelect={(value) => {
+                    guruForm.setValue('guru_id', value, { shouldValidate: true })
+                  }}
+                  onSearch={setGuruSearch}
+                  placeholder="Cari nama guru..."
+                  isLoading={guruSearchLoading}
+                />
+                {guruForm.formState.errors.guru_id && (
+                  <p className="text-xs text-status-red">
+                    {guruForm.formState.errors.guru_id.message}
+                  </p>
+                )}
+              </div>
+              {renderPrestasiFormFields(false)}
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={closeFormDialog}>
+                  Batal
+                </Button>
+                <Button type="submit" isLoading={isSubmitting}>
+                  {isEditOpen ? 'Simpan' : 'Tambah'}
+                </Button>
+              </DialogFooter>
+            </form>
+          ) : (
+            <form
+              onSubmit={form.handleSubmit(onSubmitForm)}
+              className="space-y-4"
+            >
+              {renderPrestasiFormFields(false)}
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={closeFormDialog}>
+                  Batal
+                </Button>
+                <Button type="submit" isLoading={isSubmitting}>
+                  {isEditOpen ? 'Simpan' : 'Tambah'}
+                </Button>
+              </DialogFooter>
+            </form>
+          )}
         </DialogContent>
       </Dialog>
 

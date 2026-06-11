@@ -22,6 +22,7 @@ export interface UpdateStudentInput {
 export interface GetStudentsOptions {
   search?: string
   kelas?: string
+  unit?: Unit
   page?: number
   pageSize?: number
   sortField?: string
@@ -100,6 +101,10 @@ export async function getAlumniStudents(
     .select('*', { count: 'exact', head: true })
     .eq('is_alumni', true)
 
+  if (options?.unit) {
+    countQuery = countQuery.eq('unit', options.unit)
+  }
+
   if (options?.search) {
     countQuery = countQuery.ilike('nama', `%${options.search}%`)
   }
@@ -116,6 +121,10 @@ export async function getAlumniStudents(
     .from('students')
     .select('*')
     .eq('is_alumni', true)
+
+  if (options?.unit) {
+    dataQuery = dataQuery.eq('unit', options.unit)
+  }
 
   if (options?.search) {
     dataQuery = dataQuery.ilike('nama', `%${options.search}%`)

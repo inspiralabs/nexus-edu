@@ -11,6 +11,7 @@ import {
   Gavel,
   GitBranch,
   Home,
+  Info,
   Key,
   LayoutDashboard,
   List,
@@ -278,6 +279,13 @@ const menuItems: MenuItemConfig[] = [
       },
     ],
   },
+  {
+    id: 'about',
+    label: 'Tentang',
+    href: '/about',
+    icon: Info,
+    minRole: 'user',
+  },
 ]
 
 /** Menu khusus role 'orangtua' */
@@ -330,6 +338,14 @@ const menuItemsOrangtua: MenuItemConfig[] = [
         allowedRoles: ['orangtua'],
       },
     ],
+  },
+  {
+    id: 'orangtua-about',
+    label: 'Tentang',
+    href: '/about',
+    icon: Info,
+    minRole: 'orangtua',
+    allowedRoles: ['orangtua'],
   },
 ]
 

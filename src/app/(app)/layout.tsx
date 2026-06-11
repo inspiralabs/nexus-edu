@@ -35,6 +35,7 @@ const PATH_TITLES: Record<string, string> = {
   '/superadmin/analytics': 'Analytics',
   '/superadmin/settings': 'System Settings',
   '/account': 'Akun Saya',
+  '/about': 'Tentang AMANAH',
 }
 
 function getPageTitle(pathname: string): string {

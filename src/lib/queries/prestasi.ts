@@ -14,7 +14,9 @@ import type {
 
 export interface CreatePrestasiInput {
   unit: Unit
-  siswa_id: string
+  siswa_id?: string
+  guru_id?: string
+  tipe?: 'siswa' | 'guru'
   event_id: string
   tempat: Tempat
   waktu: string
@@ -32,6 +34,7 @@ export interface PrestasiFilters {
   kategori_id?: string[]
   tingkat_kejuaraan?: TingkatKejuaraan[]
   search?: string
+  tipe?: 'siswa' | 'guru'
   page?: number
   pageSize?: number
   sortField?: string
@@ -221,16 +224,21 @@ export async function getPrestasi(
   const to = from + pageSize - 1
   const sortField = resolveSortField(filters?.sortField)
   const ascending = filters?.sortDirection !== 'desc'
+  const tipe = filters?.tipe ?? 'siswa'
 
-  const studentIds = await getFilteredStudentIds(filters?.search)
-
-  if (studentIds && studentIds.length === 0) {
-    return { data: [], total: 0 }
+  // Hanya cari studentIds saat mode siswa
+  let studentIds: string[] | null = null
+  if (tipe === 'siswa') {
+    studentIds = await getFilteredStudentIds(filters?.search)
+    if (studentIds && studentIds.length === 0) {
+      return { data: [], total: 0 }
+    }
   }
 
   let countQuery = supabase
     .from('prestasi')
     .select('*', { count: 'exact', head: true })
+    .eq('tipe', tipe)
 
   countQuery = applyPrestasiTableFilters(countQuery, filters, studentIds)
 
@@ -239,6 +247,7 @@ export async function getPrestasi(
   if (countError) throw new Error(countError.message)
 
   let dataQuery = supabase.from('prestasi').select(PRESTASI_SELECT)
+    .eq('tipe', tipe)
 
   dataQuery = applyPrestasiTableFilters(dataQuery, filters, studentIds)
 
@@ -531,6 +540,23 @@ export async function searchKategoriPrestasi(
   if (error) throw new Error(error.message)
 
   return (data ?? []) as KategoriPrestasi[]
+}
+
+export async function searchGuru(
+  query: string
+): Promise<{ id: string; nama_lengkap: string; role: string }[]> {
+  const supabase = createClient()
+
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('id, nama_lengkap, role')
+    .eq('role', 'user')
+    .ilike('nama_lengkap', `%${query}%`)
+    .limit(10)
+
+  if (error) throw new Error(error.message)
+
+  return (data ?? []) as { id: string; nama_lengkap: string; role: string }[]
 }
 
 export async function createEvent(data: {

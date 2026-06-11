@@ -139,7 +139,13 @@ export default function StudentsPage() {
   const [editingStudent, setEditingStudent] = useState<Student | null>(null)
   const [alumniTargetStudent, setAlumniTargetStudent] = useState<Student | null>(null)
   const [restoreTargetStudent, setRestoreTargetStudent] = useState<Student | null>(null)
-  const [bulkEditData, setBulkEditData] = useState({ kelas: '' })
+  const [bulkEditData, setBulkEditData] = useState<{
+    kelas: string
+    jenis_kelamin: JenisKelamin | ''
+    kamar: string
+    nomor_induk: string
+  }>({ kelas: '', jenis_kelamin: '', kamar: '', nomor_induk: '' })
+  const [alumniUnitFilter, setAlumniUnitFilter] = useState<Unit | 'all'>('all')
   const [deleteTargetIds, setDeleteTargetIds] = useState<string[]>([])
   const [deletingStudents, setDeletingStudents] = useState<Student[]>([])
 
@@ -155,6 +161,7 @@ export default function StudentsPage() {
     pageSize,
     debouncedSearch,
     selectedClassFilter,
+    alumniUnitFilter,
     sortField,
     sortDirection,
   ] as const
@@ -170,7 +177,12 @@ export default function StudentsPage() {
         sortField,
         sortDirection,
       }
-      if (isAlumniTab) return getAlumniStudents(opts)
+      if (isAlumniTab) {
+        return getAlumniStudents({
+          ...opts,
+          unit: alumniUnitFilter !== 'all' ? alumniUnitFilter : undefined,
+        })
+      }
       return getStudents(activeTab as Unit, opts)
     },
   })
@@ -338,12 +350,16 @@ export default function StudentsPage() {
   const bulkUpdateMutation = useMutation({
     mutationFn: ({
       ids,
-      kelas,
+      oldStudents: _old,
+      ...payload
     }: {
       ids: string[]
-      kelas: string
+      kelas?: string
+      jenis_kelamin?: JenisKelamin
+      kamar?: string
+      nomor_induk?: string
       oldStudents: Student[]
-    }) => bulkUpdateStudents(ids, { kelas }),
+    }) => bulkUpdateStudents(ids, payload),
     onSuccess: async (_, variables) => {
       const userId = getUserId()
       if (userId) {
@@ -354,7 +370,7 @@ export default function StudentsPage() {
             'students',
             oldStudent.id,
             studentToRecord(oldStudent),
-            { ...studentToRecord(oldStudent), kelas: variables.kelas }
+            { ...studentToRecord(oldStudent), ...variables }
           )
         }
       }
@@ -365,7 +381,7 @@ export default function StudentsPage() {
       })
       setSelectedRows([])
       setIsBulkEditOpen(false)
-      setBulkEditData({ kelas: '' })
+      setBulkEditData({ kelas: '', jenis_kelamin: '', kamar: '', nomor_induk: '' })
     },
     onError: (error: Error) => {
       toast({ title: 'Gagal', description: error.message, variant: 'destructive' })
@@ -395,6 +411,7 @@ export default function StudentsPage() {
     setPage(1)
     setSelectedRows([])
     setSelectedClassFilter('all')
+    setAlumniUnitFilter('all')
   }
 
   const handleSortChange = (field: string, direction: 'asc' | 'desc') => {
@@ -435,7 +452,7 @@ export default function StudentsPage() {
   }
 
   const openBulkEdit = () => {
-    setBulkEditData({ kelas: '' })
+    setBulkEditData({ kelas: '', jenis_kelamin: '', kamar: '', nomor_induk: '' })
     setIsBulkEditOpen(true)
   }
 
@@ -483,13 +500,24 @@ export default function StudentsPage() {
   }
 
   const handleBulkEditSubmit = () => {
-    const kelas = bulkEditData.kelas.trim()
-    if (kelas.length < 1) {
-      toast({ title: 'Validasi gagal', description: 'Kelas wajib diisi', variant: 'destructive' })
+    const hasAnyValue =
+      bulkEditData.kelas.trim() ||
+      bulkEditData.jenis_kelamin ||
+      bulkEditData.kamar.trim() ||
+      bulkEditData.nomor_induk.trim()
+
+    if (!hasAnyValue) {
+      toast({ title: 'Validasi gagal', description: 'Isi minimal satu field yang ingin diubah', variant: 'destructive' })
       return
     }
+    const payload: { kelas?: string; jenis_kelamin?: JenisKelamin; kamar?: string; nomor_induk?: string } = {}
+    if (bulkEditData.kelas.trim()) payload.kelas = bulkEditData.kelas.trim()
+    if (bulkEditData.jenis_kelamin) payload.jenis_kelamin = bulkEditData.jenis_kelamin
+    if (bulkEditData.kamar.trim()) payload.kamar = bulkEditData.kamar.trim()
+    if (bulkEditData.nomor_induk.trim()) payload.nomor_induk = bulkEditData.nomor_induk.trim()
+
     const oldStudents = data?.data.filter((s) => selectedRows.includes(s.id)) ?? []
-    bulkUpdateMutation.mutate({ ids: selectedRows, kelas, oldStudents })
+    bulkUpdateMutation.mutate({ ids: selectedRows, ...payload, oldStudents })
   }
 
   const onSubmitEditForm = (values: StudentEditFormValues) => {
@@ -786,6 +814,27 @@ export default function StudentsPage() {
               </SelectContent>
             </Select>
           )}
+          {isAlumniTab && (
+            <Select
+              value={alumniUnitFilter}
+              onValueChange={(value) => {
+                setAlumniUnitFilter(value as Unit | 'all')
+                setPage(1)
+              }}
+            >
+              <SelectTrigger className="w-full sm:w-[140px]">
+                <SelectValue placeholder="Semua Unit" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Semua Unit</SelectItem>
+                {UNITS.map((unit) => (
+                  <SelectItem key={unit} value={unit}>
+                    {unit}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
         </div>
         {selectedRows.length > 0 && (
           <p className="text-sm text-[var(--text-secondary)]">
@@ -801,11 +850,11 @@ export default function StudentsPage() {
           </span>
           <Button type="button" variant="outline" size="sm" onClick={openBulkEdit}>
             <Edit className="mr-2 h-4 w-4" />
-            Edit Kelas Terpilih
+            Edit {selectedRows.length} Siswa Terpilih
           </Button>
           <Button type="button" variant="destructive" size="sm" onClick={openBulkDelete}>
             <Trash2 className="mr-2 h-4 w-4" />
-            Hapus {selectedRows.length} terpilih
+            Hapus {selectedRows.length} Siswa terpilih
           </Button>
         </div>
       )}
@@ -1024,29 +1073,76 @@ export default function StudentsPage() {
         }}
       />
 
-      {/* Dialog Bulk Edit */}
+      {/* Dialog Bulk Edit — semua field */}
       <Dialog
         open={isBulkEditOpen}
         onOpenChange={(open) => {
           setIsBulkEditOpen(open)
-          if (!open) setBulkEditData({ kelas: '' })
+          if (!open) setBulkEditData({ kelas: '', jenis_kelamin: '', kamar: '', nomor_induk: '' })
         }}
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Edit Kelas Massal</DialogTitle>
+            <DialogTitle>Edit Massal Siswa</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <p className="text-sm text-[var(--text-secondary)]">
-              Mengedit {selectedRows.length} siswa terpilih
+              Mengedit <strong>{selectedRows.length}</strong> siswa terpilih. Kosongkan field yang tidak ingin diubah.
             </p>
+
+            {/* Kelas */}
             <div className="space-y-2">
-              <Label htmlFor="bulk-edit-kelas">Kelas Baru</Label>
+              <Label htmlFor="bulk-edit-kelas">Kelas Baru <span className="text-[var(--text-tertiary)]">(opsional)</span></Label>
               <Input
                 id="bulk-edit-kelas"
-                placeholder="Masukkan kelas baru..."
+                placeholder="Contoh: VII-A"
                 value={bulkEditData.kelas}
-                onChange={(e) => setBulkEditData({ kelas: e.target.value })}
+                onChange={(e) => setBulkEditData((prev) => ({ ...prev, kelas: e.target.value }))}
+              />
+            </div>
+
+            {/* Jenis Kelamin */}
+            <div className="space-y-2">
+              <Label>Jenis Kelamin <span className="text-[var(--text-tertiary)]">(opsional)</span></Label>
+              <RadioGroup
+                value={bulkEditData.jenis_kelamin}
+                onValueChange={(v) => setBulkEditData((prev) => ({ ...prev, jenis_kelamin: v as JenisKelamin | '' }))}
+                className="flex gap-4"
+              >
+                <div className="flex items-center gap-2">
+                  <RadioGroupItem value="" id="bulk-jk-none" />
+                  <Label htmlFor="bulk-jk-none" className="font-normal">Tidak diubah</Label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <RadioGroupItem value="L" id="bulk-jk-l" />
+                  <Label htmlFor="bulk-jk-l" className="font-normal">Laki-laki</Label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <RadioGroupItem value="P" id="bulk-jk-p" />
+                  <Label htmlFor="bulk-jk-p" className="font-normal">Perempuan</Label>
+                </div>
+              </RadioGroup>
+            </div>
+
+            {/* Kamar */}
+            <div className="space-y-2">
+              <Label htmlFor="bulk-edit-kamar">Kamar Pesantren <span className="text-[var(--text-tertiary)]">(opsional)</span></Label>
+              <Input
+                id="bulk-edit-kamar"
+                placeholder="Contoh: Al-Fatih"
+                value={bulkEditData.kamar}
+                onChange={(e) => setBulkEditData((prev) => ({ ...prev, kamar: e.target.value }))}
+              />
+            </div>
+
+            {/* Nomor Induk */}
+            <div className="space-y-2">
+              <Label htmlFor="bulk-edit-nomor">Nomor Induk <span className="text-[var(--text-tertiary)]">(opsional)</span></Label>
+              <Input
+                id="bulk-edit-nomor"
+                placeholder="Contoh: 2024001"
+                value={bulkEditData.nomor_induk}
+                onChange={(e) => setBulkEditData((prev) => ({ ...prev, nomor_induk: e.target.value }))}
               />
             </div>
           </div>
@@ -1056,7 +1152,7 @@ export default function StudentsPage() {
               variant="outline"
               onClick={() => {
                 setIsBulkEditOpen(false)
-                setBulkEditData({ kelas: '' })
+                setBulkEditData({ kelas: '', jenis_kelamin: '', kamar: '', nomor_induk: '' })
               }}
             >
               Batal
