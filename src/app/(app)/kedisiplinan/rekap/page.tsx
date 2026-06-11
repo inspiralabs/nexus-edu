@@ -445,10 +445,10 @@ export default function RekapPoinPage() {
           if (!open) setSelectedSiswaId(null)
         }}
       >
-        <SheetContent className="overflow-y-auto">
+        <SheetContent className="overflow-y-auto dark:bg-zinc-900 dark:border-zinc-800">
           <SheetHeader>
             <SheetTitle asChild>
-              <div className="text-lg font-semibold text-text-primary">
+              <div className="text-lg font-semibold text-text-primary dark:text-zinc-200">
                 {detailLoading ? (
                   <Skeleton className="h-6 w-48" />
                 ) : (
@@ -457,7 +457,7 @@ export default function RekapPoinPage() {
               </div>
             </SheetTitle>
             <SheetDescription asChild>
-              <span className="block mt-1 text-sm text-text-secondary">
+              <span className="block mt-1 text-sm text-text-secondary dark:text-zinc-400">
                 {detailLoading ? (
                   <Skeleton className="mt-1 h-4 w-32" />
                 ) : (
@@ -476,14 +476,14 @@ export default function RekapPoinPage() {
             ) : (
               <>
                 <div className="mb-4 grid grid-cols-2 gap-3">
-                  <div className="rounded-lg border border-border bg-surface-2 p-3 text-center">
-                    <p className="text-xs text-text-secondary">Pelanggaran</p>
+                  <div className="rounded-lg border border-border dark:bg-zinc-900/40 p-3 text-center">
+                    <p className="text-xs text-text-secondary dark:text-zinc-300">Pelanggaran</p>
                     <p className="text-lg font-bold text-status-red">
                       {detailData.total_poin_pelanggaran}
                     </p>
                   </div>
-                  <div className="rounded-lg border border-border bg-surface-2 p-3 text-center">
-                    <p className="text-xs text-text-secondary">Prestasi</p>
+                  <div className="rounded-lg border border-border dark:bg-zinc-900/40 p-3 text-center">
+                    <p className="text-xs text-text-secondary dark:text-zinc-300">Prestasi</p>
                     <p className="text-lg font-bold text-status-green">
                       +{detailData.total_poin_prestasi}
                     </p>
@@ -497,10 +497,10 @@ export default function RekapPoinPage() {
                   }
                 >
                   <TabsList className="w-full">
-                    <TabsTrigger value="pelanggaran" className="flex-1">
+                    <TabsTrigger value="pelanggaran" className="flex-1 dark:text-zinc-300">
                       Pelanggaran ({detailData.riwayat_pelanggaran.length})
                     </TabsTrigger>
-                    <TabsTrigger value="prestasi" className="flex-1">
+                    <TabsTrigger value="prestasi" className="flex-1 dark:text-zinc-300">
                       Prestasi ({detailData.riwayat_prestasi.length})
                     </TabsTrigger>
                   </TabsList>
@@ -512,17 +512,17 @@ export default function RekapPoinPage() {
                         description="Siswa ini belum memiliki catatan pelanggaran"
                       />
                     ) : (
-                      <div className="space-y-2">
+                      <div className="space-y-2 ">
                         {detailData.riwayat_pelanggaran.map((item) => (
                           <div
                             key={item.id}
-                            className="flex items-start justify-between gap-3 rounded-lg border border-border bg-surface p-3"
+                            className="flex items-start justify-between gap-3 rounded-lg border border-border bg-surface p-3 dark:bg-zinc-900/20"
                           >
                             <div className="min-w-0 flex-1">
-                              <p className="text-sm font-medium leading-tight text-text-primary">
+                              <p className="text-sm font-medium leading-tight text-text-primary dark:text-zinc-200">
                                 {item.nama_pasal}
                               </p>
-                              <p className="mt-0.5 text-xs text-text-secondary">
+                              <p className="mt-0.5 text-xs text-text-secondary dark:text-zinc-400">
                                 {item.nama_kategori}
                               </p>
                               <p className="mt-1 text-xs text-text-tertiary">
@@ -545,7 +545,7 @@ export default function RekapPoinPage() {
 
                         <Separator className="my-2" />
                         <div className="flex items-center justify-between px-1 py-2">
-                          <span className="text-sm font-semibold text-text-primary">
+                          <span className="text-sm font-semibold text-text-primary dark:text-zinc-200">
                             Total Poin Pelanggaran
                           </span>
                           <span className="text-base font-bold text-status-red">
@@ -567,13 +567,13 @@ export default function RekapPoinPage() {
                         {detailData.riwayat_prestasi.map((item) => (
                           <div
                             key={item.id}
-                            className="flex items-start justify-between gap-3 rounded-lg border border-border bg-surface p-3"
+                            className="flex items-start justify-between gap-3 rounded-lg border border-border bg-surface dark:bg-zinc-900/20 p-3"
                           >
                             <div className="min-w-0 flex-1">
-                              <p className="text-sm font-medium leading-tight text-text-primary">
+                              <p className="text-sm font-medium leading-tight text-text-primary dark:text-zinc-400">
                                 {item.nama_pasal}
                               </p>
-                              <p className="mt-0.5 text-xs text-text-secondary">
+                              <p className="mt-0.5 text-xs text-text-secondary dark:text-zinc-400">
                                 {item.nama_kategori}
                               </p>
                               <p className="mt-1 text-xs text-text-tertiary">
@@ -599,7 +599,7 @@ export default function RekapPoinPage() {
 
                         <Separator className="my-2" />
                         <div className="flex items-center justify-between px-1 py-2">
-                          <span className="text-sm font-semibold text-text-primary">
+                          <span className="text-sm font-semibold text-text-primary dark:text-zinc-200">
                             Total Poin Prestasi
                           </span>
                           <span className="text-base font-bold text-status-green">
