@@ -1,11 +1,13 @@
 'use client'
 
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   AlertCircle,
   CheckCircle2,
   Clock,
   ShieldAlert,
+  Trophy,
+  X,
 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import {
@@ -24,6 +26,7 @@ import {
   YAxis,
 } from 'recharts'
 import { StatCard } from '@/components/shared/stat-card'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -34,10 +37,15 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover'
 import { Skeleton } from '@/components/ui/skeleton'
+import { toast } from '@/components/ui/use-toast'
 import {
+  approveAntrianPoin,
   getDivisi,
+  getAntrianPoinPrestasi,
   getKategoriDisiplin,
   getKedisiplinanDashboard,
+  tolakAntrianPoin,
+  type AntrianPoinItem,
   type KedisiplinanDashboardFilters,
 } from '@/lib/queries/kedisiplinan'
 import { getKelasOptionsByUnits } from '@/lib/queries/students'
@@ -202,6 +210,7 @@ function StatusStatCard({
 }
 
 export default function KedisiplinanDashboardPage() {
+  const queryClient = useQueryClient()
   const currentYear = new Date().getFullYear()
   const yearOptions = useMemo(
     () => Array.from({ length: 5 }, (_, index) => currentYear - index),
@@ -213,6 +222,9 @@ export default function KedisiplinanDashboardPage() {
   const [selectedKelas, setSelectedKelas] = useState<string[]>([])
   const [selectedKategori, setSelectedKategori] = useState<string[]>([])
   const [selectedDivisi, setSelectedDivisi] = useState<string[]>([])
+
+  // State untuk antrian poin prestasi
+  const [selectedAntrian, setSelectedAntrian] = useState<string[]>([])
 
   const { data: kategoriList } = useQuery({
     queryKey: ['kategori-disiplin'],
@@ -253,6 +265,44 @@ export default function KedisiplinanDashboardPage() {
   const { data, isLoading } = useQuery({
     queryKey: ['kedisiplinan-dashboard', dashboardFilters],
     queryFn: () => getKedisiplinanDashboard(dashboardFilters),
+  })
+
+  // Query antrian poin prestasi
+  const { data: antrianData, isLoading: isLoadingAntrian } = useQuery({
+    queryKey: ['antrian-poin-prestasi'],
+    queryFn: getAntrianPoinPrestasi,
+  })
+
+  const antrianList = antrianData?.data ?? []
+
+  const invalidateAntrian = () => {
+    queryClient.invalidateQueries({ queryKey: ['antrian-poin-prestasi'] })
+    queryClient.invalidateQueries({ queryKey: ['kedisiplinan-dashboard'] })
+  }
+
+  const approveMutation = useMutation({
+    mutationFn: (ids: string[]) => approveAntrianPoin(ids),
+    onSuccess: () => {
+      invalidateAntrian()
+      setSelectedAntrian([])
+      toast({ title: 'Berhasil', description: 'Poin prestasi berhasil disetujui' })
+    },
+    onError: (err: Error) => {
+      toast({ title: 'Gagal', description: err.message, variant: 'destructive' })
+    },
+  })
+
+  const tolakMutation = useMutation({
+    mutationFn: ({ id, prestasiId }: { id: string; prestasiId: string }) =>
+      tolakAntrianPoin(id, prestasiId),
+    onSuccess: () => {
+      invalidateAntrian()
+      setSelectedAntrian([])
+      toast({ title: 'Ditolak', description: 'Antrian poin prestasi telah ditolak' })
+    },
+    onError: (err: Error) => {
+      toast({ title: 'Gagal', description: err.message, variant: 'destructive' })
+    },
   })
 
   const trenData = useMemo(
@@ -324,6 +374,101 @@ export default function KedisiplinanDashboardPage() {
           Dashboard Kedisiplinan
         </h2>
       </div>
+
+      {/* ── Antrian Persetujuan Poin Prestasi ───────────────────────── */}
+      {(isLoadingAntrian || antrianList.length > 0) && (
+        <Card className="border-amber-200 bg-amber-50/50 dark:border-amber-800/50 dark:bg-amber-900/10">
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Trophy className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+              Antrian Persetujuan Poin Prestasi
+              {antrianList.length > 0 && (
+                <Badge variant="secondary" className="ml-auto bg-amber-100 text-amber-700 dark:bg-amber-800 dark:text-amber-200">
+                  {antrianList.length} Menunggu
+                </Badge>
+              )}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {isLoadingAntrian ? (
+              <div className="space-y-2">
+                {[...Array<number>(3)].map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}
+              </div>
+            ) : (
+              <>
+                {selectedAntrian.length > 0 && (
+                  <div className="mb-3 flex items-center gap-3 rounded-lg bg-amber-100 px-3 py-2 dark:bg-amber-900/30">
+                    <span className="text-sm text-amber-800 dark:text-amber-200">
+                      {selectedAntrian.length} item terpilih
+                    </span>
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="ml-auto bg-primary"
+                      onClick={() => approveMutation.mutate(selectedAntrian)}
+                      disabled={approveMutation.isPending}
+                    >
+                      <CheckCircle2 className="mr-1 h-3.5 w-3.5" />
+                      Setujui Terpilih
+                    </Button>
+                  </div>
+                )}
+
+                <div className="max-h-72 overflow-y-auto space-y-2">
+                  {antrianList.map((item: AntrianPoinItem) => {
+                    const isSelected = selectedAntrian.includes(item.id)
+                    return (
+                      <div
+                        key={item.id}
+                        className="flex items-center gap-3 rounded-lg border border-border bg-white px-3 py-2 dark:bg-zinc-900"
+                      >
+                        <Checkbox
+                          checked={isSelected}
+                          onCheckedChange={(checked) => {
+                            if (checked) {
+                              setSelectedAntrian((prev) => [...prev, item.id])
+                            } else {
+                              setSelectedAntrian((prev) => prev.filter((id) => id !== item.id))
+                            }
+                          }}
+                          id={`antrian-${item.id}`}
+                        />
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-medium text-[var(--text-primary)]">
+                            {item.siswa?.nama ?? 'Siswa tidak diketahui'}
+                          </p>
+                          <p className="truncate text-xs text-[var(--text-tertiary)]">
+                            {item.prestasi?.event?.nama_event ?? '-'} • {item.prestasi?.juara?.nama_juara ?? '-'} • {item.prestasi?.tingkat_kejuaraan ?? '-'}
+                          </p>
+                        </div>
+                        {item.pasal && (
+                          <Badge variant="outline" className="shrink-0 text-xs">
+                            {item.pasal.poin > 0 ? '+' : ''}{item.pasal.poin} poin
+                          </Badge>
+                        )}
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 shrink-0 text-status-red hover:bg-red-50 dark:hover:bg-red-950"
+                          disabled={tolakMutation.isPending}
+                          onClick={() => {
+                            if (!item.prestasi_id) return
+                            tolakMutation.mutate({ id: item.id, prestasiId: item.prestasi_id })
+                          }}
+                          title="Tolak"
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    )
+                  })}
+                </div>
+              </>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader>

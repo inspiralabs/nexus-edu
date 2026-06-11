@@ -740,3 +740,165 @@ export async function deleteTindakan(id: string): Promise<void> {
 
   if (error) throw new Error(error.message)
 }
+
+// ─── Antrian Poin Prestasi ────────────────────────────────────────────────────
+
+export interface AntrianPoinItem {
+  id: string
+  tanggal: string
+  diberikan_oleh: string
+  siswa_id: string | null
+  pasal_id: string | null
+  sumber: string | null
+  prestasi_id: string | null
+  status: StatusKedisiplinan
+  created_at: string
+  siswa: { id: string; nama: string; kelas: string; unit: Unit } | null
+  pasal: { id: string; nama_pasal: string; poin: number } | null
+  prestasi: {
+    id: string
+    tingkat_kejuaraan: string | null
+    tipe: 'siswa' | 'guru' | null
+    event_id?: string | null
+    juara_id?: string | null
+    event: { nama_event: string } | null
+    juara: { nama_juara: string } | null
+  } | null
+}
+
+export async function getAntrianPoinPrestasi(): Promise<{
+  data: AntrianPoinItem[]
+  total: number
+}> {
+  const supabase = createClient()
+
+  const { data, error, count } = await supabase
+    .from('kedisiplinan')
+    .select(
+      `
+      *,
+      siswa:students(*),
+      pasal(*),
+      prestasi:prestasi(*)
+      `,
+      { count: 'exact' }
+    )
+    .eq('sumber', 'prestasi')
+    .eq('status', 'Belum Diproses')
+    .order('created_at', { ascending: false })
+
+  if (error) throw new Error(error.message)
+
+  const rawData = data ?? []
+
+  // Ambil semua event_id dan juara_id yang unik untuk di-fetch secara paralel
+  const eventIds = Array.from(
+    new Set(
+      rawData
+        .map((item: any) => item.prestasi?.event_id)
+        .filter(Boolean)
+    )
+  ) as string[]
+
+  const juaraIds = Array.from(
+    new Set(
+      rawData
+        .map((item: any) => item.prestasi?.juara_id)
+        .filter(Boolean)
+    )
+  ) as string[]
+
+  // Fetch event dan juara secara paralel
+  const [eventsResult, juarasResult] = await Promise.all([
+    eventIds.length > 0
+      ? supabase.from('event').select('id, nama_event').in('id', eventIds)
+      : Promise.resolve({ data: null, error: null }),
+    juaraIds.length > 0
+      ? supabase.from('juara').select('id, nama_juara').in('id', juaraIds)
+      : Promise.resolve({ data: null, error: null }),
+  ])
+
+  const eventsMap = new Map<string, string>()
+  if (eventsResult.data) {
+    eventsResult.data.forEach((evt: any) => {
+      eventsMap.set(evt.id, evt.nama_event)
+    })
+  }
+
+  const juarasMap = new Map<string, string>()
+  if (juarasResult.data) {
+    juarasResult.data.forEach((jr: any) => {
+      juarasMap.set(jr.id, jr.nama_juara)
+    })
+  }
+
+  // Petakan kembali event dan juara ke dalam data prestasi
+  const items: AntrianPoinItem[] = rawData.map((item: any) => {
+    const prest = item.prestasi
+      ? {
+        ...item.prestasi,
+        event: item.prestasi.event_id
+          ? { nama_event: eventsMap.get(item.prestasi.event_id) ?? null }
+          : null,
+        juara: item.prestasi.juara_id
+          ? { nama_juara: juarasMap.get(item.prestasi.juara_id) ?? null }
+          : null,
+      }
+      : null
+
+    return {
+      id: item.id,
+      tanggal: item.tanggal,
+      diberikan_oleh: item.diberikan_oleh,
+      siswa_id: item.siswa_id,
+      pasal_id: item.pasal_id,
+      sumber: item.sumber,
+      prestasi_id: item.prestasi_id,
+      status: item.status,
+      created_at: item.created_at,
+      siswa: item.siswa,
+      pasal: item.pasal,
+      prestasi: prest,
+    }
+  })
+
+  return {
+    data: items,
+    total: count ?? 0,
+  }
+}
+
+export async function approveAntrianPoin(ids: string[]): Promise<void> {
+  const supabase = createClient()
+
+  const { error } = await supabase
+    .from('kedisiplinan')
+    .update({ status: 'Sudah Diproses' })
+    .in('id', ids)
+
+  if (error) throw new Error(error.message)
+}
+
+export async function tolakAntrianPoin(
+  id: string,
+  prestasiId: string
+): Promise<void> {
+  const supabase = createClient()
+
+  // 1. Hapus record kedisiplinan antrian
+  const { error: deleteError } = await supabase
+    .from('kedisiplinan')
+    .delete()
+    .eq('id', id)
+    .eq('sumber', 'prestasi')
+
+  if (deleteError) throw new Error(deleteError.message)
+
+  // 2. Reset flag di prestasi
+  const { error: resetError } = await supabase
+    .from('prestasi')
+    .update({ sudah_dilempar_kedisiplinan: false })
+    .eq('id', prestasiId)
+
+  if (resetError) throw new Error(resetError.message)
+}

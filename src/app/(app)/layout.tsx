@@ -28,6 +28,10 @@ const PATH_TITLES: Record<string, string> = {
   '/prestasi/cetak': 'Cetak Laporan Prestasi',
   '/admin/overview': 'Admin Overview',
   '/admin/users': 'Kelola User',
+  '/admin/guru': 'Data Guru',
+  '/admin/orangtua': 'Data Orang Tua',
+  '/admin/mapel': 'Mata Pelajaran',
+  '/admin/semester': 'Semester & Tahun Pelajaran',
   '/admin/announcements': 'Pengumuman',
   '/superadmin': 'Super Dashboard',
   '/superadmin/roles': 'Role Management',
@@ -77,8 +81,8 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
         />
         <div className="flex flex-1 flex-col overflow-y-auto">
           <main className="flex-1 p-6">{children}</main>
-          <footer className="mt-auto border-t border-border bg-background/50 px-6 py-4 text-center md:text-right">
-            <p className="text-xs font-medium text-slate-500">
+          <footer className="mt-auto border-t border-border bg-[var(--surface)] px-6 py-4 text-center md:text-right">
+            <p className="text-xs font-medium text-[var(--text-secondary)]">
               &copy;2026{' '}
               <a
                 href={INSPIRALABS_URL}

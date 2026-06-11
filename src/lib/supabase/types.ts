@@ -130,6 +130,7 @@ export interface Prestasi {
   juara?: Juara
   bidang?: Bidang
   kategori_prestasi?: KategoriPrestasi
+  profiles?: Profile
 }
 
 export interface AuditLog {
@@ -149,4 +150,49 @@ export interface Announcement {
   title: string
   content: string
   created_at: string
+}
+
+export type TipeGuru = 'guru' | 'musyrif' | 'guru_musyrif'
+
+export interface MataPelajaran {
+  id: string
+  nama_mapel: string
+  kategori: string
+  unit: Unit
+  created_at: string
+}
+
+export interface Guru {
+  id: string
+  nama_lengkap: string
+  nip: string | null
+  jenis_kelamin: JenisKelamin | null
+  mapel_ids: string[] | null
+  unit: string[] | null
+  tipe: TipeGuru
+  email: string | null
+  no_hp: string | null
+  profile_id: string | null
+  created_at: string
+  profiles?: Pick<Profile, 'id' | 'nama_lengkap' | 'username' | 'email'>
+  mata_pelajaran?: MataPelajaran[]
+}
+
+export interface OrangTua {
+  id: string
+  nama_lengkap: string
+  pekerjaan: string | null
+  email: string | null
+  no_hp: string | null
+  profile_id: string | null
+  created_at: string
+  orangtua_siswa?: OrangTuaSiswa[]
+}
+
+export interface OrangTuaSiswa {
+  id: string
+  orangtua_id: string
+  siswa_id: string
+  hubungan: string
+  students?: Student
 }

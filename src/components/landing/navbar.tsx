@@ -60,16 +60,23 @@ export function Navbar() {
 
         <nav className="hidden items-center gap-8 md:flex">
           <a
+            href="#about"
+            onClick={(event) => handleAnchorClick(event, 'about')}
+            className="text-sm text-slate-600 transition-colors hover:text-slate-900 dark:text-slate-300 dark:hover:text-slate-100"
+          >
+            Tentang
+          </a>
+          <a
             href="#features"
             onClick={(event) => handleAnchorClick(event, 'features')}
-            className="text-sm text-slate-600 transition-colors hover:text-slate-900"
+            className="text-sm text-slate-600 transition-colors hover:text-slate-900 dark:text-slate-300 dark:hover:text-slate-100"
           >
             Fitur
           </a>
           <a
             href="#how-it-works"
             onClick={(event) => handleAnchorClick(event, 'how-it-works')}
-            className="text-sm text-slate-600 transition-colors hover:text-slate-900"
+            className="text-sm text-slate-600 transition-colors hover:text-slate-900 dark:text-slate-300 dark:hover:text-slate-100"
           >
             Cara Kerja
           </a>

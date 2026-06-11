@@ -47,6 +47,7 @@ import { logAudit } from '@/lib/audit/log'
 import {
   createPrestasi,
   deletePrestasi,
+  getPrestasi,
   searchBidang,
   searchEvent,
   searchGuru,
@@ -77,9 +78,10 @@ type TipePrestasi = 'siswa' | 'guru'
 const prestasiSchema = z.object({
   unit: z.enum(['SD', 'SMP', 'SMA']),
   siswa_id: z.string().uuid('Pilih siswa'),
+  guru_id: z.string().uuid().optional().nullable(),
   event_id: z.string().uuid('Pilih event'),
   tempat: z.enum(['Offline', 'Online']),
-  waktu: z.date('Pilih waktu'),
+  waktu: z.date({ message: 'Pilih waktu' }),
   juara_id: z.string().uuid('Pilih juara'),
   jenis_juara: z.enum(['Individu', 'Kelompok']),
   bidang_id: z.string().uuid('Pilih bidang'),
@@ -92,10 +94,11 @@ const prestasiSchema = z.object({
 // Schema guru
 const prestasiGuruSchema = z.object({
   unit: z.enum(['SD', 'SMP', 'SMA']),
+  siswa_id: z.string().uuid().optional().nullable(),
   guru_id: z.string().uuid('Pilih guru'),
   event_id: z.string().uuid('Pilih event'),
   tempat: z.enum(['Offline', 'Online']),
-  waktu: z.date('Pilih waktu'),
+  waktu: z.date({ message: 'Pilih waktu' }),
   juara_id: z.string().uuid('Pilih juara'),
   jenis_juara: z.enum(['Individu', 'Kelompok']),
   bidang_id: z.string().uuid('Pilih bidang'),
@@ -168,7 +171,8 @@ const PRESTASI_SELECT = `
   event(id,nama_event),
   juara(id,nama_juara),
   bidang(id,nama_bidang),
-  kategori_prestasi(id,nama_kategori)
+  kategori_prestasi(id,nama_kategori),
+  profiles:guru_id(id,nama_lengkap)
 `
 
 const ALLOWED_SORT_FIELDS = [
@@ -205,103 +209,7 @@ async function fetchJuaraList(): Promise<Juara[]> {
   return (data ?? []) as Juara[]
 }
 
-interface FetchPrestasiPageParams {
-  unit: Unit
-  search?: string
-  kelas?: string
-  juaraId?: string
-  tingkat?: TingkatKejuaraan
-  page: number
-  pageSize: number
-  sortField: string
-  sortDirection: 'asc' | 'desc'
-}
-
-async function fetchPrestasiPageData(
-  params: FetchPrestasiPageParams
-): Promise<{ data: Prestasi[]; total: number }> {
-  const supabase = createClient()
-  let studentIds: string[] | null = null
-
-  if (params.search || (params.kelas && params.kelas !== 'all')) {
-    let studentQuery = supabase
-      .from('students')
-      .select('id')
-      .eq('unit', params.unit)
-
-    if (params.search) {
-      studentQuery = studentQuery.ilike('nama', `%${params.search}%`)
-    }
-
-    if (params.kelas && params.kelas !== 'all') {
-      studentQuery = studentQuery.eq('kelas', params.kelas)
-    }
-
-    const { data, error } = await studentQuery
-
-    if (error) throw new Error(error.message)
-
-    studentIds = (data ?? []).map((row) => row.id)
-
-    if (studentIds.length === 0) {
-      return { data: [], total: 0 }
-    }
-  }
-
-  const from = (params.page - 1) * params.pageSize
-  const to = from + params.pageSize - 1
-  const sortField = resolveSortField(params.sortField)
-  const ascending = params.sortDirection !== 'desc'
-
-  let countQuery = supabase
-    .from('prestasi')
-    .select('*', { count: 'exact', head: true })
-    .eq('unit', params.unit)
-
-  if (studentIds) {
-    countQuery = countQuery.in('siswa_id', studentIds)
-  }
-
-  if (params.juaraId) {
-    countQuery = countQuery.eq('juara_id', params.juaraId)
-  }
-
-  if (params.tingkat) {
-    countQuery = countQuery.eq('tingkat_kejuaraan', params.tingkat)
-  }
-
-  const { count, error: countError } = await countQuery
-
-  if (countError) throw new Error(countError.message)
-
-  let dataQuery = supabase
-    .from('prestasi')
-    .select(PRESTASI_SELECT)
-    .eq('unit', params.unit)
-
-  if (studentIds) {
-    dataQuery = dataQuery.in('siswa_id', studentIds)
-  }
-
-  if (params.juaraId) {
-    dataQuery = dataQuery.eq('juara_id', params.juaraId)
-  }
-
-  if (params.tingkat) {
-    dataQuery = dataQuery.eq('tingkat_kejuaraan', params.tingkat)
-  }
-
-  const { data, error } = await dataQuery
-    .order(sortField, { ascending })
-    .range(from, to)
-
-  if (error) throw new Error(error.message)
-
-  return {
-    data: (data ?? []) as Prestasi[],
-    total: count ?? 0,
-  }
-}
+// Query helper lokal sudah dipindahkan ke getPrestasi backend queries.
 
 type BulkPrestasiUpdateInput = Omit<
   CreatePrestasiInput,
@@ -514,7 +422,19 @@ export default function PrestasiDataPage() {
 
   const { data, isLoading } = useQuery({
     queryKey: ['prestasi', queryFilters],
-    queryFn: () => fetchPrestasiPageData(queryFilters),
+    queryFn: () =>
+      getPrestasi({
+        unit: [queryFilters.unit],
+        tipe: queryFilters.tipe,
+        search: queryFilters.search,
+        kelas: queryFilters.kelas !== 'all' ? queryFilters.kelas : undefined,
+        juara_id: queryFilters.juaraId ? [queryFilters.juaraId] : undefined,
+        tingkat_kejuaraan: queryFilters.tingkat ? [queryFilters.tingkat] : undefined,
+        page: queryFilters.page,
+        pageSize: queryFilters.pageSize,
+        sortField: queryFilters.sortField,
+        sortDirection: queryFilters.sortDirection,
+      }),
   })
 
   const { isLoading: studentSearchLoading } = useQuery({
@@ -684,7 +604,8 @@ export default function PrestasiDataPage() {
   const buildPayload = (values: PrestasiFormValues): CreatePrestasiInput => ({
     unit: values.unit,
     tipe: 'siswa',
-    siswa_id: values.siswa_id,
+    siswa_id: values.siswa_id || undefined,
+    guru_id: values.guru_id || undefined,
     event_id: values.event_id,
     tempat: values.tempat,
     waktu: format(values.waktu, 'yyyy-MM-dd'),
@@ -698,7 +619,8 @@ export default function PrestasiDataPage() {
   const buildGuruPayload = (values: PrestasiGuruFormValues): CreatePrestasiInput => ({
     unit: values.unit,
     tipe: 'guru',
-    guru_id: values.guru_id,
+    siswa_id: values.siswa_id || undefined,
+    guru_id: values.guru_id || undefined,
     event_id: values.event_id,
     tempat: values.tempat,
     waktu: format(values.waktu, 'yyyy-MM-dd'),
@@ -708,6 +630,45 @@ export default function PrestasiDataPage() {
     kategori_id: values.kategori_id,
     tingkat_kejuaraan: values.tingkat_kejuaraan,
   })
+
+  const buildUpdatePayload = (
+    values: PrestasiFormValues | PrestasiGuruFormValues,
+    tipe: 'siswa' | 'guru'
+  ): CreatePrestasiInput => {
+    if (tipe === 'guru') {
+      const gValues = values as PrestasiGuruFormValues
+      return {
+        unit: gValues.unit,
+        tipe: 'guru',
+        siswa_id: gValues.siswa_id || undefined,
+        guru_id: gValues.guru_id || undefined,
+        event_id: gValues.event_id,
+        tempat: gValues.tempat,
+        waktu: format(gValues.waktu, 'yyyy-MM-dd'),
+        juara_id: gValues.juara_id,
+        jenis_juara: gValues.jenis_juara,
+        bidang_id: gValues.bidang_id,
+        kategori_id: gValues.kategori_id,
+        tingkat_kejuaraan: gValues.tingkat_kejuaraan,
+      }
+    } else {
+      const sValues = values as PrestasiFormValues
+      return {
+        unit: sValues.unit,
+        tipe: 'siswa',
+        siswa_id: sValues.siswa_id || undefined,
+        guru_id: sValues.guru_id || undefined,
+        event_id: sValues.event_id,
+        tempat: sValues.tempat,
+        waktu: format(sValues.waktu, 'yyyy-MM-dd'),
+        juara_id: sValues.juara_id,
+        jenis_juara: sValues.jenis_juara,
+        bidang_id: sValues.bidang_id,
+        kategori_id: sValues.kategori_id,
+        tingkat_kejuaraan: sValues.tingkat_kejuaraan,
+      }
+    }
+  }
 
   const buildBulkPayload = (
     values: BulkPrestasiFormValues
@@ -724,7 +685,7 @@ export default function PrestasiDataPage() {
 
   const createMutation = useMutation({
     mutationFn: (input: CreatePrestasiInput) =>
-      createPrestasi(input),
+      createPrestasi(input, profile?.nama_lengkap),
     onSuccess: async (result) => {
       const userId = getUserId()
       if (userId) {
@@ -757,11 +718,13 @@ export default function PrestasiDataPage() {
     mutationFn: ({
       id,
       values,
+      tipe,
     }: {
       id: string
-      values: PrestasiFormValues
+      values: PrestasiFormValues | PrestasiGuruFormValues
+      tipe: 'siswa' | 'guru'
       oldItem: Prestasi
-    }) => updatePrestasi(id, buildPayload(values)),
+    }) => updatePrestasi(id, buildUpdatePayload(values, tipe)),
     onSuccess: async (result, variables) => {
       const userId = getUserId()
       if (userId) {
@@ -770,7 +733,7 @@ export default function PrestasiDataPage() {
           'UPDATE',
           'prestasi',
           result.id,
-          prestasiToRecord(variables.oldItem),
+          variables.oldItem ? prestasiToRecord(variables.oldItem) : null,
           prestasiToRecord(result)
         )
       }
@@ -1005,55 +968,108 @@ export default function PrestasiDataPage() {
     setEditingItem(item)
     resetComboboxState()
 
-    if (item.students && item.siswa_id) {
-      setStudentOptions([
-        {
-          value: item.siswa_id,
-          label: `${item.students.nama} - ${item.students.kelas}`,
-        },
-      ])
-      setKelasDisplay(item.students.kelas)
-    }
+    const isGuru = item.tipe === 'guru'
 
-    if (item.event && item.event_id) {
-      setEventOptions([
-        { value: item.event_id, label: item.event.nama_event },
-      ])
-    }
+    if (isGuru) {
+      if (item.profiles && item.guru_id) {
+        setGuruOptions([
+          {
+            value: item.guru_id,
+            label: item.profiles.nama_lengkap,
+          },
+        ])
+      }
 
-    if (item.juara && item.juara_id) {
-      setJuaraOptions([
-        { value: item.juara_id, label: item.juara.nama_juara },
-      ])
-    }
+      if (item.event && item.event_id) {
+        setEventOptions([
+          { value: item.event_id, label: item.event.nama_event },
+        ])
+      }
 
-    if (item.bidang && item.bidang_id) {
-      setBidangOptions([
-        { value: item.bidang_id, label: item.bidang.nama_bidang },
-      ])
-    }
+      if (item.juara && item.juara_id) {
+        setJuaraOptions([
+          { value: item.juara_id, label: item.juara.nama_juara },
+        ])
+      }
 
-    if (item.kategori_prestasi && item.kategori_id) {
-      setKategoriOptions([
-        {
-          value: item.kategori_id,
-          label: item.kategori_prestasi.nama_kategori,
-        },
-      ])
-    }
+      if (item.bidang && item.bidang_id) {
+        setBidangOptions([
+          { value: item.bidang_id, label: item.bidang.nama_bidang },
+        ])
+      }
 
-    form.reset({
-      unit: item.unit ?? 'SD',
-      siswa_id: item.siswa_id ?? '',
-      event_id: item.event_id ?? '',
-      tempat: item.tempat ?? 'Offline',
-      waktu: item.waktu ? parseISO(item.waktu) : new Date(),
-      juara_id: item.juara_id ?? '',
-      jenis_juara: item.jenis_juara ?? 'Individu',
-      bidang_id: item.bidang_id ?? '',
-      kategori_id: item.kategori_id ?? '',
-      tingkat_kejuaraan: item.tingkat_kejuaraan ?? 'Tingkat Sekolah',
-    })
+      if (item.kategori_prestasi && item.kategori_id) {
+        setKategoriOptions([
+          {
+            value: item.kategori_id,
+            label: item.kategori_prestasi.nama_kategori,
+          },
+        ])
+      }
+
+      guruForm.reset({
+        unit: item.unit ?? 'SD',
+        guru_id: item.guru_id ?? '',
+        event_id: item.event_id ?? '',
+        tempat: item.tempat ?? 'Offline',
+        waktu: item.waktu ? parseISO(item.waktu) : new Date(),
+        juara_id: item.juara_id ?? '',
+        jenis_juara: item.jenis_juara ?? 'Individu',
+        bidang_id: item.bidang_id ?? '',
+        kategori_id: item.kategori_id ?? '',
+        tingkat_kejuaraan: item.tingkat_kejuaraan ?? 'Tingkat Sekolah',
+      })
+    } else {
+      if (item.students && item.siswa_id) {
+        setStudentOptions([
+          {
+            value: item.siswa_id,
+            label: `${item.students.nama} - ${item.students.kelas}`,
+          },
+        ])
+        setKelasDisplay(item.students.kelas)
+      }
+
+      if (item.event && item.event_id) {
+        setEventOptions([
+          { value: item.event_id, label: item.event.nama_event },
+        ])
+      }
+
+      if (item.juara && item.juara_id) {
+        setJuaraOptions([
+          { value: item.juara_id, label: item.juara.nama_juara },
+        ])
+      }
+
+      if (item.bidang && item.bidang_id) {
+        setBidangOptions([
+          { value: item.bidang_id, label: item.bidang.nama_bidang },
+        ])
+      }
+
+      if (item.kategori_prestasi && item.kategori_id) {
+        setKategoriOptions([
+          {
+            value: item.kategori_id,
+            label: item.kategori_prestasi.nama_kategori,
+          },
+        ])
+      }
+
+      form.reset({
+        unit: item.unit ?? 'SD',
+        siswa_id: item.siswa_id ?? '',
+        event_id: item.event_id ?? '',
+        tempat: item.tempat ?? 'Offline',
+        waktu: item.waktu ? parseISO(item.waktu) : new Date(),
+        juara_id: item.juara_id ?? '',
+        jenis_juara: item.jenis_juara ?? 'Individu',
+        bidang_id: item.bidang_id ?? '',
+        kategori_id: item.kategori_id ?? '',
+        tingkat_kejuaraan: item.tingkat_kejuaraan ?? 'Tingkat Sekolah',
+      })
+    }
     setIsEditOpen(true)
   }
 
@@ -1125,6 +1141,7 @@ export default function PrestasiDataPage() {
       updateMutation.mutate({
         id: editingItem.id,
         values,
+        tipe: 'siswa',
         oldItem: editingItem,
       })
     } else {
@@ -1136,8 +1153,8 @@ export default function PrestasiDataPage() {
     if (isEditOpen && editingItem) {
       updateMutation.mutate({
         id: editingItem.id,
-        // reuse updateMutation which accepts PrestasiFormValues; we need to cast via payload
-        values: values as unknown as PrestasiFormValues,
+        values,
+        tipe: 'guru',
         oldItem: editingItem,
       })
     } else {
@@ -1268,7 +1285,7 @@ export default function PrestasiDataPage() {
         id: 'nama_guru',
         header: 'Nama Guru',
         enableSorting: false,
-        cell: ({ row }) => row.original.guru_id ? (row.original.guru_id) : '-',
+        cell: ({ row }) => row.original.profiles?.nama_lengkap ?? '-',
       },
       {
         id: 'event',
@@ -1345,233 +1362,246 @@ export default function PrestasiDataPage() {
     [page, pageSize]
   )
 
-  const renderPrestasiFormFields = (showAddToListButton = false) => (
-    <div className="space-y-4">
-      <div className="space-y-2">
-        <Label>Nama Siswa</Label>
-        <Combobox
-          options={studentOptions}
-          value={form.watch('siswa_id')}
-          onSelect={(value, label) => {
-            form.setValue('siswa_id', value, { shouldValidate: true })
-            const kelasPart = label.split(' - ')[1]
-            setKelasDisplay(kelasPart ?? '')
-          }}
-          onSearch={setStudentSearch}
-          placeholder="Cari siswa..."
-          isLoading={studentSearchLoading}
-        />
-        {form.formState.errors.siswa_id && (
-          <p className="text-xs text-status-red">
-            {form.formState.errors.siswa_id.message}
-          </p>
+  const renderPrestasiFormFields = (showAddToListButton = false, isGuru = false) => {
+    const watchField = (field: any) => {
+      return isGuru ? guruForm.watch(field) : form.watch(field)
+    }
+
+    const setValueField = (field: any, value: any) => {
+      if (isGuru) {
+        guruForm.setValue(field, value, { shouldValidate: true })
+      } else {
+        form.setValue(field, value, { shouldValidate: true })
+      }
+    }
+
+    const getFieldError = (field: any) => {
+      const errors = isGuru ? guruForm.formState.errors : form.formState.errors
+      return (errors as any)[field]
+    }
+
+    return (
+      <div className="space-y-4">
+        {!isGuru && (
+          <>
+            <div className="space-y-2">
+              <Label>Nama Siswa</Label>
+              <Combobox
+                options={studentOptions}
+                value={form.watch('siswa_id')}
+                onSelect={(value, label) => {
+                  form.setValue('siswa_id', value, { shouldValidate: true })
+                  const kelasPart = label.split(' - ')[1]
+                  setKelasDisplay(kelasPart ?? '')
+                }}
+                onSearch={setStudentSearch}
+                placeholder="Cari siswa..."
+                isLoading={studentSearchLoading}
+              />
+              {form.formState.errors.siswa_id && (
+                <p className="text-xs text-status-red">
+                  {form.formState.errors.siswa_id.message}
+                </p>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="kelas">Kelas</Label>
+              <Input id="kelas" value={kelasDisplay} disabled readOnly />
+            </div>
+          </>
         )}
-      </div>
 
-      <div className="space-y-2">
-        <Label htmlFor="kelas">Kelas</Label>
-        <Input id="kelas" value={kelasDisplay} disabled readOnly />
-      </div>
-
-      <div className="space-y-2">
-        <Label>Event</Label>
-        <Combobox
-          options={eventOptions}
-          value={form.watch('event_id')}
-          onSelect={(value) =>
-            form.setValue('event_id', value, { shouldValidate: true })
-          }
-          onSearch={setEventSearch}
-          placeholder="Cari event..."
-          isLoading={eventSearchLoading}
-        />
-        {form.formState.errors.event_id && (
-          <p className="text-xs text-status-red">
-            {form.formState.errors.event_id.message}
-          </p>
-        )}
-      </div>
-
-      <div className="space-y-2">
-        <Label>Tempat</Label>
-        <RadioGroup
-          value={form.watch('tempat')}
-          onValueChange={(value) =>
-            form.setValue('tempat', value as Tempat, {
-              shouldValidate: true,
-            })
-          }
-          className="flex gap-4"
-        >
-          <div className="flex items-center gap-2">
-            <RadioGroupItem value="Offline" id="tempat-offline" />
-            <Label htmlFor="tempat-offline" className="font-normal">
-              Offline
-            </Label>
-          </div>
-          <div className="flex items-center gap-2">
-            <RadioGroupItem value="Online" id="tempat-online" />
-            <Label htmlFor="tempat-online" className="font-normal">
-              Online
-            </Label>
-          </div>
-        </RadioGroup>
-        {form.formState.errors.tempat && (
-          <p className="text-xs text-status-red">
-            {form.formState.errors.tempat.message}
-          </p>
-        )}
-      </div>
-
-      <div className="space-y-2">
-        <Label>Waktu</Label>
-        <DatePicker
-          value={form.watch('waktu')}
-          onChange={(date) => {
-            if (date) {
-              form.setValue('waktu', date, { shouldValidate: true })
+        <div className="space-y-2">
+          <Label>Event</Label>
+          <Combobox
+            options={eventOptions}
+            value={watchField('event_id')}
+            onSelect={(value) =>
+              setValueField('event_id', value)
             }
-          }}
-        />
-        {form.formState.errors.waktu && (
-          <p className="text-xs text-status-red">
-            {form.formState.errors.waktu.message}
-          </p>
+            onSearch={setEventSearch}
+            placeholder="Cari event..."
+            isLoading={eventSearchLoading}
+          />
+          {getFieldError('event_id') && (
+            <p className="text-xs text-status-red">
+              {getFieldError('event_id').message}
+            </p>
+          )}
+        </div>
+
+        <div className="space-y-2">
+          <Label>Tempat</Label>
+          <RadioGroup
+            value={watchField('tempat')}
+            onValueChange={(value) =>
+              setValueField('tempat', value as Tempat)
+            }
+            className="flex gap-4"
+          >
+            <div className="flex items-center gap-2">
+              <RadioGroupItem value="Offline" id="tempat-offline" />
+              <Label htmlFor="tempat-offline" className="font-normal">
+                Offline
+              </Label>
+            </div>
+            <div className="flex items-center gap-2">
+              <RadioGroupItem value="Online" id="tempat-online" />
+              <Label htmlFor="tempat-online" className="font-normal">
+                Online
+              </Label>
+            </div>
+          </RadioGroup>
+          {getFieldError('tempat') && (
+            <p className="text-xs text-status-red">
+              {getFieldError('tempat').message}
+            </p>
+          )}
+        </div>
+
+        <div className="space-y-2">
+          <Label>Waktu</Label>
+          <DatePicker
+            value={watchField('waktu')}
+            onChange={(date) => {
+              if (date) {
+                setValueField('waktu', date)
+              }
+            }}
+          />
+          {getFieldError('waktu') && (
+            <p className="text-xs text-status-red">
+              {getFieldError('waktu').message}
+            </p>
+          )}
+        </div>
+
+        <div className="space-y-2">
+          <Label>Juara</Label>
+          <Combobox
+            options={juaraOptions}
+            value={watchField('juara_id')}
+            onSelect={(value) =>
+              setValueField('juara_id', value)
+            }
+            onSearch={setJuaraSearch}
+            placeholder="Cari juara..."
+            isLoading={juaraSearchLoading}
+          />
+          {getFieldError('juara_id') && (
+            <p className="text-xs text-status-red">
+              {getFieldError('juara_id').message}
+            </p>
+          )}
+        </div>
+
+        <div className="space-y-2">
+          <Label>Jenis Juara</Label>
+          <RadioGroup
+            value={watchField('jenis_juara')}
+            onValueChange={(value) =>
+              setValueField('jenis_juara', value as JenisJuara)
+            }
+            className="flex gap-4"
+          >
+            <div className="flex items-center gap-2">
+              <RadioGroupItem value="Individu" id="jenis-individu" />
+              <Label htmlFor="jenis-individu" className="font-normal">
+                Individu
+              </Label>
+            </div>
+            <div className="flex items-center gap-2">
+              <RadioGroupItem value="Kelompok" id="jenis-kelompok" />
+              <Label htmlFor="jenis-kelompok" className="font-normal">
+                Kelompok
+              </Label>
+            </div>
+          </RadioGroup>
+          {getFieldError('jenis_juara') && (
+            <p className="text-xs text-status-red">
+              {getFieldError('jenis_juara').message}
+            </p>
+          )}
+        </div>
+
+        <div className="space-y-2">
+          <Label>Bidang</Label>
+          <Combobox
+            options={bidangOptions}
+            value={watchField('bidang_id')}
+            onSelect={(value) =>
+              setValueField('bidang_id', value)
+            }
+            onSearch={setBidangSearch}
+            placeholder="Cari bidang..."
+            isLoading={bidangSearchLoading}
+          />
+          {getFieldError('bidang_id') && (
+            <p className="text-xs text-status-red">
+              {getFieldError('bidang_id').message}
+            </p>
+          )}
+        </div>
+
+        <div className="space-y-2">
+          <Label>Kategori</Label>
+          <Combobox
+            options={kategoriOptions}
+            value={watchField('kategori_id')}
+            onSelect={(value) =>
+              setValueField('kategori_id', value)
+            }
+            onSearch={setKategoriSearch}
+            placeholder="Cari kategori..."
+            isLoading={kategoriSearchLoading}
+          />
+          {getFieldError('kategori_id') && (
+            <p className="text-xs text-status-red">
+              {getFieldError('kategori_id').message}
+            </p>
+          )}
+        </div>
+
+        <div className="space-y-2">
+          <Label>Tingkat Kejuaraan</Label>
+          <Select
+            value={watchField('tingkat_kejuaraan')}
+            onValueChange={(value) =>
+              setValueField('tingkat_kejuaraan', value as TingkatKejuaraan)
+            }
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="Pilih tingkat" />
+            </SelectTrigger>
+            <SelectContent>
+              {TINGKAT_KEJUARAAN.map((tingkat) => (
+                <SelectItem key={tingkat} value={tingkat}>
+                  {tingkat}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {getFieldError('tingkat_kejuaraan') && (
+            <p className="text-xs text-status-red">
+              {getFieldError('tingkat_kejuaraan').message}
+            </p>
+          )}
+        </div>
+
+        {showAddToListButton && (
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full"
+            onClick={form.handleSubmit(addToPrestasiQueue)}
+          >
+            Tambah ke Daftar
+          </Button>
         )}
       </div>
-
-      <div className="space-y-2">
-        <Label>Juara</Label>
-        <Combobox
-          options={juaraOptions}
-          value={form.watch('juara_id')}
-          onSelect={(value) =>
-            form.setValue('juara_id', value, { shouldValidate: true })
-          }
-          onSearch={setJuaraSearch}
-          placeholder="Cari juara..."
-          isLoading={juaraSearchLoading}
-        />
-        {form.formState.errors.juara_id && (
-          <p className="text-xs text-status-red">
-            {form.formState.errors.juara_id.message}
-          </p>
-        )}
-      </div>
-
-      <div className="space-y-2">
-        <Label>Jenis Juara</Label>
-        <RadioGroup
-          value={form.watch('jenis_juara')}
-          onValueChange={(value) =>
-            form.setValue('jenis_juara', value as JenisJuara, {
-              shouldValidate: true,
-            })
-          }
-          className="flex gap-4"
-        >
-          <div className="flex items-center gap-2">
-            <RadioGroupItem value="Individu" id="jenis-individu" />
-            <Label htmlFor="jenis-individu" className="font-normal">
-              Individu
-            </Label>
-          </div>
-          <div className="flex items-center gap-2">
-            <RadioGroupItem value="Kelompok" id="jenis-kelompok" />
-            <Label htmlFor="jenis-kelompok" className="font-normal">
-              Kelompok
-            </Label>
-          </div>
-        </RadioGroup>
-        {form.formState.errors.jenis_juara && (
-          <p className="text-xs text-status-red">
-            {form.formState.errors.jenis_juara.message}
-          </p>
-        )}
-      </div>
-
-      <div className="space-y-2">
-        <Label>Bidang</Label>
-        <Combobox
-          options={bidangOptions}
-          value={form.watch('bidang_id')}
-          onSelect={(value) =>
-            form.setValue('bidang_id', value, { shouldValidate: true })
-          }
-          onSearch={setBidangSearch}
-          placeholder="Cari bidang..."
-          isLoading={bidangSearchLoading}
-        />
-        {form.formState.errors.bidang_id && (
-          <p className="text-xs text-status-red">
-            {form.formState.errors.bidang_id.message}
-          </p>
-        )}
-      </div>
-
-      <div className="space-y-2">
-        <Label>Kategori</Label>
-        <Combobox
-          options={kategoriOptions}
-          value={form.watch('kategori_id')}
-          onSelect={(value) =>
-            form.setValue('kategori_id', value, {
-              shouldValidate: true,
-            })
-          }
-          onSearch={setKategoriSearch}
-          placeholder="Cari kategori..."
-          isLoading={kategoriSearchLoading}
-        />
-        {form.formState.errors.kategori_id && (
-          <p className="text-xs text-status-red">
-            {form.formState.errors.kategori_id.message}
-          </p>
-        )}
-      </div>
-
-      <div className="space-y-2">
-        <Label>Tingkat Kejuaraan</Label>
-        <Select
-          value={form.watch('tingkat_kejuaraan')}
-          onValueChange={(value) =>
-            form.setValue(
-              'tingkat_kejuaraan',
-              value as TingkatKejuaraan,
-              { shouldValidate: true }
-            )
-          }
-        >
-          <SelectTrigger>
-            <SelectValue placeholder="Pilih tingkat" />
-          </SelectTrigger>
-          <SelectContent>
-            {TINGKAT_KEJUARAAN.map((tingkat) => (
-              <SelectItem key={tingkat} value={tingkat}>
-                {tingkat}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        {form.formState.errors.tingkat_kejuaraan && (
-          <p className="text-xs text-status-red">
-            {form.formState.errors.tingkat_kejuaraan.message}
-          </p>
-        )}
-      </div>
-
-      {showAddToListButton && (
-        <Button
-          type="button"
-          variant="outline"
-          className="w-full"
-          onClick={form.handleSubmit(addToPrestasiQueue)}
-        >
-          Tambah ke Daftar
-        </Button>
-      )}
-    </div>
-  )
+    )
+  }
 
   return (
     <div className="space-y-6">
@@ -1581,12 +1611,14 @@ export default function PrestasiDataPage() {
           <>
             <Button type="button" onClick={openAddDialog}>
               <Plus className="mr-2 h-4 w-4" />
-              Tambah Prestasi
+              Tambah Prestasi {activeTipe === 'guru' ? 'Guru' : 'Siswa'}
             </Button>
-            <Button type="button" variant="outline" onClick={openBulkAdd}>
-              <Upload className="mr-2 h-4 w-4" />
-              Tambah Banyak
-            </Button>
+            {activeTipe === 'siswa' && (
+              <Button type="button" variant="outline" onClick={openBulkAdd}>
+                <Upload className="mr-2 h-4 w-4" />
+                Tambah Banyak
+              </Button>
+            )}
           </>
         }
       />
@@ -1627,7 +1659,7 @@ export default function PrestasiDataPage() {
           <div className="relative min-w-[200px] max-w-sm flex-1">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-tertiary)]" />
             <Input
-              placeholder="Cari nama siswa..."
+              placeholder={activeTipe === 'guru' ? 'Cari nama guru...' : 'Cari nama siswa...'}
               value={search}
               onChange={(e) => {
                 setSearch(e.target.value)
@@ -1636,25 +1668,28 @@ export default function PrestasiDataPage() {
               className="pl-9"
             />
           </div>
-          <Select
-            value={selectedClassFilter}
-            onValueChange={(value) => {
-              setSelectedClassFilter(value)
-              setPage(1)
-            }}
-          >
-            <SelectTrigger className="w-full sm:w-[150px]">
-              <SelectValue placeholder="Semua Kelas" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Semua Kelas</SelectItem>
-              {studentClasses.map((kelas) => (
-                <SelectItem key={kelas} value={kelas}>
-                  {kelas}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          {/* Filter kelas: hanya tampil jika tipe siswa */}
+          {activeTipe === 'siswa' && (
+            <Select
+              value={selectedClassFilter}
+              onValueChange={(value) => {
+                setSelectedClassFilter(value)
+                setPage(1)
+              }}
+            >
+              <SelectTrigger className="w-full sm:w-[150px]">
+                <SelectValue placeholder="Semua Kelas" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Semua Kelas</SelectItem>
+                {studentClasses.map((kelas) => (
+                  <SelectItem key={kelas} value={kelas}>
+                    {kelas}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
           <Select
             value={selectedJuaraFilter}
             onValueChange={(value) => {
@@ -1701,10 +1736,12 @@ export default function PrestasiDataPage() {
           <span className="text-sm text-[var(--text-primary)]">
             {selectedRows.length} item terpilih
           </span>
-          <Button type="button" variant="outline" size="sm" onClick={openBulkEdit}>
-            <Edit className="mr-2 h-4 w-4" />
-            Edit Terpilih
-          </Button>
+          {activeTipe === 'siswa' && (
+            <Button type="button" variant="outline" size="sm" onClick={openBulkEdit}>
+              <Edit className="mr-2 h-4 w-4" />
+              Edit Terpilih
+            </Button>
+          )}
           <Button
             type="button"
             variant="destructive"
@@ -1753,7 +1790,7 @@ export default function PrestasiDataPage() {
               {isEditOpen ? 'Edit Prestasi' : `Tambah Prestasi ${activeTipe === 'guru' ? 'Guru' : 'Siswa'}`}
             </DialogTitle>
           </DialogHeader>
-          {activeTipe === 'guru' ? (
+          {(editingItem ? editingItem.tipe : activeTipe) === 'guru' ? (
             <form
               onSubmit={guruForm.handleSubmit(onSubmitGuruForm)}
               className="space-y-4"
@@ -1763,7 +1800,7 @@ export default function PrestasiDataPage() {
                 <Label>Nama Guru</Label>
                 <Combobox
                   options={guruOptions}
-                  value={guruForm.watch('guru_id')}
+                  value={guruForm.watch('guru_id') || ''}
                   onSelect={(value) => {
                     guruForm.setValue('guru_id', value, { shouldValidate: true })
                   }}
@@ -1777,7 +1814,7 @@ export default function PrestasiDataPage() {
                   </p>
                 )}
               </div>
-              {renderPrestasiFormFields(false)}
+              {renderPrestasiFormFields(false, true)}
               <DialogFooter>
                 <Button type="button" variant="outline" onClick={closeFormDialog}>
                   Batal
@@ -1792,7 +1829,7 @@ export default function PrestasiDataPage() {
               onSubmit={form.handleSubmit(onSubmitForm)}
               className="space-y-4"
             >
-              {renderPrestasiFormFields(false)}
+              {renderPrestasiFormFields(false, false)}
               <DialogFooter>
                 <Button type="button" variant="outline" onClick={closeFormDialog}>
                   Batal

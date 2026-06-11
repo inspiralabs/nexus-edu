@@ -39,6 +39,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   TooltipProvider,
 } from '@/components/ui/tooltip'
@@ -54,6 +55,10 @@ import {
   revokeUser,
   updateManageableProfile,
 } from '@/lib/queries/admin'
+import {
+  getGuruTanpaAkun,
+  getOrangTuaTanpaAkun,
+} from '@/lib/queries/admin-extended'
 import type { ManageableRole } from '@/lib/queries/users'
 import type { Profile } from '@/lib/supabase/types'
 
@@ -61,6 +66,7 @@ const PAGE_SIZE_OPTIONS = [10, 20, 30, 40, 50] as const
 
 type RoleFilter = 'all' | ManageableRole
 type StatusFilter = 'all' | 'active' | 'pending'
+type UserTypeTab = 'semua' | 'guru' | 'orangtua' | 'admin'
 
 const editProfileSchema = z.object({
   nama_lengkap: z.string().min(2, 'Nama minimal 2 karakter'),
@@ -111,6 +117,7 @@ export default function AdminUsersPage() {
 
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
+  const [activeTab, setActiveTab] = useState<UserTypeTab>('semua')
   const [roleFilter, setRoleFilter] = useState<RoleFilter>('all')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const [search, setSearch] = useState('')
@@ -126,6 +133,8 @@ export default function AdminUsersPage() {
   const [isEditOpen, setIsEditOpen] = useState(false)
   const [approvalTarget, setApprovalTarget] = useState<Profile | null>(null)
   const [isAddOpen, setIsAddOpen] = useState(false)
+  const [selectedGuruId, setSelectedGuruId] = useState<string>('')
+  const [selectedOrangTuaId, setSelectedOrangTuaId] = useState<string>('')
 
   const editForm = useForm<EditProfileFormValues>({
     resolver: zodResolver(editProfileSchema),
@@ -158,23 +167,46 @@ export default function AdminUsersPage() {
 
   useEffect(() => {
     setPage(1)
-  }, [debouncedSearch, roleFilter, statusFilter])
+  }, [debouncedSearch, roleFilter, statusFilter, activeTab])
+
+  // Role filter berdasarkan tab aktif
+  const effectiveRoleFilter = useMemo((): RoleFilter => {
+    switch (activeTab) {
+      case 'guru': return 'user'
+      case 'orangtua': return 'orangtua' as ManageableRole
+      case 'admin': return 'admin'
+      default: return roleFilter
+    }
+  }, [activeTab, roleFilter])
 
   const profileFilters = useMemo(
     () => ({
-      role: roleFilter === 'all' ? undefined : roleFilter,
+      role: effectiveRoleFilter === 'all' ? undefined : effectiveRoleFilter,
       isApproved:
         statusFilter === 'all'
           ? undefined
           : statusFilter === 'active',
     }),
-    [roleFilter, statusFilter]
+    [effectiveRoleFilter, statusFilter]
   )
 
   const { data: allProfiles = [], isLoading } = useQuery({
     queryKey: ['admin-profiles-manageable', profileFilters],
     queryFn: () => getManageableProfiles(profileFilters),
     enabled: isAdmin,
+  })
+
+  // Query guru & orangtua belum punya akun (untuk form tambah pengguna)
+  const { data: guruTanpaAkun = [] } = useQuery({
+    queryKey: ['guru-tanpa-akun'],
+    queryFn: getGuruTanpaAkun,
+    enabled: isAdmin && isAddOpen,
+  })
+
+  const { data: orangTuaTanpaAkun = [] } = useQuery({
+    queryKey: ['orangtua-tanpa-akun'],
+    queryFn: getOrangTuaTanpaAkun,
+    enabled: isAdmin && isAddOpen,
   })
 
   const filteredProfiles = useMemo(
@@ -453,6 +485,22 @@ export default function AdminUsersPage() {
       <div className="space-y-6">
         <PageHeader title="Kelola User" />
 
+        {/* Tabs tipe pengguna */}
+        <Tabs
+          value={activeTab}
+          onValueChange={(v) => {
+            setActiveTab(v as UserTypeTab)
+            setPage(1)
+          }}
+        >
+          <TabsList>
+            <TabsTrigger value="semua">Semua</TabsTrigger>
+            <TabsTrigger value="guru">Guru / Musyrif</TabsTrigger>
+            <TabsTrigger value="orangtua">Orang Tua</TabsTrigger>
+            <TabsTrigger value="admin">Admin</TabsTrigger>
+          </TabsList>
+        </Tabs>
+
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:flex-1">
             <div className="relative w-full max-w-md sm:flex-1">
@@ -641,6 +689,8 @@ export default function AdminUsersPage() {
             if (!open) {
               setIsAddOpen(false)
               createUserForm.reset()
+              setSelectedGuruId('')
+              setSelectedOrangTuaId('')
             }
           }}
         >
@@ -652,6 +702,39 @@ export default function AdminUsersPage() {
               onSubmit={createUserForm.handleSubmit(onSubmitCreateUser)}
               className="space-y-4"
             >
+              {/* Pre-fill dari data guru yang belum punya akun */}
+              {createUserForm.watch('role') === 'user' && guruTanpaAkun.length > 0 && (
+                <div className="space-y-2 rounded-lg border border-dashed border-border bg-surface-2 p-3">
+                  <Label>Ambil Data dari Guru (opsional)</Label>
+                  <Select
+                    value={selectedGuruId}
+                    onValueChange={(id) => {
+                      setSelectedGuruId(id)
+                      const guru = guruTanpaAkun.find((g) => g.id === id)
+                      if (guru) {
+                        createUserForm.setValue('nama_lengkap', guru.nama_lengkap)
+                        createUserForm.setValue('email', guru.email ?? '')
+                        createUserForm.setValue('guru_mapel', guru.tipe)
+                      }
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Pilih guru yang belum punya akun..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {guruTanpaAkun.map((g) => (
+                        <SelectItem key={g.id} value={g.id}>
+                          {g.nama_lengkap} ({g.tipe})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-[var(--text-tertiary)]">
+                    Data nama dan email akan terisi otomatis
+                  </p>
+                </div>
+              )}
+
               <div className="space-y-2">
                 <Label htmlFor="create-nama_lengkap">Nama Lengkap</Label>
                 <Input

@@ -4,7 +4,9 @@ import Image from 'next/image'
 import {
   Award,
   BarChart2,
+  BookMarked,
   BookOpen,
+  CalendarDays,
   ChevronDown,
   Eye,
   FileText,
@@ -26,6 +28,7 @@ import {
   Tag,
   TrendingUp,
   Trophy,
+  UserCheck,
   UserCog,
   Users,
   type LucideIcon,
@@ -228,6 +231,34 @@ const menuItems: MenuItemConfig[] = [
         minRole: 'admin',
       },
       {
+        id: 'admin-guru',
+        label: 'Data Guru',
+        href: '/admin/guru',
+        icon: UserCheck,
+        minRole: 'admin',
+      },
+      {
+        id: 'admin-orangtua',
+        label: 'Data Orang Tua',
+        href: '/admin/orangtua',
+        icon: Users,
+        minRole: 'admin',
+      },
+      {
+        id: 'admin-mapel',
+        label: 'Mata Pelajaran',
+        href: '/admin/mapel',
+        icon: BookMarked,
+        minRole: 'admin',
+      },
+      {
+        id: 'admin-semester',
+        label: 'Semester & TP',
+        href: '/admin/semester',
+        icon: CalendarDays,
+        minRole: 'admin',
+      },
+      {
         id: 'admin-announcements',
         label: 'Pengumuman',
         href: '/admin/announcements',
@@ -278,13 +309,6 @@ const menuItems: MenuItemConfig[] = [
         minRole: 'superadmin',
       },
     ],
-  },
-  {
-    id: 'about',
-    label: 'Tentang',
-    href: '/about',
-    icon: Info,
-    minRole: 'user',
   },
 ]
 
@@ -338,14 +362,6 @@ const menuItemsOrangtua: MenuItemConfig[] = [
         allowedRoles: ['orangtua'],
       },
     ],
-  },
-  {
-    id: 'orangtua-about',
-    label: 'Tentang',
-    href: '/about',
-    icon: Info,
-    minRole: 'orangtua',
-    allowedRoles: ['orangtua'],
   },
 ]
 
@@ -409,7 +425,7 @@ function filterMenuByRole(
     }))
 }
 
-function getRoleBadgeLabel(role: Role): string {
+function getRoleBadgeLabel(role: Role, guruMapel?: string | null): string {
   switch (role) {
     case 'superadmin':
       return 'Superadmin'
@@ -418,7 +434,7 @@ function getRoleBadgeLabel(role: Role): string {
     case 'orangtua':
       return 'Orang Tua'
     default:
-      return 'User'
+      return guruMapel?.trim() || 'Guru / Musyrif'
   }
 }
 
@@ -762,7 +778,7 @@ function Sidebar() {
                     variant={getRoleBadgeVariant(profile.role)}
                     className="mt-1"
                   >
-                    {getRoleBadgeLabel(profile.role)}
+                    {getRoleBadgeLabel(profile.role, profile.guru_mapel)}
                   </Badge>
                 </div>
               </div>

@@ -93,17 +93,17 @@ function LeaderboardList({
       {items.map((item, index) => (
         <li
           key={item.siswa_id}
-          className="flex items-center justify-between gap-3 rounded-lg border border-border bg-surface px-3 py-2"
+          className="flex items-center justify-between gap-3 rounded-lg border border-border bg-surface dark:bg-zinc-900/50 px-3 py-2"
         >
           <div className="flex min-w-0 items-center gap-3">
-            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-surface-2 text-xs font-bold text-text-secondary">
+            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-surface-2 dark:bg-zinc-800 text-xs font-bold text-text-secondary dark:text-zinc-200">
               {index + 1}
             </span>
             <div className="min-w-0">
-              <p className="truncate text-sm font-medium text-text-primary">
+              <p className="truncate text-sm font-medium text-text-primary dark:text-zinc-100">
                 {item.nama}
               </p>
-              <p className="text-xs text-text-secondary">{item.kelas}</p>
+              <p className="text-xs text-text-secondary dark:text-zinc-400">{item.kelas}</p>
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-2">
@@ -433,7 +433,7 @@ export default function RekapPoinPage() {
               setPageSize(size)
               setPage(1)
             }}
-            onSortChange={() => {}}
+            onSortChange={() => { }}
             isLoading={rekapLoading}
           />
         </CardContent>

@@ -1,6 +1,6 @@
 'use client'
 
-import { LogOut, Menu, Moon, Sun, User } from 'lucide-react'
+import { Info, LogOut, Menu, Moon, Sun, User } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useCallback, useMemo } from 'react'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
@@ -116,6 +116,10 @@ function Header({ title, onMobileMenuToggle }: HeaderProps) {
               <User className="h-4 w-4" />
               Akun Saya
             </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => router.push('/about')}>
+              <Info className="h-4 w-4" />
+              Tentang
+            </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem
               variant="destructive"
@@ -133,3 +137,4 @@ function Header({ title, onMobileMenuToggle }: HeaderProps) {
 }
 
 export { Header }
+

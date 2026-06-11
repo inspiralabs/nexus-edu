@@ -37,6 +37,10 @@
     --text-primary: #F0F0EE;
     --text-secondary: #9A9A97;
     --text-tertiary: #6B6B68;
+    /* Status backgrounds dark mode — lebih gelap dan tidak mencolok */
+    --status-red-bg: #2d1515;
+    --status-yellow-bg: #2d2010;
+    --status-green-bg: #0f2d1a;
   }
 
   * {

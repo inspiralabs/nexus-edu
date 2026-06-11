@@ -39,6 +39,7 @@ export interface PrestasiFilters {
   pageSize?: number
   sortField?: string
   sortDirection?: 'asc' | 'desc'
+  kelas?: string
 }
 
 export interface PrestasiDashboardFilters {
@@ -83,7 +84,8 @@ const PRESTASI_SELECT = `
   event(id,nama_event),
   juara(id,nama_juara),
   bidang(id,nama_bidang),
-  kategori_prestasi(id,nama_kategori)
+  kategori_prestasi(id,nama_kategori),
+  profiles:profiles!prestasi_guru_id_fkey(id,nama_lengkap)
 `
 
 const ALLOWED_SORT_FIELDS = [
@@ -133,6 +135,39 @@ function resolveSortField(sortField?: string): AllowedSortField {
 }
 
 async function getFilteredStudentIds(
+  search?: string,
+  unit?: Unit[],
+  kelas?: string
+): Promise<string[] | null> {
+  const hasSearch = Boolean(search && search.length > 0)
+  const hasKelas = Boolean(kelas && kelas !== 'all')
+  const hasUnit = Boolean(unit && unit.length > 0)
+
+  if (!hasSearch && !hasKelas && !hasUnit) {
+    return null
+  }
+
+  const supabase = createClient()
+  let query = supabase.from('students').select('id')
+
+  if (search && search.length > 0) {
+    query = query.ilike('nama', `%${search}%`)
+  }
+  if (kelas && kelas !== 'all') {
+    query = query.eq('kelas', kelas)
+  }
+  if (unit && unit.length > 0) {
+    query = query.in('unit', unit)
+  }
+
+  const { data, error } = await query
+
+  if (error) throw new Error(error.message)
+
+  return (data ?? []).map((row) => (row as StudentIdRow).id)
+}
+
+async function getFilteredGuruIds(
   search?: string
 ): Promise<string[] | null> {
   if (!search || search.length === 0) {
@@ -141,13 +176,14 @@ async function getFilteredStudentIds(
 
   const supabase = createClient()
   const { data, error } = await supabase
-    .from('students')
+    .from('profiles')
     .select('id')
-    .ilike('nama', `%${search}%`)
+    .eq('role', 'user')
+    .ilike('nama_lengkap', `%${search}%`)
 
   if (error) throw new Error(error.message)
 
-  return (data ?? []).map((row) => (row as StudentIdRow).id)
+  return (data ?? []).map((row) => row.id)
 }
 
 type PrestasiTableFilterInput = Pick<
@@ -168,12 +204,17 @@ function applyPrestasiTableFilters<
 >(
   query: Q,
   filters?: PrestasiTableFilterInput,
-  studentIds?: string[] | null
+  studentIds?: string[] | null,
+  guruIds?: string[] | null
 ): Q {
   let nextQuery = query
 
   if (studentIds) {
     nextQuery = nextQuery.in('siswa_id', studentIds)
+  }
+
+  if (guruIds) {
+    nextQuery = nextQuery.in('guru_id', guruIds)
   }
 
   if (filters?.unit && filters.unit.length > 0) {
@@ -224,13 +265,20 @@ export async function getPrestasi(
   const to = from + pageSize - 1
   const sortField = resolveSortField(filters?.sortField)
   const ascending = filters?.sortDirection !== 'desc'
-  const tipe = filters?.tipe ?? 'siswa'
+  const tipe = filters?.tipe || 'siswa'
 
-  // Hanya cari studentIds saat mode siswa
+  // Cari studentIds atau guruIds berdasarkan tipe aktif
   let studentIds: string[] | null = null
+  let guruIds: string[] | null = null
+
   if (tipe === 'siswa') {
-    studentIds = await getFilteredStudentIds(filters?.search)
+    studentIds = await getFilteredStudentIds(filters?.search, filters?.unit, filters?.kelas)
     if (studentIds && studentIds.length === 0) {
+      return { data: [], total: 0 }
+    }
+  } else if (tipe === 'guru') {
+    guruIds = await getFilteredGuruIds(filters?.search)
+    if (guruIds && guruIds.length === 0) {
       return { data: [], total: 0 }
     }
   }
@@ -240,7 +288,7 @@ export async function getPrestasi(
     .select('*', { count: 'exact', head: true })
     .eq('tipe', tipe)
 
-  countQuery = applyPrestasiTableFilters(countQuery, filters, studentIds)
+  countQuery = applyPrestasiTableFilters(countQuery, filters, studentIds, guruIds)
 
   const { count, error: countError } = await countQuery
 
@@ -249,7 +297,7 @@ export async function getPrestasi(
   let dataQuery = supabase.from('prestasi').select(PRESTASI_SELECT)
     .eq('tipe', tipe)
 
-  dataQuery = applyPrestasiTableFilters(dataQuery, filters, studentIds)
+  dataQuery = applyPrestasiTableFilters(dataQuery, filters, studentIds, guruIds)
 
   const { data, error } = await dataQuery
     .order(sortField, { ascending })
@@ -264,7 +312,8 @@ export async function getPrestasi(
 }
 
 export async function createPrestasi(
-  data: CreatePrestasiInput
+  data: CreatePrestasiInput,
+  diberikanOleh?: string
 ): Promise<Prestasi> {
   const supabase = createClient()
 
@@ -275,6 +324,67 @@ export async function createPrestasi(
     .single()
 
   if (error) throw new Error(error.message)
+
+  // ── Alur otomatis: lempar ke kedisiplinan (hanya untuk tipe siswa) ──
+  if (data.tipe === 'siswa' && data.siswa_id) {
+    try {
+      let pembuatPoin = diberikanOleh
+      if (!pembuatPoin) {
+        const { data: { user } } = await supabase.auth.getUser()
+        if (user) {
+          const { data: prof } = await supabase
+            .from('profiles')
+            .select('nama_lengkap')
+            .eq('id', user.id)
+            .single()
+          pembuatPoin = prof?.nama_lengkap ?? user.email ?? 'Sistem'
+        } else {
+          pembuatPoin = 'Sistem'
+        }
+      }
+
+      // 1. Cari kategori_disiplin dengan nama 'prestasi'
+      const { data: katData } = await supabase
+        .from('kategori_disiplin')
+        .select('id')
+        .ilike('nama_kategori', '%prestasi%')
+        .limit(1)
+        .maybeSingle()
+
+      if (katData) {
+        // 2. Cari pasal yang sesuai tingkat kejuaraan
+        const { data: pasalData } = await supabase
+          .from('pasal')
+          .select('id, poin')
+          .ilike('nama_pasal', `%${data.tingkat_kejuaraan}%`)
+          .eq('kategori_id', katData.id)
+          .limit(1)
+          .maybeSingle()
+
+        // 3. Insert ke kedisiplinan
+        await supabase.from('kedisiplinan').insert({
+          tanggal: data.waktu ?? new Date().toISOString().split('T')[0],
+          diberikan_oleh: pembuatPoin,
+          siswa_id: data.siswa_id,
+          kategori_id: katData.id,
+          pasal_id: pasalData?.id ?? null,
+          divisi_id: null,
+          tindakan_id: null,
+          sumber: 'prestasi',
+          prestasi_id: result.id,
+          status: 'Belum Diproses',
+        })
+
+        // 4. Update flag prestasi
+        await supabase
+          .from('prestasi')
+          .update({ sudah_dilempar_kedisiplinan: true })
+          .eq('id', result.id)
+      }
+    } catch {
+      // Silent fail — jangan gagalkan prestasi hanya karena antrian poin
+    }
+  }
 
   return result as Prestasi
 }
