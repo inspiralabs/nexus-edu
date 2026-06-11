@@ -58,6 +58,7 @@ import {
   deleteStudents,
   getAlumniStudents,
   getKamarOptions,
+  getOrangTuaOptions,
   getStudentClasses,
   getStudents,
   restoreStudent,
@@ -77,6 +78,7 @@ const studentAddSchema = z.object({
   jenis_kelamin: z.enum(['L', 'P'], { message: 'Pilih jenis kelamin' }),
   kamar_id: z.string().uuid().optional().nullable(),
   nomor_induk: z.string().optional(),
+  orangtua_id: z.string().uuid().optional().nullable(),
 })
 
 // Schema edit siswa — lengkap
@@ -87,6 +89,7 @@ const studentEditSchema = z.object({
   kamar_id: z.string().uuid().optional().nullable(),
   nomor_induk: z.string().optional(),
   is_alumni: z.boolean(),
+  orangtua_id: z.string().uuid().optional().nullable(),
 })
 
 type StudentAddFormValues = z.infer<typeof studentAddSchema>
@@ -147,12 +150,14 @@ export default function StudentsPage() {
     jenis_kelamin: JenisKelamin | ''
     kamar_id: string | null
     nomor_induk: string
-  }>({ kelas: '', jenis_kelamin: '', kamar_id: null, nomor_induk: '' })
+    orangtua_id: string | null
+  }>({ kelas: '', jenis_kelamin: '', kamar_id: null, nomor_induk: '', orangtua_id: null })
   const [alumniUnitFilter, setAlumniUnitFilter] = useState<Unit | 'all'>('all')
   const [deleteTargetIds, setDeleteTargetIds] = useState<string[]>([])
   const [deletingStudents, setDeletingStudents] = useState<Student[]>([])
 
   const [kamarSearch, setKamarSearch] = useState('')
+  const [orangTuaSearch, setOrangTuaSearch] = useState('')
 
   const debouncedSearch = useDebounce(search, 300)
 
@@ -176,6 +181,23 @@ export default function StudentsPage() {
   const kamarOptions = useMemo(() => {
     return filteredKamar.map((k) => ({ value: k.id, label: k.nama_kamar }))
   }, [filteredKamar])
+
+  // Load Orang Tua Options
+  const { data: orangTuaData = [], isLoading: isOrangTuaLoading } = useQuery({
+    queryKey: ['orangtua-options'],
+    queryFn: getOrangTuaOptions,
+  })
+
+  const filteredOrangTua = useMemo(() => {
+    if (!orangTuaSearch) return orangTuaData
+    return orangTuaData.filter((ot) =>
+      ot.nama_lengkap.toLowerCase().includes(orangTuaSearch.toLowerCase())
+    )
+  }, [orangTuaData, orangTuaSearch])
+
+  const orangTuaOptions = useMemo(() => {
+    return filteredOrangTua.map((ot) => ({ value: ot.id, label: ot.nama_lengkap }))
+  }, [filteredOrangTua])
 
   const queryKey = [
     'students',
@@ -220,7 +242,7 @@ export default function StudentsPage() {
 
   const addForm = useForm<StudentAddFormValues>({
     resolver: zodResolver(studentAddSchema),
-    defaultValues: { nama: '', kelas: '', jenis_kelamin: 'L', kamar_id: null, nomor_induk: '' },
+    defaultValues: { nama: '', kelas: '', jenis_kelamin: 'L', kamar_id: null, nomor_induk: '', orangtua_id: null },
   })
 
   const editForm = useForm<StudentEditFormValues>({
@@ -232,6 +254,7 @@ export default function StudentsPage() {
       kamar_id: null,
       nomor_induk: '',
       is_alumni: false,
+      orangtua_id: null,
     },
   })
 
@@ -404,7 +427,7 @@ export default function StudentsPage() {
       })
       setSelectedRows([])
       setIsBulkEditOpen(false)
-      setBulkEditData({ kelas: '', jenis_kelamin: '', kamar_id: null, nomor_induk: '' })
+      setBulkEditData({ kelas: '', jenis_kelamin: '', kamar_id: null, nomor_induk: '', orangtua_id: null })
     },
     onError: (error: Error) => {
       toast({ title: 'Gagal', description: error.message, variant: 'destructive' })
@@ -444,12 +467,13 @@ export default function StudentsPage() {
   }
 
   const openAddDialog = () => {
-    addForm.reset({ nama: '', kelas: '', jenis_kelamin: 'L', kamar_id: null, nomor_induk: '' })
+    addForm.reset({ nama: '', kelas: '', jenis_kelamin: 'L', kamar_id: null, nomor_induk: '', orangtua_id: null })
     setIsAddOpen(true)
   }
 
   const openEditDialog = (student: Student) => {
     setEditingStudent(student)
+    const currentOrangTuaId = student.orangtua_siswa?.[0]?.orangtua_id || null
     editForm.reset({
       nama: student.nama,
       kelas: student.kelas,
@@ -457,6 +481,7 @@ export default function StudentsPage() {
       kamar_id: student.kamar_id ?? null,
       nomor_induk: student.nomor_induk ?? '',
       is_alumni: student.is_alumni ?? false,
+      orangtua_id: currentOrangTuaId,
     })
     setIsEditOpen(true)
   }
@@ -475,7 +500,7 @@ export default function StudentsPage() {
   }
 
   const openBulkEdit = () => {
-    setBulkEditData({ kelas: '', jenis_kelamin: '', kamar_id: null, nomor_induk: '' })
+    setBulkEditData({ kelas: '', jenis_kelamin: '', kamar_id: null, nomor_induk: '', orangtua_id: null })
     setIsBulkEditOpen(true)
   }
 
@@ -490,7 +515,7 @@ export default function StudentsPage() {
   }
 
   const resetAddFormDefaults = () => {
-    addForm.reset({ nama: '', kelas: '', jenis_kelamin: 'L', kamar_id: null, nomor_induk: '' })
+    addForm.reset({ nama: '', kelas: '', jenis_kelamin: 'L', kamar_id: null, nomor_induk: '', orangtua_id: null })
   }
 
   const closeBulkAddDialog = () => {
@@ -515,6 +540,7 @@ export default function StudentsPage() {
         jenis_kelamin: values.jenis_kelamin,
         kamar_id: values.kamar_id,
         nomor_induk: values.nomor_induk,
+        orangtua_id: values.orangtua_id,
         unit: activeUnit ?? 'SD',
       },
     ])
@@ -527,17 +553,25 @@ export default function StudentsPage() {
       bulkEditData.kelas.trim() ||
       bulkEditData.jenis_kelamin ||
       bulkEditData.kamar_id ||
-      bulkEditData.nomor_induk.trim()
+      bulkEditData.nomor_induk.trim() ||
+      bulkEditData.orangtua_id
 
     if (!hasAnyValue) {
       toast({ title: 'Validasi gagal', description: 'Isi minimal satu field yang ingin diubah', variant: 'destructive' })
       return
     }
-    const payload: { kelas?: string; jenis_kelamin?: JenisKelamin; kamar_id?: string | null; nomor_induk?: string } = {}
+    const payload: {
+      kelas?: string
+      jenis_kelamin?: JenisKelamin
+      kamar_id?: string | null
+      nomor_induk?: string
+      orangtua_id?: string | null
+    } = {}
     if (bulkEditData.kelas.trim()) payload.kelas = bulkEditData.kelas.trim()
     if (bulkEditData.jenis_kelamin) payload.jenis_kelamin = bulkEditData.jenis_kelamin
     if (bulkEditData.kamar_id) payload.kamar_id = bulkEditData.kamar_id
     if (bulkEditData.nomor_induk.trim()) payload.nomor_induk = bulkEditData.nomor_induk.trim()
+    if (bulkEditData.orangtua_id) payload.orangtua_id = bulkEditData.orangtua_id
 
     const oldStudents = data?.data.filter((s) => selectedRows.includes(s.id)) ?? []
     bulkUpdateMutation.mutate({ ids: selectedRows, ...payload, oldStudents })
@@ -768,6 +802,24 @@ export default function StudentsPage() {
               ? 'Kamar tidak ditemukan'
               : 'Belum ada kamar untuk unit yang dipilih'
           }
+        />
+      </div>
+
+      {/* Orang Tua (opsional) */}
+      <div className="space-y-2">
+        <Label htmlFor={showAddToListButton ? 'bulk-orangtua' : 'add-orangtua'}>
+          Nama Orang Tua <span className="text-[var(--text-tertiary)]">(opsional)</span>
+        </Label>
+        <Combobox
+          options={orangTuaOptions}
+          value={addForm.watch('orangtua_id') || ''}
+          onSelect={(val) => {
+            addForm.setValue('orangtua_id', val || null, { shouldValidate: true })
+          }}
+          onSearch={setOrangTuaSearch}
+          placeholder="Pilih Orang Tua..."
+          isLoading={isOrangTuaLoading}
+          emptyMessage="Orang tua tidak ditemukan"
         />
       </div>
 
@@ -1045,6 +1097,22 @@ export default function StudentsPage() {
               />
             </div>
 
+            {/* Orang Tua (opsional) */}
+            <div className="space-y-2">
+              <Label htmlFor="edit-orangtua">Nama Orang Tua <span className="text-[var(--text-tertiary)]">(opsional)</span></Label>
+              <Combobox
+                options={orangTuaOptions}
+                value={editForm.watch('orangtua_id') || ''}
+                onSelect={(val) => {
+                  editForm.setValue('orangtua_id', val || null, { shouldValidate: true })
+                }}
+                onSearch={setOrangTuaSearch}
+                placeholder="Pilih Orang Tua..."
+                isLoading={isOrangTuaLoading}
+                emptyMessage="Orang tua tidak ditemukan"
+              />
+            </div>
+
             {/* Nomor Induk (opsional) */}
             <div className="space-y-2">
               <Label htmlFor="edit-nomor-induk">Nomor Induk <span className="text-[var(--text-tertiary)]">(opsional)</span></Label>
@@ -1145,7 +1213,7 @@ export default function StudentsPage() {
         open={isBulkEditOpen}
         onOpenChange={(open) => {
           setIsBulkEditOpen(open)
-          if (!open) setBulkEditData({ kelas: '', jenis_kelamin: '', kamar_id: null, nomor_induk: '' })
+          if (!open) setBulkEditData({ kelas: '', jenis_kelamin: '', kamar_id: null, nomor_induk: '', orangtua_id: null })
         }}
       >
         <DialogContent>
@@ -1209,6 +1277,20 @@ export default function StudentsPage() {
               />
             </div>
 
+            {/* Orang Tua */}
+            <div className="space-y-2">
+              <Label htmlFor="bulk-edit-orangtua">Nama Orang Tua <span className="text-[var(--text-tertiary)]">(opsional)</span></Label>
+              <Combobox
+                options={orangTuaOptions}
+                value={bulkEditData.orangtua_id || ''}
+                onSelect={(val) => setBulkEditData((prev) => ({ ...prev, orangtua_id: val || null }))}
+                onSearch={setOrangTuaSearch}
+                placeholder="Pilih Orang Tua..."
+                isLoading={isOrangTuaLoading}
+                emptyMessage="Orang tua tidak ditemukan"
+              />
+            </div>
+
             {/* Nomor Induk */}
             <div className="space-y-2">
               <Label htmlFor="bulk-edit-nomor">Nomor Induk <span className="text-[var(--text-tertiary)]">(opsional)</span></Label>
@@ -1226,7 +1308,7 @@ export default function StudentsPage() {
               variant="outline"
               onClick={() => {
                 setIsBulkEditOpen(false)
-                setBulkEditData({ kelas: '', jenis_kelamin: '', kamar_id: null, nomor_induk: '' })
+                setBulkEditData({ kelas: '', jenis_kelamin: '', kamar_id: null, nomor_induk: '', orangtua_id: null })
               }}
             >
               Batal

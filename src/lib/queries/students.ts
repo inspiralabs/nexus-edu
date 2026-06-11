@@ -9,6 +9,8 @@ export interface CreateStudentInput {
   kamar_id?: string | null
   kamar?: string
   nomor_induk?: string
+  orangtua_id?: string | null
+  orang_tua?: string
 }
 
 export interface UpdateStudentInput {
@@ -19,6 +21,8 @@ export interface UpdateStudentInput {
   kamar?: string
   nomor_induk?: string
   is_alumni?: boolean
+  orangtua_id?: string | null
+  orang_tua?: string
 }
 
 export interface GetStudentsOptions {
@@ -63,7 +67,7 @@ export async function getStudents(
 
   let dataQuery = supabase
     .from('students')
-    .select('*, orangtua_siswa(hubungan, orangtua(nama_lengkap))')
+    .select('*, orangtua_siswa(orangtua_id, hubungan, orangtua(nama_lengkap))')
     .eq('unit', unit)
     .eq('is_alumni', false)
 
@@ -121,7 +125,7 @@ export async function getAlumniStudents(
 
   let dataQuery = supabase
     .from('students')
-    .select('*, orangtua_siswa(hubungan, orangtua(nama_lengkap))')
+    .select('*, orangtua_siswa(orangtua_id, hubungan, orangtua(nama_lengkap))')
     .eq('is_alumni', true)
 
   if (options?.unit) {
@@ -166,7 +170,7 @@ export async function createStudent(
     }
   }
 
-  const { kamar: _, ...rest } = data
+  const { kamar: _, orang_tua: __, orangtua_id: selectedOrangTuaId, ...rest } = data
   const { data: result, error } = await supabase
     .from('students')
     .insert({ ...rest, kamar_id: finalKamarId, is_alumni: false })
@@ -174,6 +178,17 @@ export async function createStudent(
     .single()
 
   if (error) throw new Error(error.message)
+
+  if (selectedOrangTuaId) {
+    const { error: relasiError } = await supabase
+      .from('orangtua_siswa')
+      .insert({
+        siswa_id: result.id,
+        orangtua_id: selectedOrangTuaId,
+        hubungan: 'Ortu',
+      })
+    if (relasiError) throw new Error(relasiError.message)
+  }
 
   return result as Student
 }
@@ -199,7 +214,7 @@ export async function updateStudent(
     }
   }
 
-  const { kamar: _, ...rest } = data
+  const { kamar: _, orang_tua: __, orangtua_id: selectedOrangTuaId, ...rest } = data
   const updatePayload: any = { ...rest }
   if (finalKamarId !== undefined) {
     updatePayload.kamar_id = finalKamarId
@@ -213,6 +228,26 @@ export async function updateStudent(
     .single()
 
   if (error) throw new Error(error.message)
+
+  if (selectedOrangTuaId !== undefined) {
+    const { error: deleteError } = await supabase
+      .from('orangtua_siswa')
+      .delete()
+      .eq('siswa_id', id)
+
+    if (deleteError) throw new Error(deleteError.message)
+
+    if (selectedOrangTuaId !== null) {
+      const { error: relasiError } = await supabase
+        .from('orangtua_siswa')
+        .insert({
+          siswa_id: id,
+          orangtua_id: selectedOrangTuaId,
+          hubungan: 'Ortu',
+        })
+      if (relasiError) throw new Error(relasiError.message)
+    }
+  }
 
   return result as Student
 }
@@ -249,6 +284,8 @@ export async function bulkUpdateStudents(
     kamar_id?: string | null
     kamar?: string
     nomor_induk?: string
+    orangtua_id?: string | null
+    orang_tua?: string
   }
 ): Promise<void> {
   const supabase = createClient()
@@ -268,7 +305,21 @@ export async function bulkUpdateStudents(
     }
   }
 
-  const { kamar: _, ...rest } = data
+  let finalOrangTuaId = data.orangtua_id !== undefined ? data.orangtua_id : undefined
+  if (finalOrangTuaId === undefined && data.orang_tua) {
+    const { data: otData } = await supabase
+      .from('orangtua')
+      .select('id')
+      .ilike('nama_lengkap', data.orang_tua.trim())
+      .maybeSingle()
+    if (otData) {
+      finalOrangTuaId = otData.id
+    } else {
+      finalOrangTuaId = null
+    }
+  }
+
+  const { kamar: _, orang_tua: __, orangtua_id: ___, ...rest } = data
   const updatePayload: any = { ...rest }
   if (finalKamarId !== undefined) {
     updatePayload.kamar_id = finalKamarId
@@ -277,6 +328,29 @@ export async function bulkUpdateStudents(
   const { error } = await supabase.from('students').update(updatePayload).in('id', ids)
 
   if (error) throw new Error(error.message)
+
+  if (finalOrangTuaId !== undefined) {
+    const { error: deleteError } = await supabase
+      .from('orangtua_siswa')
+      .delete()
+      .in('siswa_id', ids)
+
+    if (deleteError) throw new Error(deleteError.message)
+
+    if (finalOrangTuaId !== null) {
+      const relasi = ids.map((siswa_id) => ({
+        siswa_id,
+        orangtua_id: finalOrangTuaId as string,
+        hubungan: 'Ortu',
+      }))
+
+      const { error: insertError } = await supabase
+        .from('orangtua_siswa')
+        .insert(relasi)
+
+      if (insertError) throw new Error(insertError.message)
+    }
+  }
 }
 
 export async function bulkCreateStudents(
@@ -297,6 +371,19 @@ export async function bulkCreateStudents(
     })
   }
 
+  const { data: orangTuaList, error: otErr } = await supabase
+    .from('orangtua')
+    .select('id, nama_lengkap')
+
+  if (otErr) throw new Error(otErr.message)
+
+  const orangTuaMap = new Map<string, string>()
+  if (orangTuaList) {
+    orangTuaList.forEach((ot) => {
+      orangTuaMap.set(ot.nama_lengkap.trim().toLowerCase(), ot.id)
+    })
+  }
+
   const mappedData = data.map((item) => {
     let finalKamarId = item.kamar_id || null
 
@@ -305,7 +392,7 @@ export async function bulkCreateStudents(
       finalKamarId = kamarMap.get(trimmedKamar) || null
     }
 
-    const { kamar: _, ...rest } = item
+    const { kamar: _, orang_tua: __, orangtua_id: ___, ...rest } = item
     return {
       ...rest,
       kamar_id: finalKamarId,
@@ -320,7 +407,34 @@ export async function bulkCreateStudents(
 
   if (error) throw new Error(error.message)
 
-  return (result ?? []) as Student[]
+  const results = (result ?? []) as Student[]
+
+  const relasiEntries: { orangtua_id: string; siswa_id: string; hubungan: string }[] = []
+  results.forEach((siswa, idx) => {
+    const inputItem = data[idx]
+    let finalOrangTuaId = inputItem.orangtua_id || null
+    if (!finalOrangTuaId && inputItem.orang_tua) {
+      const trimmedOT = inputItem.orang_tua.trim().toLowerCase()
+      finalOrangTuaId = orangTuaMap.get(trimmedOT) || null
+    }
+    if (finalOrangTuaId) {
+      relasiEntries.push({
+        siswa_id: siswa.id,
+        orangtua_id: finalOrangTuaId,
+        hubungan: 'Ortu',
+      })
+    }
+  })
+
+  if (relasiEntries.length > 0) {
+    const { error: relasiError } = await supabase
+      .from('orangtua_siswa')
+      .insert(relasiEntries)
+
+    if (relasiError) throw new Error(relasiError.message)
+  }
+
+  return results;
 }
 
 export interface KelasOption {
@@ -440,4 +554,16 @@ export async function getMataKuliah(units: string[]): Promise<MataPelajaran[]> {
 
   if (error) throw new Error(error.message)
   return (data ?? []) as MataPelajaran[]
+}
+
+export async function getOrangTuaOptions(): Promise<{ id: string; nama_lengkap: string }[]> {
+  const supabase = createClient()
+
+  const { data, error } = await supabase
+    .from('orangtua')
+    .select('id, nama_lengkap')
+    .order('nama_lengkap', { ascending: true })
+
+  if (error) throw new Error(error.message)
+  return (data ?? []) as { id: string; nama_lengkap: string }[]
 }

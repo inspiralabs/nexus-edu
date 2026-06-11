@@ -44,8 +44,10 @@ export interface Student {
   nomor_induk: string | null
   created_at: string
   orangtua_siswa?: {
+    orangtua_id?: string | null
     hubungan: string
     orangtua: {
+      id?: string
       nama_lengkap: string
     } | null
   }[]
