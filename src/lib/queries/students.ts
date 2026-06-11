@@ -63,7 +63,7 @@ export async function getStudents(
 
   let dataQuery = supabase
     .from('students')
-    .select('*')
+    .select('*, orangtua_siswa(hubungan, orangtua(nama_lengkap))')
     .eq('unit', unit)
     .eq('is_alumni', false)
 
@@ -121,7 +121,7 @@ export async function getAlumniStudents(
 
   let dataQuery = supabase
     .from('students')
-    .select('*')
+    .select('*, orangtua_siswa(hubungan, orangtua(nama_lengkap))')
     .eq('is_alumni', true)
 
   if (options?.unit) {

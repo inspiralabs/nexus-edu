@@ -514,6 +514,7 @@ export interface MutabaahRekapItem {
 export interface MutabaahRekapOptions {
   siswaId?: string
   kamarNama?: string
+  unit?: string
   tanggalDari: string
   tanggalSampai: string
 }
@@ -523,7 +524,7 @@ export async function getMutabaahRekap(
   options: MutabaahRekapOptions
 ): Promise<MutabaahRekapItem[]> {
   const supabase = createClient()
-  const { siswaId, kamarNama, tanggalDari, tanggalSampai } = options
+  const { siswaId, kamarNama, unit, tanggalDari, tanggalSampai } = options
 
   // Resolusi siswa_ids berdasarkan filter
   let siswaIds: string[] | null = null
@@ -535,6 +536,16 @@ export async function getMutabaahRekap(
       .from('students')
       .select('id')
       .eq('kamar', kamarNama)
+      .eq('is_alumni', false)
+
+    if (siswaError) throw new Error(siswaError.message)
+    siswaIds = (siswaData ?? []).map((s: { id: string }) => s.id)
+    if (siswaIds.length === 0) return []
+  } else if (unit) {
+    const { data: siswaData, error: siswaError } = await supabase
+      .from('students')
+      .select('id')
+      .eq('unit', unit)
       .eq('is_alumni', false)
 
     if (siswaError) throw new Error(siswaError.message)

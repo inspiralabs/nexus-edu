@@ -3,7 +3,7 @@
 import { format } from 'date-fns'
 import { id as idLocale } from 'date-fns/locale'
 import { Printer, Search } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { PageHeader } from '@/components/layout/page-header'
 import { DatePicker } from '@/components/shared/date-picker'
@@ -13,6 +13,7 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Badge } from '@/components/ui/badge'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useAuth } from '@/hooks/use-auth'
 import { useDebounce } from '@/hooks/use-debounce'
 import {
@@ -64,6 +65,7 @@ interface SimpleSiswa {
 export default function CetakMutabaahPage() {
   const { profile, isAdmin } = useAuth()
 
+  const [activeTab, setActiveTab] = useState<'SD' | 'SMP' | 'SMA'>('SD')
   const [selectedKamar, setSelectedKamar] = useState<string>('')
   const [selectedSiswaId, setSelectedSiswaId] = useState<string>('')
   const [tanggalDari, setTanggalDari] = useState<Date>(() => {
@@ -94,6 +96,32 @@ export default function CetakMutabaahPage() {
     },
     enabled: !!profile,
   })
+
+  // Auto-set activeTab berdasarkan kamar pertama yang dimiliki
+  useEffect(() => {
+    if (kamarList.length > 0) {
+      const firstKamarUnit = kamarList[0].unit as 'SD' | 'SMP' | 'SMA'
+      if (firstKamarUnit) {
+        setActiveTab(firstKamarUnit)
+      }
+    }
+  }, [kamarList])
+
+  // Filter Kamar berdasarkan unit tab aktif
+  const filteredKamarList = useMemo(() => {
+    return kamarList.filter((k) => k.unit === activeTab)
+  }, [kamarList, activeTab])
+
+  // Auto-reset atau filter select kamar berdasarkan unit tab aktif
+  useEffect(() => {
+    if (selectedKamar !== '') {
+      const exists = filteredKamarList.some((k) => k.nama_kamar === selectedKamar)
+      if (!exists) {
+        setSelectedKamar('')
+        setSelectedSiswaId('')
+      }
+    }
+  }, [filteredKamarList, selectedKamar])
 
   // ── Query Siswa di kamar ──
   const { data: siswaKamarList = [], isLoading: loadingSiswa } = useQuery({
@@ -206,6 +234,23 @@ export default function CetakMutabaahPage() {
           }
         />
 
+        {/* ── Unit Tabs ── */}
+        <Tabs
+          value={activeTab}
+          onValueChange={(val) => {
+            setActiveTab(val as 'SD' | 'SMP' | 'SMA')
+            setSelectedKamar('')
+            setSelectedSiswaId('')
+          }}
+          className="w-full no-print mt-4"
+        >
+          <TabsList className="grid w-full grid-cols-3 max-w-[300px]">
+            <TabsTrigger value="SD">SD</TabsTrigger>
+            <TabsTrigger value="SMP">SMP</TabsTrigger>
+            <TabsTrigger value="SMA">SMA</TabsTrigger>
+          </TabsList>
+        </Tabs>
+
         {/* Filter */}
         <div className="mt-4 flex flex-wrap items-end gap-3 rounded-lg border border-[var(--border)] bg-[var(--surface)] p-4">
           <div className="flex flex-col gap-1.5">
@@ -221,7 +266,7 @@ export default function CetakMutabaahPage() {
                 <SelectValue placeholder="Pilih kamar..." />
               </SelectTrigger>
               <SelectContent>
-                {kamarList.map((k) => (
+                {filteredKamarList.map((k) => (
                   <SelectItem key={k.id} value={k.nama_kamar}>{k.nama_kamar}</SelectItem>
                 ))}
               </SelectContent>

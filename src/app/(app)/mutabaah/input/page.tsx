@@ -11,6 +11,8 @@ import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import { toast } from '@/components/ui/use-toast'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { ConfirmDialog } from '@/components/shared/confirm-dialog'
 import { useAuth } from '@/hooks/use-auth'
 import { logAudit } from '@/lib/audit/log'
 import {
@@ -77,6 +79,8 @@ export default function InputHarianPage() {
   const [selectedKamar, setSelectedKamar] = useState<string>('')
   const [mutabaahData, setMutabaahData] = useState<MutabaahMap>(new Map())
   const [isSaving, setIsSaving] = useState(false)
+  const [activeTab, setActiveTab] = useState<'SD' | 'SMP' | 'SMA'>('SD')
+  const [isLiburDialogOpen, setIsLiburDialogOpen] = useState(false)
 
   const tanggalStr = format(selectedDate, 'yyyy-MM-dd')
 
@@ -93,12 +97,32 @@ export default function InputHarianPage() {
   // Menstabilkan referensi kamarList agar tidak memicu re-render / useEffect berlebih saat loading
   const kamarList = useMemo(() => rawKamarList ?? [], [rawKamarList])
 
-  // Auto-pilih kamar pertama
+  // Auto-set activeTab berdasarkan kamar pertama yang dimiliki
   useEffect(() => {
-    if (kamarList.length > 0 && !selectedKamar) {
-      setSelectedKamar(kamarList[0].nama_kamar)
+    if (kamarList.length > 0) {
+      const firstKamarUnit = kamarList[0].unit as 'SD' | 'SMP' | 'SMA'
+      if (firstKamarUnit) {
+        setActiveTab(firstKamarUnit)
+      }
     }
-  }, [kamarList, selectedKamar])
+  }, [kamarList])
+
+  // Filter Kamar berdasarkan tab unit
+  const filteredKamarList = useMemo(() => {
+    return kamarList.filter((k) => k.unit === activeTab)
+  }, [kamarList, activeTab])
+
+  // Auto-pilih kamar pertama dari list terfilter
+  useEffect(() => {
+    if (filteredKamarList.length > 0) {
+      const exists = filteredKamarList.some((k) => k.nama_kamar === selectedKamar)
+      if (!exists) {
+        setSelectedKamar(filteredKamarList[0].nama_kamar)
+      }
+    } else {
+      setSelectedKamar('')
+    }
+  }, [filteredKamarList, selectedKamar])
 
   // ── Query Hari Libur ──
   const { data: hariLiburInfo = { isLibur: false, keterangan: null } } = useQuery({
@@ -240,6 +264,37 @@ export default function InputHarianPage() {
     return cols
   }, [kegiatanList])
 
+  // ── Libur Massal Mutation ──
+  const setLiburMassalMutation = useMutation({
+    mutationFn: async () => {
+      if (!profile || !selectedKamar) return
+      const siswaIds = siswaList.map((s) => s.id)
+      const kegiatanIds = kegiatanList.map((k) => k.id)
+      await setAllLiburOnDate(tanggalStr, siswaIds, kegiatanIds, profile.id)
+
+      await logAudit(profile.id, 'CREATE', 'mutabaah', tanggalStr, null, {
+        tanggal: tanggalStr,
+        kamar: selectedKamar,
+        action: 'set_libur_massal',
+        total_students: siswaIds.length,
+      })
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['mutabaah-harian', tanggalStr, selectedKamar] })
+      toast({
+        title: 'Berhasil',
+        description: `Seluruh kegiatan di kamar "${selectedKamar}" pada tanggal ${format(selectedDate, 'dd MMMM yyyy', { locale: idLocale })} berhasil diset Libur (L)`,
+      })
+    },
+    onError: (err) => {
+      toast({
+        title: 'Gagal',
+        description: err instanceof Error ? err.message : 'Terjadi kesalahan',
+        variant: 'destructive',
+      })
+    },
+  })
+
   // ── Simpan ──
   const handleSimpan = async () => {
     if (!profile || !selectedKamar) return
@@ -309,18 +364,42 @@ export default function InputHarianPage() {
         title="Input Harian Mutabaah"
         description="Catat kehadiran kegiatan pesantren per siswa per tanggal"
         actions={
-          <Button
-            id="btn-simpan-checklist"
-            onClick={handleSimpan}
-            isLoading={isSaving}
-            disabled={isSaving || !selectedKamar || siswaList.length === 0}
-            className="shrink-0"
-          >
-            <Save className="mr-2 h-4 w-4" />
-            Simpan Checklist
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              id="btn-libur-massal"
+              variant="outline"
+              onClick={() => setIsLiburDialogOpen(true)}
+              disabled={!selectedKamar || siswaList.length === 0 || setLiburMassalMutation.isPending}
+              className="shrink-0 text-amber-600 border-amber-300 hover:bg-amber-50 dark:text-amber-400 dark:border-amber-700 dark:hover:bg-amber-950/50"
+            >
+              Set Libur Massal
+            </Button>
+            <Button
+              id="btn-simpan-checklist"
+              onClick={handleSimpan}
+              isLoading={isSaving}
+              disabled={isSaving || !selectedKamar || siswaList.length === 0}
+              className="shrink-0"
+            >
+              <Save className="mr-2 h-4 w-4" />
+              Simpan Checklist
+            </Button>
+          </div>
         }
       />
+
+      {/* ── Unit Tabs ── */}
+      <Tabs
+        value={activeTab}
+        onValueChange={(val) => setActiveTab(val as 'SD' | 'SMP' | 'SMA')}
+        className="w-full"
+      >
+        <TabsList className="grid w-full grid-cols-3 max-w-[300px]">
+          <TabsTrigger value="SD">SD</TabsTrigger>
+          <TabsTrigger value="SMP">SMP</TabsTrigger>
+          <TabsTrigger value="SMA">SMA</TabsTrigger>
+        </TabsList>
+      </Tabs>
 
       {/* ── Filter Bar ── */}
       <div className="flex flex-wrap items-end gap-3 rounded-lg border border-[var(--border)] bg-[var(--surface)] p-4">
@@ -340,7 +419,7 @@ export default function InputHarianPage() {
               <SelectValue placeholder="Pilih kamar..." />
             </SelectTrigger>
             <SelectContent>
-              {kamarList.map((k) => (
+              {filteredKamarList.map((k) => (
                 <SelectItem key={k.id} value={k.nama_kamar}>
                   {k.nama_kamar}
                 </SelectItem>
@@ -422,7 +501,7 @@ export default function InputHarianPage() {
                   {/* Kolom sticky: nama siswa */}
                   <th
                     rowSpan={2}
-                    className="sticky left-0 z-10 min-w-[160px] border-r border-[var(--border)] bg-[var(--surface-2)] px-3 py-2 text-left text-xs font-semibold text-[var(--text-secondary)]"
+                    className="sticky left-0 z-20 min-w-[160px] border-r border-[var(--border)] bg-[var(--surface-2)] px-3 py-2 text-left text-xs font-semibold text-[var(--text-secondary)]"
                   >
                     Nama Siswa
                   </th>
@@ -493,7 +572,9 @@ export default function InputHarianPage() {
                     className={rowIdx % 2 === 0 ? 'bg-[var(--surface)]' : 'bg-[var(--surface-2)]'}
                   >
                     {/* Nama siswa sticky */}
-                    <td className="sticky left-0 z-10 border-b border-r border-[var(--border)] px-3 py-2">
+                    <td className={`sticky left-0 z-10 border-b border-r border-[var(--border)] px-3 py-2 ${
+                      rowIdx % 2 === 0 ? 'bg-[var(--surface)]' : 'bg-[var(--surface-2)]'
+                    }`}>
                       <div className="min-w-[140px]">
                         <p className="text-sm font-medium text-[var(--text-primary)] leading-tight">
                           {siswa.nama}
@@ -507,7 +588,7 @@ export default function InputHarianPage() {
                       const currentStatus = mutabaahData.get(key) ?? 'Hadir'
                       return (
                         <td
-                          key={`${siswa.id}-${col.kegiatanId}-${col.subId ?? ci}`}
+                           key={`${siswa.id}-${col.kegiatanId}-${col.subId ?? ci}`}
                           className={`border-b border-r border-[var(--border)] p-1 ${STATUS_CELL_CLASS[currentStatus]}`}
                         >
                           <Select
@@ -541,22 +622,18 @@ export default function InputHarianPage() {
         </div>
       )}
 
-      {/* ── Tombol Simpan Sticky Bawah ── */}
-      {selectedKamar && siswaList.length > 0 && (
-        <div className="sticky bottom-4 flex justify-end no-print">
-          <Button
-            id="btn-simpan-checklist-bottom"
-            onClick={handleSimpan}
-            isLoading={isSaving}
-            disabled={isSaving || siswaList.length === 0}
-            size="lg"
-            className="shadow-lg"
-          >
-            <Save className="mr-2 h-4 w-4" />
-            Simpan Checklist
-          </Button>
-        </div>
-      )}
+      {/* ── Dialog Konfirmasi Libur Massal ── */}
+      <ConfirmDialog
+        open={isLiburDialogOpen}
+        onOpenChange={setIsLiburDialogOpen}
+        title="Set Libur Massal"
+        description={`Apakah Anda yakin ingin menandai semua kegiatan untuk seluruh siswa di kamar "${selectedKamar}" pada tanggal ${format(selectedDate, 'dd MMMM yyyy', { locale: idLocale })} sebagai Libur (L)? Tindakan ini akan menimpa data yang belum disimpan.`}
+        onConfirm={async () => {
+          await setLiburMassalMutation.mutateAsync()
+          setIsLiburDialogOpen(false)
+        }}
+        isLoading={setLiburMassalMutation.isPending}
+      />
     </div>
   )
 }

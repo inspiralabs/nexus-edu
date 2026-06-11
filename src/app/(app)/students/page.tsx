@@ -565,6 +565,16 @@ export default function StudentsPage() {
       { accessorKey: 'nama', header: 'Nama' },
       { accessorKey: 'kelas', header: 'Kelas' },
       {
+        id: 'orang_tua',
+        header: 'Nama Orang Tua',
+        enableSorting: false,
+        cell: ({ row }) => {
+          const list = row.original.orangtua_siswa
+          if (!list || list.length === 0) return '—'
+          return list.map((ot) => `${ot.orangtua?.nama_lengkap || '—'} (${ot.hubungan || 'Ortu'})`).join(', ')
+        },
+      },
+      {
         accessorKey: 'jenis_kelamin',
         header: 'Jenis Kelamin',
         enableSorting: false,
@@ -622,6 +632,16 @@ export default function StudentsPage() {
       },
       { accessorKey: 'nama', header: 'Nama' },
       { accessorKey: 'kelas', header: 'Kelas Terakhir' },
+      {
+        id: 'orang_tua',
+        header: 'Nama Orang Tua',
+        enableSorting: false,
+        cell: ({ row }) => {
+          const list = row.original.orangtua_siswa
+          if (!list || list.length === 0) return '—'
+          return list.map((ot) => `${ot.orangtua?.nama_lengkap || '—'} (${ot.hubungan || 'Ortu'})`).join(', ')
+        },
+      },
       {
         accessorKey: 'unit',
         header: 'Unit',

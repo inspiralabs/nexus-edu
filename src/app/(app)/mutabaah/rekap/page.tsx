@@ -3,7 +3,7 @@
 import { format } from 'date-fns'
 import { id as idLocale } from 'date-fns/locale'
 import { Search, SlidersHorizontal } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { PageHeader } from '@/components/layout/page-header'
 import { DatePicker } from '@/components/shared/date-picker'
@@ -13,6 +13,7 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Badge } from '@/components/ui/badge'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useAuth } from '@/hooks/use-auth'
 import { useDebounce } from '@/hooks/use-debounce'
 import {
@@ -50,6 +51,7 @@ function StatusBadge({ label, count }: { label: string; count: number }) {
 export default function RekapKegiatanPage() {
   const { profile, isAdmin } = useAuth()
 
+  const [activeTab, setActiveTab] = useState<'SD' | 'SMP' | 'SMA'>('SD')
   const [selectedKamar, setSelectedKamar] = useState<string>('all')
   const [tanggalDari, setTanggalDari] = useState<Date>(() => {
     const d = new Date()
@@ -73,15 +75,41 @@ export default function RekapKegiatanPage() {
     enabled: !!profile,
   })
 
+  // Auto-set activeTab berdasarkan kamar pertama yang dimiliki
+  useEffect(() => {
+    if (kamarList.length > 0) {
+      const firstKamarUnit = kamarList[0].unit as 'SD' | 'SMP' | 'SMA'
+      if (firstKamarUnit) {
+        setActiveTab(firstKamarUnit)
+      }
+    }
+  }, [kamarList])
+
+  // Filter Kamar berdasarkan unit tab aktif
+  const filteredKamarList = useMemo(() => {
+    return kamarList.filter((k) => k.unit === activeTab)
+  }, [kamarList, activeTab])
+
+  // Auto-reset atau filter select kamar berdasarkan unit tab aktif
+  useEffect(() => {
+    if (selectedKamar !== 'all') {
+      const exists = filteredKamarList.some((k) => k.nama_kamar === selectedKamar)
+      if (!exists) {
+        setSelectedKamar('all')
+      }
+    }
+  }, [filteredKamarList, selectedKamar])
+
   // ── Query Rekap ──
   const tanggalDariStr = format(tanggalDari, 'yyyy-MM-dd')
   const tanggalSampaiStr = format(tanggalSampai, 'yyyy-MM-dd')
 
   const { data: rekapList = [], isLoading: loadingRekap } = useQuery({
-    queryKey: ['mutabaah-rekap', selectedKamar, tanggalDariStr, tanggalSampaiStr],
+    queryKey: ['mutabaah-rekap', selectedKamar, activeTab, tanggalDariStr, tanggalSampaiStr],
     queryFn: () =>
       getMutabaahRekap({
         kamarNama: selectedKamar === 'all' ? undefined : selectedKamar,
+        unit: selectedKamar === 'all' ? activeTab : undefined,
         tanggalDari: tanggalDariStr,
         tanggalSampai: tanggalSampaiStr,
       }),
@@ -135,6 +163,22 @@ export default function RekapKegiatanPage() {
         description="Ringkasan kehadiran siswa per kegiatan dalam rentang tanggal tertentu"
       />
 
+      {/* ── Unit Tabs ── */}
+      <Tabs
+        value={activeTab}
+        onValueChange={(val) => {
+          setActiveTab(val as 'SD' | 'SMP' | 'SMA')
+          setPage(1)
+        }}
+        className="w-full"
+      >
+        <TabsList className="grid w-full grid-cols-3 max-w-[300px]">
+          <TabsTrigger value="SD">SD</TabsTrigger>
+          <TabsTrigger value="SMP">SMP</TabsTrigger>
+          <TabsTrigger value="SMA">SMA</TabsTrigger>
+        </TabsList>
+      </Tabs>
+
       {/* ── Filter Bar ── */}
       <div className="flex flex-wrap items-end gap-3 rounded-lg border border-[var(--border)] bg-[var(--surface)] p-4">
         <div className="flex flex-col gap-1.5">
@@ -145,7 +189,7 @@ export default function RekapKegiatanPage() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Semua Kamar</SelectItem>
-              {kamarList.map((k) => (
+              {filteredKamarList.map((k) => (
                 <SelectItem key={k.id} value={k.nama_kamar}>{k.nama_kamar}</SelectItem>
               ))}
             </SelectContent>
@@ -201,10 +245,10 @@ export default function RekapKegiatanPage() {
           <table className="min-w-max border-collapse text-sm">
             <thead>
               <tr className="border-b border-[var(--border)] bg-[var(--surface-2)]">
-                <th className="sticky left-0 z-10 bg-[var(--surface-2)] px-3 py-2.5 text-left text-xs font-semibold text-[var(--text-secondary)]">
+                <th className="sticky left-0 z-20 bg-[var(--surface-2)] px-3 py-2.5 text-left text-xs font-semibold text-[var(--text-secondary)]">
                   No
                 </th>
-                <th className="sticky left-8 z-10 min-w-[160px] border-r border-[var(--border)] bg-[var(--surface-2)] px-3 py-2.5 text-left text-xs font-semibold text-[var(--text-secondary)]">
+                <th className="sticky left-8 z-20 min-w-[160px] border-r border-[var(--border)] bg-[var(--surface-2)] px-3 py-2.5 text-left text-xs font-semibold text-[var(--text-secondary)]">
                   Nama Siswa
                 </th>
                 {kegiatanCols.map((col) => (
@@ -234,10 +278,14 @@ export default function RekapKegiatanPage() {
                     key={`${nama}-${rowIdx}`}
                     className={`border-b border-[var(--border)] ${rowIdx % 2 === 0 ? '' : 'bg-[var(--surface-2)]'}`}
                   >
-                    <td className="sticky left-0 bg-inherit px-3 py-2 text-xs text-[var(--text-tertiary)]">
+                    <td className={`sticky left-0 z-10 px-3 py-2 text-xs text-[var(--text-tertiary)] ${
+                      rowIdx % 2 === 0 ? 'bg-[var(--surface)]' : 'bg-[var(--surface-2)]'
+                    }`}>
                       {(page - 1) * pageSize + rowIdx + 1}
                     </td>
-                    <td className="sticky left-8 border-r border-[var(--border)] bg-inherit px-3 py-2">
+                    <td className={`sticky left-8 z-10 border-r border-[var(--border)] px-3 py-2 ${
+                      rowIdx % 2 === 0 ? 'bg-[var(--surface)]' : 'bg-[var(--surface-2)]'
+                    }`}>
                       <div>
                         <p className="font-medium text-[var(--text-primary)]">{nama}</p>
                         <p className="text-xs text-[var(--text-tertiary)]">{kelas}</p>
@@ -320,3 +368,4 @@ export default function RekapKegiatanPage() {
     </div>
   )
 }
+

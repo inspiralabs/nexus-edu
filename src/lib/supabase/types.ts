@@ -43,6 +43,12 @@ export interface Student {
   kamar_id: string | null
   nomor_induk: string | null
   created_at: string
+  orangtua_siswa?: {
+    hubungan: string
+    orangtua: {
+      nama_lengkap: string
+    } | null
+  }[]
 }
 
 export interface KategoriDisiplin {

@@ -1,7 +1,7 @@
 'use client'
 
 import { Search } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { PageHeader } from '@/components/layout/page-header'
 import { EmptyState } from '@/components/shared/empty-state'
@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useAuth } from '@/hooks/use-auth'
 import { useDebounce } from '@/hooks/use-debounce'
 import {
@@ -109,6 +110,7 @@ function ProgressCell({ item }: { item: MutabaahProgressItem | undefined }) {
 export default function TargetMutabaahPage() {
   const { profile, isAdmin } = useAuth()
 
+  const [activeTab, setActiveTab] = useState<'SD' | 'SMP' | 'SMA'>('SD')
   const [selectedSemesterId, setSelectedSemesterId] = useState<string>('')
   const [selectedKamar, setSelectedKamar] = useState<string>('')
   const [search, setSearch] = useState('')
@@ -126,6 +128,33 @@ export default function TargetMutabaahPage() {
     },
     enabled: !!profile,
   })
+
+  // Auto-set activeTab berdasarkan kamar pertama yang dimiliki
+  useEffect(() => {
+    if (kamarList.length > 0) {
+      const firstKamarUnit = kamarList[0].unit as 'SD' | 'SMP' | 'SMA'
+      if (firstKamarUnit) {
+        setActiveTab(firstKamarUnit)
+      }
+    }
+  }, [kamarList])
+
+  // Filter Kamar berdasarkan unit tab aktif
+  const filteredKamarList = useMemo(() => {
+    return kamarList.filter((k) => k.unit === activeTab)
+  }, [kamarList, activeTab])
+
+  // Auto-pilih kamar pertama dari list terfilter
+  useEffect(() => {
+    if (filteredKamarList.length > 0) {
+      const exists = filteredKamarList.some((k) => k.nama_kamar === selectedKamar)
+      if (!exists) {
+        setSelectedKamar(filteredKamarList[0].nama_kamar)
+      }
+    } else {
+      setSelectedKamar('')
+    }
+  }, [filteredKamarList, selectedKamar])
 
   // ── Query Semester Aktif (default) ──
   const { data: activeSemester } = useQuery({
@@ -162,13 +191,6 @@ export default function TargetMutabaahPage() {
     queryFn: () => (selectedKamar ? getSiswaByKamar(selectedKamar) : Promise.resolve([])),
     enabled: !!selectedKamar,
   })
-
-  // ── Auto-select kamar pertama ──
-  const [autoSelected, setAutoSelected] = useState(false)
-  if (!autoSelected && kamarList.length > 0 && !selectedKamar) {
-    setSelectedKamar(kamarList[0].nama_kamar)
-    setAutoSelected(true)
-  }
 
   // ── Query Progress Per Siswa ──
   const siswaWithProgress = useQuery({
@@ -232,6 +254,22 @@ export default function TargetMutabaahPage() {
         description="Capaian kehadiran siswa terhadap target mutabaah per semester"
       />
 
+      {/* ── Unit Tabs ── */}
+      <Tabs
+        value={activeTab}
+        onValueChange={(val) => {
+          setActiveTab(val as 'SD' | 'SMP' | 'SMA')
+          setPage(1)
+        }}
+        className="w-full"
+      >
+        <TabsList className="grid w-full grid-cols-3 max-w-[300px]">
+          <TabsTrigger value="SD">SD</TabsTrigger>
+          <TabsTrigger value="SMP">SMP</TabsTrigger>
+          <TabsTrigger value="SMA">SMA</TabsTrigger>
+        </TabsList>
+      </Tabs>
+
       {/* ── Filter Bar ── */}
       <div className="flex flex-wrap items-end gap-3 rounded-lg border border-[var(--border)] bg-[var(--surface)] p-4">
         <div className="flex flex-col gap-1.5">
@@ -267,7 +305,7 @@ export default function TargetMutabaahPage() {
               <SelectValue placeholder="Pilih kamar..." />
             </SelectTrigger>
             <SelectContent>
-              {kamarList.map((k) => (
+              {filteredKamarList.map((k) => (
                 <SelectItem key={k.id} value={k.nama_kamar}>{k.nama_kamar}</SelectItem>
               ))}
             </SelectContent>
@@ -318,8 +356,8 @@ export default function TargetMutabaahPage() {
           <table className="min-w-max border-collapse text-sm">
             <thead>
               <tr className="border-b border-[var(--border)] bg-[var(--surface-2)]">
-                <th className="px-3 py-2.5 text-left text-xs font-semibold text-[var(--text-secondary)]">No</th>
-                <th className="min-w-[160px] border-r border-[var(--border)] px-3 py-2.5 text-left text-xs font-semibold text-[var(--text-secondary)]">
+                <th className="sticky left-0 z-20 bg-[var(--surface-2)] px-3 py-2.5 text-left text-xs font-semibold text-[var(--text-secondary)]">No</th>
+                <th className="sticky left-8 z-20 min-w-[160px] border-r border-[var(--border)] bg-[var(--surface-2)] px-3 py-2.5 text-left text-xs font-semibold text-[var(--text-secondary)]">
                   Nama Siswa
                 </th>
                 <th className="border-r border-[var(--border)] px-3 py-2.5 text-left text-xs font-semibold text-[var(--text-secondary)]">
@@ -350,12 +388,16 @@ export default function TargetMutabaahPage() {
                 return (
                   <tr
                     key={siswa.id}
-                    className={`border-b border-[var(--border)] ${rowIdx % 2 === 0 ? '' : 'bg-[var(--surface-2)]'}`}
+                    className={`border-b border-[var(--border)] ${rowIdx % 2 === 0 ? 'bg-[var(--surface)]' : 'bg-[var(--surface-2)]'}`}
                   >
-                    <td className="px-3 py-2 text-xs text-[var(--text-tertiary)]">
+                    <td className={`sticky left-0 z-10 px-3 py-2 text-xs text-[var(--text-tertiary)] ${
+                      rowIdx % 2 === 0 ? 'bg-[var(--surface)]' : 'bg-[var(--surface-2)]'
+                    }`}>
                       {(page - 1) * pageSize + rowIdx + 1}
                     </td>
-                    <td className="border-r border-[var(--border)] px-3 py-2 font-medium text-[var(--text-primary)]">
+                    <td className={`sticky left-8 z-10 border-r border-[var(--border)] px-3 py-2 font-medium text-[var(--text-primary)] ${
+                      rowIdx % 2 === 0 ? 'bg-[var(--surface)]' : 'bg-[var(--surface-2)]'
+                    }`}>
                       {siswa.nama}
                     </td>
                     <td className="border-r border-[var(--border)] px-3 py-2 text-xs text-[var(--text-secondary)]">
