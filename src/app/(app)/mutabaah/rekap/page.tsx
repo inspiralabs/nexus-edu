@@ -206,14 +206,20 @@ function RekapDetailDialog({
               <thead>
                 <tr className="bg-[var(--surface-2)]" style={{ position: 'sticky', top: 0, zIndex: 20 }}>
                   <th
-                    className="w-[208px] min-w-[208px] border-b border-r border-[var(--border)] bg-[var(--surface-2)] px-3 py-2.5 text-left font-semibold text-[var(--text-secondary)]"
+                    className="w-[40px] min-w-[40px] border-b border-r border-[var(--border)] bg-[var(--surface-2)] px-2 py-2.5 text-center font-semibold text-[var(--text-secondary)]"
                     style={{ position: 'sticky', left: 0, zIndex: 30 }}
+                  >
+                    No
+                  </th>
+                  <th
+                    className="w-[208px] min-w-[208px] border-b border-r border-[var(--border)] bg-[var(--surface-2)] px-3 py-2.5 text-left font-semibold text-[var(--text-secondary)]"
+                    style={{ position: 'sticky', left: 40, zIndex: 30 }}
                   >
                     Nama Kegiatan / Sub
                   </th>
                   <th
                     className="w-[96px] min-w-[96px] border-b border-r border-[var(--border)] bg-[var(--surface-2)] px-3 py-2.5 text-center font-semibold text-[var(--text-secondary)]"
-                    style={{ position: 'sticky', left: 208, zIndex: 30 }}
+                    style={{ position: 'sticky', left: 248, zIndex: 30 }}
                   >
                     Total Hadir
                   </th>
@@ -231,7 +237,7 @@ function RekapDetailDialog({
                 {kegiatanList.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={tanggalList.length + 2}
+                      colSpan={tanggalList.length + 3}
                       className="px-4 py-8 text-center text-[var(--text-tertiary)]"
                     >
                       Tidak ada kegiatan yang terkonfigurasi.
@@ -271,10 +277,19 @@ function RekapDetailDialog({
                         >
                           <td
                             className={cn(
-                              "border-r border-[var(--border)] px-3 py-2.5 font-semibold text-[var(--text-primary)] w-[208px] min-w-[208px]",
+                              "border-r border-[var(--border)] px-2 py-2.5 text-center font-mono text-xs w-[40px] min-w-[40px] text-[var(--text-secondary)]",
                               parentBg
                             )}
                             style={{ position: 'sticky', left: 0, zIndex: 10 }}
+                          >
+                            {parentNo}
+                          </td>
+                          <td
+                            className={cn(
+                              "border-r border-[var(--border)] px-3 py-2.5 font-semibold text-[var(--text-primary)] w-[208px] min-w-[208px]",
+                              parentBg
+                            )}
+                            style={{ position: 'sticky', left: 40, zIndex: 10 }}
                           >
                             <div 
                               className={cn(
@@ -292,9 +307,6 @@ function RekapDetailDialog({
                                   )}
                                 </span>
                               )}
-                              <span className="text-xs font-mono text-[var(--text-secondary)] mr-1">
-                                {parentNo}
-                              </span>
                               <span className="text-xs truncate" title={kegiatan.nama_kegiatan}>
                                 {kegiatan.nama_kegiatan}
                               </span>
@@ -305,7 +317,7 @@ function RekapDetailDialog({
                               "border-r border-[var(--border)] px-3 py-2 text-center font-mono font-bold text-primary w-[96px] min-w-[96px]",
                               parentBg
                             )}
-                            style={{ position: 'sticky', left: 208, zIndex: 10 }}
+                            style={{ position: 'sticky', left: 248, zIndex: 10 }}
                           >
                             {totalHadir}
                           </td>
@@ -365,15 +377,21 @@ function RekapDetailDialog({
                             >
                               <td
                                 className={cn(
-                                  "border-r border-[var(--border)] px-3 py-2 w-[208px] min-w-[208px]",
+                                  "border-r border-[var(--border)] px-2 py-2 text-center font-mono text-xs w-[40px] min-w-[40px] text-[var(--text-tertiary)]",
                                   childBg
                                 )}
                                 style={{ position: 'sticky', left: 0, zIndex: 10 }}
                               >
+                                {childNo}
+                              </td>
+                              <td
+                                className={cn(
+                                  "border-r border-[var(--border)] px-3 py-2 w-[208px] min-w-[208px]",
+                                  childBg
+                                )}
+                                style={{ position: 'sticky', left: 40, zIndex: 10 }}
+                              >
                                 <div className="pl-6 flex items-center gap-1.5">
-                                  <span className="text-[10px] font-mono text-[var(--text-tertiary)] mr-1">
-                                    {childNo}
-                                  </span>
                                   <span className="text-xs text-[var(--text-secondary)] font-medium truncate" title={sub.nama_sub}>
                                     ↳ {sub.nama_sub}
                                   </span>
@@ -384,7 +402,7 @@ function RekapDetailDialog({
                                   "border-r border-[var(--border)] px-3 py-2 text-center font-mono font-medium text-[var(--text-secondary)] w-[96px] min-w-[96px]",
                                   childBg
                                 )}
-                                style={{ position: 'sticky', left: 208, zIndex: 10 }}
+                                style={{ position: 'sticky', left: 248, zIndex: 10 }}
                               >
                                 {subTotalHadir}
                               </td>
@@ -568,8 +586,8 @@ export default function RekapKegiatanPage() {
     }
   }
 
-  // ── Paginate ──
-  const totalRows = siswaGrouped.length
+  // ── Paginate Kegiatan Utama ──
+  const totalRows = activeKegiatanList.length
   const totalPages = Math.max(1, Math.ceil(totalRows / pageSize))
 
   // ── Penanganan Out-Of-Bounds Page ──
@@ -579,10 +597,10 @@ export default function RekapKegiatanPage() {
     }
   }, [totalPages, page])
 
-  const paginatedSiswa = useMemo(() => {
+  const paginatedKegiatan = useMemo(() => {
     const from = (page - 1) * pageSize
-    return siswaGrouped.slice(from, from + pageSize)
-  }, [siswaGrouped, page, pageSize])
+    return activeKegiatanList.slice(from, from + pageSize)
+  }, [activeKegiatanList, page, pageSize])
 
   return (
     <div className="space-y-6">
@@ -663,7 +681,7 @@ export default function RekapKegiatanPage() {
       {/* ── PIVOT TABEL: baris=Kegiatan, kolom=Siswa ── */}
       {loadingRekap ? (
         <Skeleton className="h-64 w-full" />
-      ) : paginatedSiswa.length === 0 ? (
+      ) : siswaGrouped.length === 0 ? (
         <EmptyState
           title="Tidak ada data"
           description="Belum ada data mutabaah untuk filter yang dipilih"
@@ -682,7 +700,7 @@ export default function RekapKegiatanPage() {
                   Nama Kegiatan
                 </th>
                 {/* Kolom per Siswa */}
-                {paginatedSiswa.map(({ siswaId, nama, kelas, kamar }, colIdx) => (
+                {siswaGrouped.map(({ siswaId, nama, kelas, kamar }, colIdx) => (
                   <th
                     key={`${siswaId}-${colIdx}`}
                     className="min-w-[160px] border-r border-[var(--border)] px-2 py-1.5 text-center text-xs font-semibold text-[var(--text-primary)]"
@@ -707,8 +725,8 @@ export default function RekapKegiatanPage() {
               </tr>
             </thead>
             <tbody>
-              {activeKegiatanList.map((kegiatan, idx) => {
-                const parentNo = String(idx + 1)
+              {paginatedKegiatan.map((kegiatan, idx) => {
+                const parentNo = String((page - 1) * pageSize + idx + 1)
                 const hasSubs = kegiatan.sub_kegiatan && kegiatan.sub_kegiatan.length > 0
                 const isExpanded = !!expandedKegiatan[kegiatan.id]
                 
@@ -749,7 +767,7 @@ export default function RekapKegiatanPage() {
                         </div>
                       </td>
                       {/* Sel per Siswa */}
-                      {paginatedSiswa.map(({ siswaId, records }, colIdx) => {
+                      {siswaGrouped.map(({ siswaId, records }, colIdx) => {
                         const rec = getSiswaParentRecord(records, kegiatan)
                         return (
                           <td
@@ -796,7 +814,7 @@ export default function RekapKegiatanPage() {
                             </div>
                           </td>
                           {/* Sel per Siswa */}
-                          {paginatedSiswa.map(({ siswaId, records }, colIdx) => {
+                          {siswaGrouped.map(({ siswaId, records }, colIdx) => {
                             const key = `${kegiatan.id}__${sub.id}`
                             const rec = records.find(
                               (r) => `${r.kegiatan_id}__${r.sub_kegiatan_id ?? 'null'}` === key
@@ -853,7 +871,7 @@ export default function RekapKegiatanPage() {
                 ))}
               </SelectContent>
             </Select>
-            <span>dari {totalRows} siswa</span>
+            <span>dari {totalRows} kegiatan</span>
           </div>
           <div className="flex items-center gap-2">
             <Button

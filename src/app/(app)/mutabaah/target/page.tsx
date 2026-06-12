@@ -222,6 +222,9 @@ function TargetDetailDialog({
             <table className="w-full border-collapse text-sm">
               <thead>
                 <tr className="bg-[var(--surface-2)] border-b border-[var(--border)]">
+                  <th className="px-4 py-2.5 text-center font-semibold text-[var(--text-secondary)] w-12">
+                    No
+                  </th>
                   <th className="px-4 py-2.5 text-left font-semibold text-[var(--text-secondary)] w-72">
                     Nama Kegiatan / Sub
                   </th>
@@ -243,7 +246,7 @@ function TargetDetailDialog({
                 {kegiatanList.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={5}
+                      colSpan={6}
                       className="px-4 py-8 text-center text-[var(--text-tertiary)]"
                     >
                       Tidak ada kegiatan yang terkonfigurasi.
@@ -268,6 +271,11 @@ function TargetDetailDialog({
                             parentBg
                           )}
                         >
+                          {/* No */}
+                          <td className="px-4 py-3 text-center text-xs font-mono text-[var(--text-secondary)]">
+                            {parentNo}
+                          </td>
+
                           {/* Nama Kegiatan */}
                           <td className="px-4 py-3 font-semibold text-[var(--text-primary)]">
                             <div 
@@ -286,9 +294,6 @@ function TargetDetailDialog({
                                   )}
                                 </span>
                               )}
-                              <span className="text-xs font-mono text-[var(--text-secondary)] mr-1">
-                                {parentNo}
-                              </span>
                               <span className="text-xs truncate" title={kegiatan.nama_kegiatan}>
                                 {kegiatan.nama_kegiatan}
                               </span>
@@ -344,12 +349,14 @@ function TargetDetailDialog({
                               key={`${kegiatan.id}-${sub.id}`}
                               className="border-b border-[var(--border)] bg-[var(--surface-2)]/20 hover:bg-[var(--surface-2)]/40 transition-colors"
                             >
+                              {/* No */}
+                              <td className={cn("px-4 py-2.5 text-center text-xs font-mono text-[var(--text-tertiary)]", childBg)}>
+                                {childNo}
+                              </td>
+
                               {/* Nama Sub */}
                               <td className={cn("px-4 py-2.5", childBg)}>
                                 <div className="pl-6 flex items-center gap-1.5">
-                                  <span className="text-[10px] font-mono text-[var(--text-tertiary)] mr-1">
-                                    {childNo}
-                                  </span>
                                   <span className="text-xs text-[var(--text-secondary)] font-medium truncate" title={sub.nama_sub}>
                                     ↳ {sub.nama_sub}
                                   </span>
@@ -572,7 +579,8 @@ export default function TargetMutabaahPage() {
     )
   }, [siswaProgressQuery.data, debouncedSearch])
 
-  const totalRows = filteredData.length
+  // ── Paginate Kegiatan Utama ──
+  const totalRows = sortedKegiatanList.length
   const totalPages = Math.max(1, Math.ceil(totalRows / pageSize))
 
   // ── Penanganan Out-Of-Bounds Page ──
@@ -582,10 +590,10 @@ export default function TargetMutabaahPage() {
     }
   }, [totalPages, page])
 
-  const paginatedData = useMemo(() => {
+  const paginatedKegiatan = useMemo(() => {
     const from = (page - 1) * pageSize
-    return filteredData.slice(from, from + pageSize)
-  }, [filteredData, page, pageSize])
+    return sortedKegiatanList.slice(from, from + pageSize)
+  }, [sortedKegiatanList, page, pageSize])
 
   const isLoading = loadingKamar || loadingKegiatan || loadingSiswa || siswaProgressQuery.isLoading
 
@@ -687,7 +695,7 @@ export default function TargetMutabaahPage() {
           title="Pilih semester"
           description="Tidak ada semester aktif. Pilih semester dari filter di atas."
         />
-      ) : paginatedData.length === 0 ? (
+      ) : filteredData.length === 0 ? (
         <EmptyState
           title="Tidak ada data"
           description="Tidak ada siswa atau data progress untuk filter yang dipilih"
@@ -706,7 +714,7 @@ export default function TargetMutabaahPage() {
                   Nama Kegiatan
                 </th>
                 {/* Kolom per Siswa */}
-                {paginatedData.map(({ siswa }, colIdx) => (
+                {filteredData.map(({ siswa }, colIdx) => (
                   <th
                     key={`${siswa.id}-${colIdx}`}
                     className="min-w-[140px] border-r border-[var(--border)] px-2 py-1.5 text-center text-xs font-semibold text-[var(--text-primary)]"
@@ -737,8 +745,8 @@ export default function TargetMutabaahPage() {
               </tr>
             </thead>
             <tbody>
-              {sortedKegiatanList.map((kegiatan, idx) => {
-                const parentNo = String(idx + 1)
+              {paginatedKegiatan.map((kegiatan, idx) => {
+                const parentNo = String((page - 1) * pageSize + idx + 1)
                 const hasSubs = kegiatan.sub_kegiatan && kegiatan.sub_kegiatan.length > 0
                 const isExpanded = !!expandedKegiatan[kegiatan.id]
                 
@@ -779,7 +787,7 @@ export default function TargetMutabaahPage() {
                         </div>
                       </td>
                       {/* Progress per siswa */}
-                      {paginatedData.map(({ siswa, progress }, colIdx) => {
+                      {filteredData.map(({ siswa, progress }, colIdx) => {
                         const item = getSiswaParentProgress(progress, kegiatan)
                         return (
                           <td
@@ -815,7 +823,7 @@ export default function TargetMutabaahPage() {
                             </div>
                           </td>
                           {/* Progress per siswa */}
-                          {paginatedData.map(({ siswa, progress }, colIdx) => {
+                          {filteredData.map(({ siswa, progress }, colIdx) => {
                             const progressMap = new Map(
                               progress.map((p) => [`${p.kegiatan_id}__${p.sub_kegiatan_id ?? 'null'}`, p])
                             )
@@ -859,7 +867,7 @@ export default function TargetMutabaahPage() {
                 ))}
               </SelectContent>
             </Select>
-            <span>dari {totalRows} siswa</span>
+            <span>dari {totalRows} kegiatan</span>
           </div>
           <div className="flex items-center gap-2">
             <Button
