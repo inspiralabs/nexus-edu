@@ -89,6 +89,7 @@ export interface KegiatanItem {
   nama_kegiatan: string
   urutan: number
   poin_target: number
+  semester_id?: string | null
   sub_kegiatan?: SubKegiatanItem[]
 }
 
@@ -98,6 +99,7 @@ export interface SubKegiatanItem {
   nama_sub: string
   urutan: number
   poin_target: number
+  semester_id?: string | null
 }
 
 export interface KamarItem {
@@ -109,7 +111,7 @@ export interface KamarItem {
 
 export interface TargetMutabaah {
   id: string
-  kamar_id: string
+  kamar_id?: string
   kegiatan_id: string
   sub_kegiatan_id: string | null
   semester_id: string | null
@@ -124,7 +126,7 @@ export async function getKegiatan(search?: string): Promise<KegiatanItem[]> {
 
   let query = supabase
     .from('kegiatan')
-    .select('*')
+    .select('*, sub_kegiatan(*)')
 
   if (search) {
     query = query.ilike('nama_kegiatan', `%${search}%`)
@@ -134,7 +136,12 @@ export async function getKegiatan(search?: string): Promise<KegiatanItem[]> {
 
   if (error) throw new Error(error.message)
 
-  return (data ?? []) as KegiatanItem[]
+  const result = (data ?? []) as KegiatanItem[]
+
+  return result.map((k) => ({
+    ...k,
+    sub_kegiatan: (k.sub_kegiatan ?? []).sort((a, b) => a.urutan - b.urutan),
+  }))
 }
 
 /** Ambil semua kegiatan beserta sub_kegiatan-nya (nested join) */
@@ -176,10 +183,33 @@ export async function getSubKegiatan(kegiatanId?: string): Promise<SubKegiatanIt
   return (data ?? []) as SubKegiatanItem[]
 }
 
+/** Sinkronisasi poin_target kegiatan induk dari total poin sub-kegiatan */
+async function syncParentKegiatanPoin(kegiatanId: string, supabase: any): Promise<void> {
+  const { data: subs, error: subsError } = await supabase
+    .from('sub_kegiatan')
+    .select('poin_target')
+    .eq('kegiatan_id', kegiatanId)
+
+  if (subsError) throw new Error(subsError.message)
+
+  const totalPoin = (subs ?? []).reduce(
+    (sum: number, sub: { poin_target: number }) => sum + sub.poin_target,
+    0
+  )
+
+  const { error: updateError } = await supabase
+    .from('kegiatan')
+    .update({ poin_target: totalPoin })
+    .eq('id', kegiatanId)
+
+  if (updateError) throw new Error(updateError.message)
+}
+
 /** Tambah kegiatan baru */
 export async function createKegiatan(input: {
   nama_kegiatan: string
   poin_target: number
+  semester_id: string
 }): Promise<KegiatanItem> {
   const supabase = createClient()
 
@@ -197,7 +227,7 @@ export async function createKegiatan(input: {
 /** Update kegiatan */
 export async function updateKegiatan(
   id: string,
-  input: Partial<{ nama_kegiatan: string; poin_target: number; urutan: number }>
+  input: Partial<{ nama_kegiatan: string; poin_target: number; urutan: number; semester_id: string | null }>
 ): Promise<KegiatanItem> {
   const supabase = createClient()
 
@@ -229,6 +259,7 @@ export async function createSubKegiatan(input: {
   kegiatan_id: string
   nama_sub: string
   poin_target: number
+  semester_id: string
 }): Promise<SubKegiatanItem> {
   const supabase = createClient()
 
@@ -240,15 +271,27 @@ export async function createSubKegiatan(input: {
 
   if (error) throw new Error(error.message)
 
+  // Sinkronisasi poin target kegiatan induk
+  await syncParentKegiatanPoin(input.kegiatan_id, supabase)
+
   return data as SubKegiatanItem
 }
 
 /** Update sub kegiatan */
 export async function updateSubKegiatan(
   id: string,
-  input: Partial<{ nama_sub: string; kegiatan_id: string; poin_target: number; urutan: number }>
+  input: Partial<{ nama_sub: string; kegiatan_id: string; poin_target: number; urutan: number; semester_id: string | null }>
 ): Promise<SubKegiatanItem> {
   const supabase = createClient()
+
+  // Ambil data sebelum update untuk kebutuhan sinkronisasi induk asal
+  const { data: original, error: fetchErr } = await supabase
+    .from('sub_kegiatan')
+    .select('kegiatan_id')
+    .eq('id', id)
+    .single()
+
+  if (fetchErr) throw new Error(fetchErr.message)
 
   const { data, error } = await supabase
     .from('sub_kegiatan')
@@ -259,6 +302,14 @@ export async function updateSubKegiatan(
 
   if (error) throw new Error(error.message)
 
+  // Sinkronisasi poin target kegiatan induk asal
+  await syncParentKegiatanPoin(original.kegiatan_id, supabase)
+
+  // Jika dipindah ke kegiatan induk lain, sinkronisasi induk baru
+  if (input.kegiatan_id && input.kegiatan_id !== original.kegiatan_id) {
+    await syncParentKegiatanPoin(input.kegiatan_id, supabase)
+  }
+
   return data as SubKegiatanItem
 }
 
@@ -266,9 +317,21 @@ export async function updateSubKegiatan(
 export async function deleteSubKegiatan(id: string): Promise<void> {
   const supabase = createClient()
 
+  // Ambil data sebelum dihapus untuk mengetahui kegiatan induknya
+  const { data: sub, error: fetchErr } = await supabase
+    .from('sub_kegiatan')
+    .select('kegiatan_id')
+    .eq('id', id)
+    .single()
+
+  if (fetchErr) throw new Error(fetchErr.message)
+
   const { error } = await supabase.from('sub_kegiatan').delete().eq('id', id)
 
   if (error) throw new Error(error.message)
+
+  // Sinkronisasi poin target kegiatan induk
+  await syncParentKegiatanPoin(sub.kegiatan_id, supabase)
 }
 
 // ─── Kamar ────────────────────────────────────────────────────────────────────
@@ -714,42 +777,51 @@ export async function getTargetMutabaah(
   kamarId?: string,
   semesterId?: string
 ): Promise<TargetMutabaah[]> {
+  if (!semesterId) return []
   const supabase = createClient()
 
-  let query = supabase.from('target_mutabaah').select('*')
+  const { data: kegiatanData, error: kegiatanError } = await supabase
+    .from('kegiatan')
+    .select(`
+      id,
+      poin_target,
+      semester_id,
+      sub_kegiatan (
+        id,
+        poin_target,
+        semester_id
+      )
+    `)
+    .eq('semester_id', semesterId)
 
-  if (kamarId) {
-    query = query.eq('kamar_id', kamarId)
+  if (kegiatanError) throw new Error(kegiatanError.message)
+
+  const targets: TargetMutabaah[] = []
+
+  for (const k of kegiatanData ?? []) {
+    const subs = (k.sub_kegiatan ?? []).filter((s: any) => s.semester_id === semesterId)
+    if (subs.length === 0) {
+      targets.push({
+        id: `${k.id}__null`,
+        kegiatan_id: k.id,
+        sub_kegiatan_id: null,
+        semester_id: semesterId,
+        target_jumlah: k.poin_target,
+      })
+    } else {
+      for (const sub of subs) {
+        targets.push({
+          id: `${k.id}__${sub.id}`,
+          kegiatan_id: k.id,
+          sub_kegiatan_id: sub.id,
+          semester_id: semesterId,
+          target_jumlah: sub.poin_target,
+        })
+      }
+    }
   }
 
-  if (semesterId) {
-    query = query.eq('semester_id', semesterId)
-  }
-
-  const { data, error } = await query
-
-  if (error) throw new Error(error.message)
-
-  return (data ?? []) as TargetMutabaah[]
-}
-
-/** Insert atau update target mutabaah */
-export async function upsertTargetMutabaah(
-  input: Omit<TargetMutabaah, 'id'>
-): Promise<TargetMutabaah> {
-  const supabase = createClient()
-
-  const { data, error } = await supabase
-    .from('target_mutabaah')
-    .upsert(input, {
-      onConflict: 'kamar_id,kegiatan_id,sub_kegiatan_id,semester_id',
-    })
-    .select()
-    .single()
-
-  if (error) throw new Error(error.message)
-
-  return data as TargetMutabaah
+  return targets
 }
 
 // ─── Progress & Nilai A-E ─────────────────────────────────────────────────────
@@ -800,50 +872,44 @@ export async function getMutabaahProgress(
 
   if (mutabaahError) throw new Error(mutabaahError.message)
 
-  // Ambil target mutabaah untuk siswa ini (berdasarkan kamar → semester)
-  // Kita ambil semua target di semester ini, matching by kegiatan/sub
-  const { data: targetData, error: targetError } = await supabase
-    .from('target_mutabaah')
-    .select('kegiatan_id, sub_kegiatan_id, target_jumlah')
+  // Ambil target langsung dari poin_target pada tabel kegiatan / sub_kegiatan
+  const { data: kegiatanData, error: kegiatanError } = await supabase
+    .from('kegiatan')
+    .select(`
+      id,
+      poin_target,
+      sub_kegiatan (
+        id,
+        poin_target,
+        semester_id
+      )
+    `)
     .eq('semester_id', semesterId)
 
-  if (targetError) throw new Error(targetError.message)
+  if (kegiatanError) throw new Error(kegiatanError.message)
 
-  let targets = (targetData ?? []) as Array<{
+  const targets: Array<{
     kegiatan_id: string
     sub_kegiatan_id: string | null
     target_jumlah: number
-  }>
+  }> = []
 
-  // Fallback defensif jika data target di database kosong
-  if (targets.length === 0) {
-    const { data: kegiatanData } = await supabase
-      .from('kegiatan')
-      .select('id, sub_kegiatan(id)')
-      .order('urutan', { ascending: true })
-
-    if (kegiatanData) {
-      const virtualTargets: typeof targets = []
-      for (const k of kegiatanData) {
-        const kRow = k as { id: string; sub_kegiatan: { id: string }[] | null }
-        const subs = kRow.sub_kegiatan ?? []
-        if (subs.length === 0) {
-          virtualTargets.push({
-            kegiatan_id: kRow.id,
-            sub_kegiatan_id: null,
-            target_jumlah: 30, // Default target fallback
-          })
-        } else {
-          for (const sub of subs) {
-            virtualTargets.push({
-              kegiatan_id: kRow.id,
-              sub_kegiatan_id: sub.id,
-              target_jumlah: 30, // Default target fallback
-            })
-          }
-        }
+  for (const k of kegiatanData ?? []) {
+    const subs = (k.sub_kegiatan ?? []).filter((s: any) => s.semester_id === semesterId)
+    if (subs.length === 0) {
+      targets.push({
+        kegiatan_id: k.id,
+        sub_kegiatan_id: null,
+        target_jumlah: k.poin_target || 30, // Fallback ke 30 jika kosong
+      })
+    } else {
+      for (const sub of subs) {
+        targets.push({
+          kegiatan_id: k.id,
+          sub_kegiatan_id: sub.id,
+          target_jumlah: sub.poin_target || 30, // Fallback ke 30 jika kosong
+        })
       }
-      targets = virtualTargets
     }
   }
 
@@ -1258,51 +1324,38 @@ export async function getMutabaahProgressWithNames(
 
   if (mutabaahError) throw new Error(mutabaahError.message)
 
-  // Ambil target mutabaah di semester ini
-  const { data: targetData, error: targetError } = await supabase
-    .from('target_mutabaah')
-    .select('kegiatan_id, sub_kegiatan_id, target_jumlah')
-    .eq('semester_id', semesterId)
-
-  if (targetError) throw new Error(targetError.message)
-
-  let targets = (targetData ?? []) as Array<{
-    kegiatan_id: string
-    sub_kegiatan_id: string | null
-    target_jumlah: number
-  }>
-
-  // Ambil semua kegiatan + sub kegiatan untuk nama
+  // Ambil semua kegiatan + sub kegiatan di semester ini
   const { data: kegiatanData, error: kegiatanError } = await supabase
     .from('kegiatan')
-    .select('id, nama_kegiatan, sub_kegiatan(id, nama_sub)')
+    .select('id, nama_kegiatan, poin_target, sub_kegiatan(id, nama_sub, poin_target, semester_id)')
+    .eq('semester_id', semesterId)
     .order('urutan', { ascending: true })
 
   if (kegiatanError) throw new Error(kegiatanError.message)
 
-  // Fallback defensif jika data target di database kosong
-  if (targets.length === 0) {
-    const virtualTargets: typeof targets = []
-    for (const k of kegiatanData ?? []) {
-      const kRow = k as { id: string; nama_kegiatan: string; sub_kegiatan: { id: string; nama_sub: string }[] | null }
-      const subs = kRow.sub_kegiatan ?? []
-      if (subs.length === 0) {
-        virtualTargets.push({
-          kegiatan_id: kRow.id,
-          sub_kegiatan_id: null,
-          target_jumlah: 30, // Default target fallback
+  const targets: Array<{
+    kegiatan_id: string
+    sub_kegiatan_id: string | null
+    target_jumlah: number
+  }> = []
+
+  for (const k of kegiatanData ?? []) {
+    const subs = (k.sub_kegiatan ?? []).filter((s: any) => s.semester_id === semesterId)
+    if (subs.length === 0) {
+      targets.push({
+        kegiatan_id: k.id,
+        sub_kegiatan_id: null,
+        target_jumlah: k.poin_target || 30, // Fallback ke 30 jika kosong
+      })
+    } else {
+      for (const sub of subs) {
+        targets.push({
+          kegiatan_id: k.id,
+          sub_kegiatan_id: sub.id,
+          target_jumlah: sub.poin_target || 30, // Fallback ke 30 jika kosong
         })
-      } else {
-        for (const sub of subs) {
-          virtualTargets.push({
-            kegiatan_id: kRow.id,
-            sub_kegiatan_id: sub.id,
-            target_jumlah: 30, // Default target fallback
-          })
-        }
       }
     }
-    targets = virtualTargets
   }
 
   const kegiatanMap = new Map<string, { nama_kegiatan: string }>()

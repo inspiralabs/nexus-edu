@@ -166,112 +166,89 @@ function TargetDetailDialog({
             Belum ada data target untuk siswa ini di semester yang dipilih.
           </div>
         ) : (
-          <div className="overflow-auto max-h-[60vh]">
-            <table className="min-w-max border-collapse text-sm">
+          <div className="overflow-auto max-h-[60vh] p-4">
+            <table className="w-full border-collapse text-sm">
               <thead>
-                <tr className="bg-[var(--surface-2)]" style={{ position: 'sticky', top: 0, zIndex: 20 }}>
-                  <th
-                    className="min-w-[120px] border-b border-r border-[var(--border)] bg-[var(--surface-2)] px-3 py-2.5 text-left font-semibold text-[var(--text-secondary)]"
-                    style={{ position: 'sticky', left: 0, zIndex: 30 }}
-                  >
-                    Metrik
+                <tr className="bg-[var(--surface-2)] border-b border-[var(--border)]">
+                  <th className="px-4 py-2.5 text-left font-semibold text-[var(--text-secondary)] w-72">
+                    Nama Kegiatan / Sub
                   </th>
-                  {progressList.map((item, idx) => (
-                    <th
-                      key={`${item.kegiatan_id}-${item.sub_kegiatan_id ?? 'main'}`}
-                      className="border-b border-r border-[var(--border)] bg-[var(--surface-2)] px-3 py-2.5 text-center font-semibold text-[var(--text-primary)] min-w-[150px]"
-                    >
-                      <div className="flex flex-col gap-0.5">
-                        <span className="text-[10px] font-normal text-[var(--text-tertiary)]">#{idx + 1}</span>
-                        {item.nama_sub ? (
-                          <>
-                            <span className="text-[10px] font-normal text-[var(--text-tertiary)] line-clamp-1">{item.nama_kegiatan}</span>
-                            <span className="text-xs font-medium line-clamp-1">↳ {item.nama_sub}</span>
-                          </>
-                        ) : (
-                          <span className="text-xs font-semibold line-clamp-1">{item.nama_kegiatan}</span>
-                        )}
-                      </div>
-                    </th>
-                  ))}
+                  <th className="px-4 py-2.5 text-center font-semibold text-[var(--text-secondary)] w-28">
+                    Kehadiran
+                  </th>
+                  <th className="px-4 py-2.5 text-center font-semibold text-[var(--text-secondary)] w-28">
+                    Persentase
+                  </th>
+                  <th className="px-4 py-2.5 text-center font-semibold text-[var(--text-secondary)] w-48">
+                    Bar Capaian
+                  </th>
+                  <th className="px-4 py-2.5 text-center font-semibold text-[var(--text-secondary)] w-28">
+                    Nilai
+                  </th>
                 </tr>
               </thead>
               <tbody>
-                {/* Baris 1: Kehadiran */}
-                <tr className="border-b border-[var(--border)] bg-[var(--surface)]">
-                  <td
-                    className="sticky left-0 z-10 border-r border-[var(--border)] bg-[var(--surface)] px-3 py-2 font-medium text-[var(--text-secondary)]"
-                  >
-                    Kehadiran
-                  </td>
-                  {progressList.map((item) => (
-                    <td
-                      key={`kehadiran-${item.kegiatan_id}-${item.sub_kegiatan_id ?? 'main'}`}
-                      className="border-r border-[var(--border)] px-3 py-2 text-center text-sm font-semibold text-[var(--text-primary)]"
+                {progressList.map((item, rowIdx) => {
+                  const isEven = rowIdx % 2 === 0
+                  return (
+                    <tr
+                      key={`${item.kegiatan_id}-${item.sub_kegiatan_id ?? 'main'}`}
+                      className={cn(
+                        "border-b border-[var(--border)] transition-colors hover:bg-[var(--surface-2)]/40",
+                        isEven ? 'bg-[var(--surface)]' : 'bg-[var(--surface-2)]/60'
+                      )}
                     >
-                      {item.total_hadir}/{item.target}
-                    </td>
-                  ))}
-                </tr>
-                {/* Baris 2: Persentase */}
-                <tr className="border-b border-[var(--border)] bg-[var(--surface-2)]/60">
-                  <td
-                    className="sticky left-0 z-10 border-r border-[var(--border)] bg-[var(--surface-2)] px-3 py-2 font-medium text-[var(--text-secondary)]"
-                  >
-                    Persentase
-                  </td>
-                  {progressList.map((item) => (
-                    <td
-                      key={`persentase-${item.kegiatan_id}-${item.sub_kegiatan_id ?? 'main'}`}
-                      className="border-r border-[var(--border)] px-3 py-2 text-center"
-                    >
-                      <span className={cn('text-sm font-bold', NILAI_TEXT[item.nilai])}>
-                        {item.persentase}%
-                      </span>
-                    </td>
-                  ))}
-                </tr>
-                {/* Baris 3: Bar Kehadiran */}
-                <tr className="border-b border-[var(--border)] bg-[var(--surface)]">
-                  <td
-                    className="sticky left-0 z-10 border-r border-[var(--border)] bg-[var(--surface)] px-3 py-2 font-medium text-[var(--text-secondary)]"
-                  >
-                    Bar Capaian
-                  </td>
-                  {progressList.map((item) => (
-                    <td
-                      key={`bar-${item.kegiatan_id}-${item.sub_kegiatan_id ?? 'main'}`}
-                      className="border-r border-[var(--border)] px-3 py-2"
-                    >
-                      <div className="flex justify-center px-1">
-                        <ProgressBar persentase={item.persentase} />
-                      </div>
-                    </td>
-                  ))}
-                </tr>
-                {/* Baris 4: Nilai */}
-                <tr className="border-b border-[var(--border)] bg-[var(--surface-2)]/60">
-                  <td
-                    className="sticky left-0 z-10 border-r border-[var(--border)] bg-[var(--surface-2)] px-3 py-2 font-medium text-[var(--text-secondary)]"
-                  >
-                    Nilai
-                  </td>
-                  {progressList.map((item) => (
-                    <td
-                      key={`nilai-${item.kegiatan_id}-${item.sub_kegiatan_id ?? 'main'}`}
-                      className="border-r border-[var(--border)] px-3 py-2 text-center"
-                    >
-                      <div className="flex flex-col items-center">
+                      {/* Nama Kegiatan */}
+                      <td className="px-4 py-3 font-medium text-[var(--text-primary)]">
+                        {item.nama_sub ? (
+                          <div>
+                            <span className="text-[10px] text-[var(--text-tertiary)] block">
+                              {item.nama_kegiatan}
+                            </span>
+                            <span className="text-xs font-semibold block">
+                              ↳ {item.nama_sub}
+                            </span>
+                          </div>
+                        ) : (
+                          <span className="text-xs font-bold block">
+                            {item.nama_kegiatan}
+                          </span>
+                        )}
+                      </td>
+
+                      {/* Kehadiran */}
+                      <td className="px-4 py-3 text-center text-sm font-semibold text-[var(--text-primary)]">
+                        {item.total_hadir} / {item.target}
+                      </td>
+
+                      {/* Persentase */}
+                      <td className="px-4 py-3 text-center">
                         <span className={cn('text-sm font-bold', NILAI_TEXT[item.nilai])}>
-                          {item.nilai}
+                          {item.persentase}%
                         </span>
-                        <span className="text-[10px] text-[var(--text-tertiary)] leading-tight">
-                          {NILAI_LABEL[item.nilai]}
-                        </span>
-                      </div>
-                    </td>
-                  ))}
-                </tr>
+                      </td>
+
+                      {/* Bar Capaian */}
+                      <td className="px-4 py-3">
+                        <div className="flex justify-center w-full">
+                          <ProgressBar persentase={item.persentase} />
+                        </div>
+                      </td>
+
+                      {/* Nilai */}
+                      <td className="px-4 py-3 text-center">
+                        <div className="flex flex-col items-center">
+                          <span className={cn('text-sm font-bold', NILAI_TEXT[item.nilai])}>
+                            {item.nilai}
+                          </span>
+                          <span className="text-[10px] text-[var(--text-tertiary)] leading-tight">
+                            {NILAI_LABEL[item.nilai]}
+                          </span>
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>

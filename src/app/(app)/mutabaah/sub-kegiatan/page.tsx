@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { type ColumnDef } from '@tanstack/react-table'
 import { Edit, Plus, Trash2 } from 'lucide-react'
 import { useSearchParams } from 'next/navigation'
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { PageHeader } from '@/components/layout/page-header'
@@ -41,6 +41,7 @@ import {
   type KegiatanItem,
   type SubKegiatanItem,
 } from '@/lib/queries/mutabaah'
+import { getAllSemesters, type Semester } from '@/lib/queries/semester'
 
 // ─── Konstanta ────────────────────────────────────────────────────────────────
 
@@ -54,6 +55,7 @@ const subKegiatanSchema = z.object({
   poin_target: z
     .number({ message: 'Poin target harus berupa angka' })
     .min(1, 'Poin target minimal 1'),
+  semester_id: z.string().min(1, 'Semester wajib dipilih'),
 })
 
 type SubKegiatanFormValues = z.infer<typeof subKegiatanSchema>
@@ -85,6 +87,12 @@ export default function SubKegiatanMutabaahPage() {
 
   // ── State Combobox Pencarian Form ──
   const [formKegiatanSearch, setFormKegiatanSearch] = useState('')
+
+  // ── Query Semua Semester ──
+  const { data: semesterList = [] } = useQuery<Semester[]>({
+    queryKey: ['all-semesters-for-subkegiatan-crud'],
+    queryFn: getAllSemesters,
+  })
 
   // ── Query Kegiatan (untuk Select dropdown) ──
   const { data: kegiatanList = [] } = useQuery<KegiatanItem[]>({
@@ -131,19 +139,41 @@ export default function SubKegiatanMutabaahPage() {
       kegiatan_id: defaultKegiatanId,
       nama_sub: '',
       poin_target: 1,
+      semester_id: '',
     },
   })
+
+  // Auto-fill semester dari kegiatan utama yang dipilih
+  const selectedParentId = form.watch('kegiatan_id')
+  useEffect(() => {
+    if (selectedParentId) {
+      const parent = kegiatanList.find((k) => k.id === selectedParentId)
+      if (parent?.semester_id) {
+        form.setValue('semester_id', parent.semester_id, { shouldValidate: true })
+      }
+    }
+  }, [selectedParentId, kegiatanList, form])
 
   const getUserId = (): string | null => profile?.user_id ?? null
 
   const invalidate = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: ['mutabaah-sub-kegiatan'] })
+    queryClient.invalidateQueries({ queryKey: ['mutabaah-kegiatan'] }) // Invalidate parent to refresh totals
   }, [queryClient])
 
   // Helper: nama kegiatan berdasarkan ID
   const getNamaKegiatan = (id: string): string => {
     return kegiatanList.find((k) => k.id === id)?.nama_kegiatan ?? id
   }
+
+  // Helper: nama semester
+  const getSemesterLabel = useCallback((semesterId: string | null | undefined): string => {
+    if (!semesterId) return '—'
+    const s = semesterList.find((sem) => sem.id === semesterId)
+    if (!s) return semesterId
+    const tp = s.tahun_pelajaran as { nama: string } | undefined
+    return `Semester ${s.nomor_semester} — ${tp?.nama ?? ''}`
+  }, [semesterList])
 
   // ── Mutasi Create ──
   const createMutation = useMutation({
@@ -152,6 +182,7 @@ export default function SubKegiatanMutabaahPage() {
         kegiatan_id: values.kegiatan_id,
         nama_sub: values.nama_sub,
         poin_target: values.poin_target,
+        semester_id: values.semester_id,
       }),
     onSuccess: async (result) => {
       const userId = getUserId()
@@ -160,12 +191,18 @@ export default function SubKegiatanMutabaahPage() {
           kegiatan_id: result.kegiatan_id,
           nama_sub: result.nama_sub,
           poin_target: result.poin_target,
+          semester_id: result.semester_id,
         })
       }
       invalidate()
       toast({ title: 'Berhasil', description: 'Sub kegiatan berhasil ditambahkan' })
       setIsFormOpen(false)
-      form.reset({ kegiatan_id: filterKegiatanId === 'all' ? '' : filterKegiatanId, nama_sub: '', poin_target: 1 })
+      form.reset({
+        kegiatan_id: filterKegiatanId === 'all' ? '' : filterKegiatanId,
+        nama_sub: '',
+        poin_target: 1,
+        semester_id: '',
+      })
       setFormKegiatanSearch('')
     },
     onError: (error: Error) => {
@@ -187,6 +224,7 @@ export default function SubKegiatanMutabaahPage() {
         kegiatan_id: values.kegiatan_id,
         nama_sub: values.nama_sub,
         poin_target: values.poin_target,
+        semester_id: values.semester_id,
       }),
     onSuccess: async (result, variables) => {
       const userId = getUserId()
@@ -200,11 +238,13 @@ export default function SubKegiatanMutabaahPage() {
             kegiatan_id: variables.oldItem.kegiatan_id,
             nama_sub: variables.oldItem.nama_sub,
             poin_target: variables.oldItem.poin_target,
+            semester_id: variables.oldItem.semester_id,
           },
           {
             kegiatan_id: result.kegiatan_id,
             nama_sub: result.nama_sub,
             poin_target: result.poin_target,
+            semester_id: result.semester_id,
           }
         )
       }
@@ -212,7 +252,12 @@ export default function SubKegiatanMutabaahPage() {
       toast({ title: 'Berhasil', description: 'Sub kegiatan berhasil diperbarui' })
       setIsFormOpen(false)
       setEditingItem(null)
-      form.reset({ kegiatan_id: filterKegiatanId === 'all' ? '' : filterKegiatanId, nama_sub: '', poin_target: 1 })
+      form.reset({
+        kegiatan_id: filterKegiatanId === 'all' ? '' : filterKegiatanId,
+        nama_sub: '',
+        poin_target: 1,
+        semester_id: '',
+      })
       setFormKegiatanSearch('')
     },
     onError: (error: Error) => {
@@ -235,6 +280,7 @@ export default function SubKegiatanMutabaahPage() {
             kegiatan_id: deletingItem.kegiatan_id,
             nama_sub: deletingItem.nama_sub,
             poin_target: deletingItem.poin_target,
+            semester_id: deletingItem.semester_id,
           },
           null
         )
@@ -256,6 +302,7 @@ export default function SubKegiatanMutabaahPage() {
       kegiatan_id: filterKegiatanId === 'all' ? '' : filterKegiatanId,
       nama_sub: '',
       poin_target: 1,
+      semester_id: '',
     })
     setFormKegiatanSearch('')
     setIsFormOpen(true)
@@ -267,6 +314,7 @@ export default function SubKegiatanMutabaahPage() {
       kegiatan_id: item.kegiatan_id,
       nama_sub: item.nama_sub,
       poin_target: item.poin_target,
+      semester_id: item.semester_id || '',
     })
     setFormKegiatanSearch('')
     setIsFormOpen(true)
@@ -309,6 +357,16 @@ export default function SubKegiatanMutabaahPage() {
         ),
       },
       {
+        id: 'semester',
+        header: 'Semester',
+        enableSorting: false,
+        cell: ({ row }) => (
+          <span className="text-[var(--text-secondary)]">
+            {getSemesterLabel(row.original.semester_id)}
+          </span>
+        ),
+      },
+      {
         accessorKey: 'poin_target',
         header: 'Poin Target',
         cell: ({ row }) => (
@@ -345,7 +403,7 @@ export default function SubKegiatanMutabaahPage() {
         ),
       },
     ],
-    [page, pageSize, kegiatanList]
+    [page, pageSize, kegiatanList, semesterList, getSemesterLabel]
   )
 
   const isSubmitting = createMutation.isPending || updateMutation.isPending
@@ -427,7 +485,12 @@ export default function SubKegiatanMutabaahPage() {
           setIsFormOpen(open)
           if (!open) {
             setEditingItem(null)
-            form.reset({ kegiatan_id: filterKegiatanId === 'all' ? '' : filterKegiatanId, nama_sub: '', poin_target: 1 })
+            form.reset({
+              kegiatan_id: filterKegiatanId === 'all' ? '' : filterKegiatanId,
+              nama_sub: '',
+              poin_target: 1,
+              semester_id: '',
+            })
             setFormKegiatanSearch('')
           }
         }}
@@ -455,6 +518,37 @@ export default function SubKegiatanMutabaahPage() {
               {form.formState.errors.kegiatan_id && (
                 <p className="text-xs text-status-red">
                   {form.formState.errors.kegiatan_id.message}
+                </p>
+              )}
+            </div>
+
+            {/* Semester */}
+            <div className="space-y-2">
+              <Label htmlFor="semester_id">
+                Semester <span className="text-status-red">*</span>
+              </Label>
+              <Select
+                value={form.watch('semester_id')}
+                onValueChange={(val) => form.setValue('semester_id', val, { shouldValidate: true })}
+              >
+                <SelectTrigger id="semester_id">
+                  <SelectValue placeholder="Pilih semester..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {semesterList.map((s) => {
+                    const tp = s.tahun_pelajaran as { nama: string } | undefined
+                    const label = `Semester ${s.nomor_semester} — ${tp?.nama ?? ''}`
+                    return (
+                      <SelectItem key={s.id} value={s.id}>
+                        {label}
+                      </SelectItem>
+                    )
+                  })}
+                </SelectContent>
+              </Select>
+              {form.formState.errors.semester_id && (
+                <p className="text-xs text-status-red">
+                  {form.formState.errors.semester_id.message}
                 </p>
               )}
             </div>
@@ -500,7 +594,7 @@ export default function SubKegiatanMutabaahPage() {
                 onClick={() => {
                   setIsFormOpen(false)
                   setEditingItem(null)
-                  form.reset({ kegiatan_id: filterKegiatanId, nama_sub: '', poin_target: 1 })
+                  form.reset({ kegiatan_id: filterKegiatanId, nama_sub: '', poin_target: 1, semester_id: '' })
                 }}
               >
                 Batal

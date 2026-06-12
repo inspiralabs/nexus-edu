@@ -15,6 +15,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { cn } from '@/lib/utils'
 import { useAuth } from '@/hooks/use-auth'
 import { useDebounce } from '@/hooks/use-debounce'
 import {
@@ -200,85 +201,95 @@ function RekapDetailDialog({
           <div className="overflow-auto max-h-[60vh]">
             <table className="min-w-max border-collapse text-xs">
               <thead>
-                {/* Baris 1: Nama Kegiatan Header (sticky top-0) */}
                 <tr className="bg-[var(--surface-2)]" style={{ position: 'sticky', top: 0, zIndex: 20 }}>
                   <th
-                    className="min-w-[110px] border-b border-r border-[var(--border)] bg-[var(--surface-2)] px-2 py-2 text-left font-semibold text-[var(--text-secondary)]"
+                    className="w-[208px] min-w-[208px] border-b border-r border-[var(--border)] bg-[var(--surface-2)] px-3 py-2.5 text-left font-semibold text-[var(--text-secondary)]"
                     style={{ position: 'sticky', left: 0, zIndex: 30 }}
                   >
-                    Tanggal
+                    Nama Kegiatan / Sub
                   </th>
-                  {cols.map((col) => (
-                    <th
-                      key={`${col.kegiatanId}-${col.subId ?? 'main'}`}
-                      className="border-b border-r border-[var(--border)] bg-[var(--surface-2)] px-2 py-2 text-center font-semibold text-[var(--text-primary)]"
-                    >
-                      <div className="flex flex-col gap-0.5">
-                        {col.subId && (
-                          <span className="text-[10px] font-normal text-[var(--text-tertiary)]">{col.namaKegiatan}</span>
-                        )}
-                        <span>{col.label}</span>
-                      </div>
-                    </th>
-                  ))}
-                </tr>
-                {/* Baris 2: Total Kehadiran (sticky di bawah baris 1) */}
-                <tr className="bg-primary/5" style={{ position: 'sticky', top: 36, zIndex: 20 }}>
                   <th
-                    className="border-b-2 border-r border-[var(--border)] bg-primary/5 px-2 py-1.5 text-left font-semibold text-primary"
-                    style={{ position: 'sticky', left: 0, zIndex: 30 }}
+                    className="w-[96px] min-w-[96px] border-b border-r border-[var(--border)] bg-[var(--surface-2)] px-3 py-2.5 text-center font-semibold text-[var(--text-secondary)]"
+                    style={{ position: 'sticky', left: 208, zIndex: 30 }}
                   >
                     Total Hadir
                   </th>
-                  {cols.map((col) => {
-                    const total = totalHadirPerCol.get(`${col.kegiatanId}__${col.subId ?? 'null'}`) ?? 0
-                    return (
-                      <th
-                        key={`total-${col.kegiatanId}-${col.subId ?? 'main'}`}
-                        className="border-b-2 border-r border-[var(--border)] bg-primary/5 px-2 py-1.5 text-center font-bold text-primary"
-                      >
-                        {total}
-                      </th>
-                    )
-                  })}
+                  {tanggalList.map((tgl) => (
+                    <th
+                      key={tgl}
+                      className="border-b border-r border-[var(--border)] bg-[var(--surface-2)] px-2 py-2.5 text-center font-semibold text-[var(--text-primary)] min-w-[72px]"
+                    >
+                      {format(new Date(tgl), 'dd MMM', { locale: idLocale })}
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
-                {tanggalList.length === 0 ? (
+                {cols.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={cols.length + 1}
+                      colSpan={tanggalList.length + 2}
                       className="px-4 py-8 text-center text-[var(--text-tertiary)]"
                     >
-                      Belum ada data mutabaah untuk periode ini
+                      Tidak ada kegiatan yang terkonfigurasi.
                     </td>
                   </tr>
                 ) : (
-                  tanggalList.map((tgl, rowIdx) => (
-                    <tr
-                      key={tgl}
-                      className={`border-b border-[var(--border)] ${rowIdx % 2 === 0 ? 'bg-[var(--surface)]' : 'bg-[var(--surface-2)]/60'}`}
-                    >
-                      <td
-                        className={`border-r border-[var(--border)] px-2 py-2 font-medium text-[var(--text-secondary)] ${rowIdx % 2 === 0 ? 'bg-[var(--surface)]' : 'bg-[var(--surface-2)]'}`}
-                        style={{ position: 'sticky', left: 0, zIndex: 10 }}
+                  cols.map((col, rowIdx) => {
+                    const isEven = rowIdx % 2 === 0
+                    const cellBg = isEven ? 'bg-[var(--surface)]' : 'bg-[var(--surface-2)]/60'
+                    const totalHadir = totalHadirPerCol.get(`${col.kegiatanId}__${col.subId ?? 'null'}`) ?? 0
+
+                    return (
+                      <tr
+                        key={`${col.kegiatanId}-${col.subId ?? 'main'}`}
+                        className={`border-b border-[var(--border)] ${isEven ? 'bg-[var(--surface)]' : 'bg-[var(--surface-2)]/60'}`}
                       >
-                        {format(new Date(tgl), 'EEE, dd MMM', { locale: idLocale })}
-                      </td>
-                      {cols.map((col) => {
-                        const k = `${tgl}__${col.kegiatanId}__${col.subId ?? 'null'}`
-                        const status = dataMap.get(k)
-                        return (
-                          <td
-                            key={`${tgl}-${col.kegiatanId}-${col.subId ?? 'main'}`}
-                            className={`border-r border-[var(--border)] px-2 py-2 text-center ${cellColor(status)}`}
-                          >
-                            {renderCell(status)}
-                          </td>
-                        )
-                      })}
-                    </tr>
-                  ))
+                        {/* Nama Kegiatan (Sticky Left 0) */}
+                        <td
+                          className={cn(
+                            "border-r border-[var(--border)] px-3 py-2 font-medium text-[var(--text-primary)] w-[208px] min-w-[208px]",
+                            cellBg
+                          )}
+                          style={{ position: 'sticky', left: 0, zIndex: 10 }}
+                        >
+                          {col.subId ? (
+                            <div className="pl-3">
+                              <span className="text-[10px] text-[var(--text-tertiary)] block truncate">{col.namaKegiatan}</span>
+                              <span className="text-xs font-medium block truncate">↳ {col.label}</span>
+                            </div>
+                          ) : (
+                            <span className="text-xs font-semibold block truncate">{col.label}</span>
+                          )}
+                        </td>
+
+                        {/* Total Hadir (Sticky Left 208px) */}
+                        <td
+                          className={cn(
+                            "border-r border-[var(--border)] px-3 py-2 text-center font-mono font-bold text-primary w-[96px] min-w-[96px]",
+                            cellBg
+                          )}
+                          style={{ position: 'sticky', left: 208, zIndex: 10 }}
+                        >
+                          {totalHadir}
+                        </td>
+
+                        {/* Nilai per Tanggal */}
+                        {tanggalList.map((tgl) => {
+                          const k = `${tgl}__${col.kegiatanId}__${col.subId ?? 'null'}`
+                          const status = dataMap.get(k)
+                          return (
+                            <td
+                              key={`${tgl}-${col.kegiatanId}-${col.subId ?? 'main'}`}
+                              className={`border-r border-[var(--border)] px-2 py-2 text-center ${cellColor(status)}`}
+                            >
+                              {renderCell(status)}
+                            </td>
+                          )
+                        })}
+                      </tr>
+                    )
+                  })
                 )}
               </tbody>
             </table>

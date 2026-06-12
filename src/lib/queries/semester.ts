@@ -225,3 +225,15 @@ export async function setActiveSemester(
 
   if (error) throw new Error(error.message)
 }
+
+export async function getAllSemesters(): Promise<Semester[]> {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('semester')
+    .select('*, tahun_pelajaran(*)')
+    .order('tanggal_mulai', { ascending: false })
+
+  if (error) throw new Error(error.message)
+  return (data ?? []) as Semester[]
+}
+

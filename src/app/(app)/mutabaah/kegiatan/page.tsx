@@ -21,9 +21,17 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { toast } from '@/components/ui/use-toast'
 import { useAuth } from '@/hooks/use-auth'
 import { useDebounce } from '@/hooks/use-debounce'
+import { cn } from '@/lib/utils'
 import { logAudit } from '@/lib/audit/log'
 import {
   createKegiatan,
@@ -32,6 +40,7 @@ import {
   updateKegiatan,
   type KegiatanItem,
 } from '@/lib/queries/mutabaah'
+import { getAllSemesters, type Semester } from '@/lib/queries/semester'
 
 // ─── Konstanta ────────────────────────────────────────────────────────────────
 
@@ -44,6 +53,7 @@ const kegiatanSchema = z.object({
   poin_target: z
     .number({ message: 'Poin target harus berupa angka' })
     .min(1, 'Poin target minimal 1'),
+  semester_id: z.string().min(1, 'Semester wajib dipilih'),
 })
 
 type KegiatanFormValues = z.infer<typeof kegiatanSchema>
@@ -67,6 +77,12 @@ export default function KegiatanMutabaahPage() {
   const [isDeleteOpen, setIsDeleteOpen] = useState(false)
   const [editingItem, setEditingItem] = useState<KegiatanItem | null>(null)
   const [deletingItem, setDeletingItem] = useState<KegiatanItem | null>(null)
+
+  // ── Query Semua Semester ──
+  const { data: semesterList = [] } = useQuery<Semester[]>({
+    queryKey: ['all-semesters-for-kegiatan-crud'],
+    queryFn: getAllSemesters,
+  })
 
   // ── Query Data ──
   const { data: allData = [], isLoading } = useQuery({
@@ -96,6 +112,7 @@ export default function KegiatanMutabaahPage() {
     defaultValues: {
       nama_kegiatan: '',
       poin_target: 1,
+      semester_id: '',
     },
   })
 
@@ -111,6 +128,7 @@ export default function KegiatanMutabaahPage() {
       createKegiatan({
         nama_kegiatan: values.nama_kegiatan,
         poin_target: values.poin_target,
+        semester_id: values.semester_id,
       }),
     onSuccess: async (result) => {
       const userId = getUserId()
@@ -118,6 +136,7 @@ export default function KegiatanMutabaahPage() {
         await logAudit(userId, 'CREATE', 'kegiatan', result.id, null, {
           nama_kegiatan: result.nama_kegiatan,
           poin_target: result.poin_target,
+          semester_id: result.semester_id,
         })
       }
       invalidate()
@@ -143,6 +162,7 @@ export default function KegiatanMutabaahPage() {
       updateKegiatan(id, {
         nama_kegiatan: values.nama_kegiatan,
         poin_target: values.poin_target,
+        semester_id: values.semester_id,
       }),
     onSuccess: async (result, variables) => {
       const userId = getUserId()
@@ -155,10 +175,12 @@ export default function KegiatanMutabaahPage() {
           {
             nama_kegiatan: variables.oldItem.nama_kegiatan,
             poin_target: variables.oldItem.poin_target,
+            semester_id: variables.oldItem.semester_id,
           },
           {
             nama_kegiatan: result.nama_kegiatan,
             poin_target: result.poin_target,
+            semester_id: result.semester_id,
           }
         )
       }
@@ -187,6 +209,7 @@ export default function KegiatanMutabaahPage() {
           {
             nama_kegiatan: deletingItem.nama_kegiatan,
             poin_target: deletingItem.poin_target,
+            semester_id: deletingItem.semester_id,
           },
           null
         )
@@ -201,18 +224,35 @@ export default function KegiatanMutabaahPage() {
     },
   })
 
+  // ── Helpers ──
+  const hasSub = useMemo(() => {
+    return editingItem ? (editingItem.sub_kegiatan && editingItem.sub_kegiatan.length > 0) : false
+  }, [editingItem])
+
+  const getSemesterLabel = useCallback((semesterId: string | null | undefined): string => {
+    if (!semesterId) return '—'
+    const s = semesterList.find((sem) => sem.id === semesterId)
+    if (!s) return semesterId
+    const tp = s.tahun_pelajaran as { nama: string } | undefined
+    return `Semester ${s.nomor_semester} — ${tp?.nama ?? ''}`
+  }, [semesterList])
+
   // ── Handler Dialog ──
   const openAddDialog = () => {
     setEditingItem(null)
-    form.reset({ nama_kegiatan: '', poin_target: 1 })
+    form.reset({ nama_kegiatan: '', poin_target: 1, semester_id: '' })
     setIsFormOpen(true)
   }
 
   const openEditDialog = (item: KegiatanItem) => {
     setEditingItem(item)
+    const calculatedPoin = item.sub_kegiatan && item.sub_kegiatan.length > 0
+      ? item.sub_kegiatan.reduce((sum, sub) => sum + sub.poin_target, 0)
+      : item.poin_target
     form.reset({
       nama_kegiatan: item.nama_kegiatan,
-      poin_target: item.poin_target,
+      poin_target: calculatedPoin,
+      semester_id: item.semester_id || '',
     })
     setIsFormOpen(true)
   }
@@ -242,6 +282,16 @@ export default function KegiatanMutabaahPage() {
       {
         accessorKey: 'nama_kegiatan',
         header: 'Nama Kegiatan',
+      },
+      {
+        id: 'semester',
+        header: 'Semester',
+        enableSorting: false,
+        cell: ({ row }) => (
+          <span className="text-[var(--text-secondary)]">
+            {getSemesterLabel(row.original.semester_id)}
+          </span>
+        ),
       },
       {
         accessorKey: 'poin_target',
@@ -295,7 +345,7 @@ export default function KegiatanMutabaahPage() {
         ),
       },
     ],
-    [page, pageSize]
+    [page, pageSize, semesterList, getSemesterLabel]
   )
 
   const isSubmitting = createMutation.isPending || updateMutation.isPending
@@ -384,6 +434,37 @@ export default function KegiatanMutabaahPage() {
               )}
             </div>
 
+            {/* Semester */}
+            <div className="space-y-2">
+              <Label htmlFor="semester_id">
+                Semester <span className="text-status-red">*</span>
+              </Label>
+              <Select
+                value={form.watch('semester_id')}
+                onValueChange={(val) => form.setValue('semester_id', val, { shouldValidate: true })}
+              >
+                <SelectTrigger id="semester_id">
+                  <SelectValue placeholder="Pilih semester..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {semesterList.map((s) => {
+                    const tp = s.tahun_pelajaran as { nama: string } | undefined
+                    const label = `Semester ${s.nomor_semester} — ${tp?.nama ?? ''}`
+                    return (
+                      <SelectItem key={s.id} value={s.id}>
+                        {label}
+                      </SelectItem>
+                    )
+                  })}
+                </SelectContent>
+              </Select>
+              {form.formState.errors.semester_id && (
+                <p className="text-xs text-status-red">
+                  {form.formState.errors.semester_id.message}
+                </p>
+              )}
+            </div>
+
             {/* Poin Target */}
             <div className="space-y-2">
               <Label htmlFor="poin_target">Poin Target</Label>
@@ -392,8 +473,15 @@ export default function KegiatanMutabaahPage() {
                 type="number"
                 min={1}
                 placeholder="1"
+                className={cn(hasSub && "bg-muted cursor-not-allowed")}
+                readOnly={hasSub}
                 {...form.register('poin_target', { valueAsNumber: true })}
               />
+              {hasSub && (
+                <p className="text-xs text-[var(--text-secondary)] mt-1">
+                  Nilai dikunci karena kegiatan ini memiliki sub-kegiatan. Nilai otomatis dihitung dari total poin sub-kegiatan.
+                </p>
+              )}
               {form.formState.errors.poin_target && (
                 <p className="text-xs text-status-red">
                   {form.formState.errors.poin_target.message}
