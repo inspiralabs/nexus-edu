@@ -2,6 +2,10 @@ import { createClient } from '@/lib/supabase/client'
 
 // ─── TypeScript Types ─────────────────────────────────────────────────────────
 
+/**
+ * Status yang disimpan ke database.
+ * '-' = Tidak Ada Program (default awal belum diisi)
+ */
 export type MutabaahStatus =
   | 'Hadir'
   | 'Izin'
@@ -12,8 +16,59 @@ export type MutabaahStatus =
   | 'Haid'
   | 'Alpha'
   | 'L'
+  | '-'
 
 export type NilaiMutabaah = 'A' | 'B' | 'C' | 'D' | 'E'
+
+/**
+ * Kode tampilan singkat untuk setiap status mutabaah.
+ * Digunakan pada tabel rekap dan cetak.
+ */
+export const STATUS_DISPLAY_CODE: Record<MutabaahStatus, string> = {
+  Hadir: '✅',
+  'Terlambat Sekali': 'TS',
+  Terlambat: 'T',
+  Izin: 'I',
+  Sakit: 'S',
+  Alpha: 'A',
+  Istihadhah: 'ISH',
+  Haid: 'H',
+  L: 'L',
+  '-': '-',
+}
+
+/**
+ * Label lengkap setiap kode status untuk keterangan / legend.
+ */
+export const STATUS_LEGEND: Array<{ kode: string; label: string }> = [
+  { kode: '✅', label: 'Hadir / Melaksanakan' },
+  { kode: '❌', label: 'Tidak Hadir / Tidak Melaksanakan' },
+  { kode: '-', label: 'Tidak Ada Program' },
+  { kode: 'L', label: 'Libur' },
+  { kode: 'S', label: 'Sakit' },
+  { kode: 'I', label: 'Izin' },
+  { kode: 'A', label: 'Alpha' },
+  { kode: 'T', label: 'Terlambat' },
+  { kode: 'TS', label: 'Terlambat Sekali' },
+  { kode: 'ISH', label: 'Istihadhah' },
+  { kode: 'H', label: 'Haid' },
+]
+
+/**
+ * Semua opsi status yang bisa dipilih di input harian.
+ */
+export const ALL_STATUS_OPTIONS: MutabaahStatus[] = [
+  'Hadir',
+  '-',
+  'L',
+  'Sakit',
+  'Izin',
+  'Alpha',
+  'Terlambat',
+  'Terlambat Sekali',
+  'Istihadhah',
+  'Haid',
+]
 
 export interface MutabaahEntry {
   id: string
@@ -1096,3 +1151,156 @@ export async function getMutabaahCetakSiswa(
     }
   })
 }
+
+// ─── Detail Rekap per Siswa (untuk Dialog Rekap) ─────────────────────────────
+
+export interface MutabaahDetailCell {
+  tanggal: string
+  kegiatan_id: string
+  sub_kegiatan_id: string | null
+  status: MutabaahStatus
+  is_libur: boolean
+}
+
+/**
+ * Ambil semua record mutabaah satu siswa dalam range tanggal.
+ * Digunakan di dialog detail rekap — per tanggal × kegiatan/sub.
+ */
+export async function getMutabaahDetailBySiswa(
+  siswaId: string,
+  tanggalDari: string,
+  tanggalSampai: string
+): Promise<MutabaahDetailCell[]> {
+  const supabase = createClient()
+
+  const { data, error } = await supabase
+    .from('mutabaah')
+    .select('tanggal, kegiatan_id, sub_kegiatan_id, status, is_libur')
+    .eq('siswa_id', siswaId)
+    .gte('tanggal', tanggalDari)
+    .lte('tanggal', tanggalSampai)
+    .order('tanggal', { ascending: true })
+
+  if (error) throw new Error(error.message)
+
+  return (data ?? []) as MutabaahDetailCell[]
+}
+
+// ─── Progress dengan info Kegiatan (untuk Dialog Target & Nilai) ─────────────
+
+export interface MutabaahProgressWithName extends MutabaahProgressItem {
+  nama_kegiatan: string
+  nama_sub: string | null
+}
+
+/**
+ * Hitung progress mutabaah siswa dalam satu semester, sertakan nama kegiatan.
+ * Digunakan di dialog detail target & nilai.
+ */
+export async function getMutabaahProgressWithNames(
+  siswaId: string,
+  semesterId: string
+): Promise<MutabaahProgressWithName[]> {
+  const supabase = createClient()
+
+  // Ambil semester untuk mendapatkan tanggal range
+  const { data: semesterData, error: semesterError } = await supabase
+    .from('semester')
+    .select('tanggal_mulai, tanggal_selesai')
+    .eq('id', semesterId)
+    .single()
+
+  if (semesterError) throw new Error(semesterError.message)
+
+  const semester = semesterData as { tanggal_mulai: string; tanggal_selesai: string }
+
+  // Ambil semua mutabaah siswa dalam semester ini
+  const { data: mutabaahData, error: mutabaahError } = await supabase
+    .from('mutabaah')
+    .select('kegiatan_id, sub_kegiatan_id, status, is_libur')
+    .eq('siswa_id', siswaId)
+    .gte('tanggal', semester.tanggal_mulai)
+    .lte('tanggal', semester.tanggal_selesai)
+
+  if (mutabaahError) throw new Error(mutabaahError.message)
+
+  // Ambil target mutabaah di semester ini
+  const { data: targetData, error: targetError } = await supabase
+    .from('target_mutabaah')
+    .select('kegiatan_id, sub_kegiatan_id, target_jumlah')
+    .eq('semester_id', semesterId)
+
+  if (targetError) throw new Error(targetError.message)
+
+  // Ambil semua kegiatan + sub kegiatan untuk nama
+  const { data: kegiatanData, error: kegiatanError } = await supabase
+    .from('kegiatan')
+    .select('id, nama_kegiatan, sub_kegiatan(id, nama_sub)')
+    .order('urutan', { ascending: true })
+
+  if (kegiatanError) throw new Error(kegiatanError.message)
+
+  const kegiatanMap = new Map<string, { nama_kegiatan: string }>()
+  const subKegiatanMap = new Map<string, { nama_sub: string }>()
+
+  for (const k of kegiatanData ?? []) {
+    const kRow = k as {
+      id: string
+      nama_kegiatan: string
+      sub_kegiatan: { id: string; nama_sub: string }[] | null
+    }
+    kegiatanMap.set(kRow.id, { nama_kegiatan: kRow.nama_kegiatan })
+    for (const sub of kRow.sub_kegiatan ?? []) {
+      subKegiatanMap.set(sub.id, { nama_sub: sub.nama_sub })
+    }
+  }
+
+  // Group total hadir per kegiatan × sub_kegiatan
+  const hadirMap = new Map<string, number>()
+
+  for (const row of mutabaahData ?? []) {
+    const r = row as {
+      kegiatan_id: string
+      sub_kegiatan_id: string | null
+      status: MutabaahStatus
+      is_libur: boolean
+    }
+    if (!r.is_libur && r.status === 'Hadir') {
+      const key = `${r.kegiatan_id}__${r.sub_kegiatan_id ?? 'null'}`
+      hadirMap.set(key, (hadirMap.get(key) ?? 0) + 1)
+    }
+  }
+
+  const result: MutabaahProgressWithName[] = []
+
+  for (const target of targetData ?? []) {
+    const t = target as {
+      kegiatan_id: string
+      sub_kegiatan_id: string | null
+      target_jumlah: number
+    }
+    const key = `${t.kegiatan_id}__${t.sub_kegiatan_id ?? 'null'}`
+    const totalHadir = hadirMap.get(key) ?? 0
+    const persentase =
+      t.target_jumlah > 0
+        ? Math.min(100, Math.round((totalHadir / t.target_jumlah) * 100))
+        : 0
+
+    const namaKegiatan = kegiatanMap.get(t.kegiatan_id)?.nama_kegiatan ?? ''
+    const namaSub = t.sub_kegiatan_id ? (subKegiatanMap.get(t.sub_kegiatan_id)?.nama_sub ?? null) : null
+
+    result.push({
+      kegiatan_id: t.kegiatan_id,
+      sub_kegiatan_id: t.sub_kegiatan_id,
+      total_hadir: totalHadir,
+      target: t.target_jumlah,
+      persentase,
+      nilai: hitungNilai(persentase),
+      nama_kegiatan: namaKegiatan,
+      nama_sub: namaSub,
+    })
+  }
+
+  return result
+}
+

@@ -3,7 +3,7 @@
 import { format } from 'date-fns'
 import { id as idLocale } from 'date-fns/locale'
 import { AlertTriangle, CheckCheck, Save, Squircle } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { PageHeader } from '@/components/layout/page-header'
 import { DatePicker } from '@/components/shared/date-picker'
@@ -24,34 +24,38 @@ import {
   getMutabaahByTanggalKamar,
   upsertMutabaah,
   setAllLiburOnDate,
+  ALL_STATUS_OPTIONS,
+  STATUS_DISPLAY_CODE,
   type KegiatanItem,
   type MutabaahStatus,
 } from '@/lib/queries/mutabaah'
 
-// ─── Konstanta ────────────────────────────────────────────────────────────────
+// ─── Konstanta Tampilan ───────────────────────────────────────────────────────
 
-const STATUS_OPTIONS: MutabaahStatus[] = [
-  'Hadir',
-  'Izin',
-  'Sakit',
-  'Terlambat',
-  'Terlambat Sekali',
-  'Istihadhah',
-  'Haid',
-  'Alpha',
-  'L',
-]
+const STATUS_LABEL: Record<MutabaahStatus, string> = {
+  Hadir: '✅ Hadir',
+  '-': '- Tidak Ada Program',
+  L: 'L  Libur',
+  Sakit: 'S  Sakit',
+  Izin: 'I  Izin',
+  Alpha: 'A  Alpha',
+  Terlambat: 'T  Terlambat',
+  'Terlambat Sekali': 'TS Terlambat Sekali',
+  Istihadhah: 'ISH Istihadhah',
+  Haid: 'H  Haid',
+}
 
 const STATUS_CELL_CLASS: Record<MutabaahStatus, string> = {
-  Hadir: 'bg-[var(--status-green-bg)] text-[var(--status-green)]',
-  Izin: 'bg-[var(--status-yellow-bg)] text-[var(--status-yellow)]',
+  Hadir: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300',
+  '-': 'bg-[var(--surface-2)] text-[var(--text-tertiary)]',
+  L: 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400',
   Sakit: 'bg-blue-50 text-blue-600 dark:bg-blue-950 dark:text-blue-300',
+  Izin: 'bg-yellow-50 text-yellow-600 dark:bg-yellow-950 dark:text-yellow-300',
+  Alpha: 'bg-red-50 text-red-600 dark:bg-red-950 dark:text-red-300',
   Terlambat: 'bg-orange-50 text-orange-600 dark:bg-orange-950 dark:text-orange-300',
   'Terlambat Sekali': 'bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-400',
   Istihadhah: 'bg-purple-50 text-purple-600 dark:bg-purple-950 dark:text-purple-300',
   Haid: 'bg-pink-50 text-pink-600 dark:bg-pink-950 dark:text-pink-300',
-  Alpha: 'bg-[var(--status-red-bg)] text-[var(--status-red)]',
-  L: 'bg-[var(--surface-2)] text-[var(--text-tertiary)]',
 }
 
 // ─── Tipe lokal ───────────────────────────────────────────────────────────────
@@ -60,6 +64,7 @@ interface SiswaRow {
   id: string
   nama: string
   kelas: string
+  kamar?: string | null
 }
 
 // Key = `${siswa_id}__${kegiatan_id}__${sub_kegiatan_id ?? 'null'}`
@@ -67,6 +72,17 @@ type MutabaahMap = Map<string, MutabaahStatus>
 
 function buildKey(siswaId: string, kegiatanId: string, subId: string | null): string {
   return `${siswaId}__${kegiatanId}__${subId ?? 'null'}`
+}
+
+// ─── Baris tabel: kegiatan atau sub kegiatan ──────────────────────────────────
+
+interface RowDef {
+  kegiatanId: string
+  namaKegiatan: string
+  subId: string | null
+  namaSub: string | null
+  isGroupHeader: boolean
+  isSub: boolean
 }
 
 // ─── Halaman Input Harian ─────────────────────────────────────────────────────
@@ -82,6 +98,9 @@ export default function InputHarianPage() {
   const [activeTab, setActiveTab] = useState<'SD' | 'SMP' | 'SMA'>('SD')
   const [isLiburDialogOpen, setIsLiburDialogOpen] = useState(false)
 
+  // Flag agar tab default SD tidak dioverride oleh useEffect kamar
+  const tabInitialized = useRef(false)
+
   const tanggalStr = format(selectedDate, 'yyyy-MM-dd')
 
   // ── Query Kamar ──
@@ -94,16 +113,16 @@ export default function InputHarianPage() {
     },
     enabled: !!profile,
   })
-  // Menstabilkan referensi kamarList agar tidak memicu re-render / useEffect berlebih saat loading
   const kamarList = useMemo(() => rawKamarList ?? [], [rawKamarList])
 
-  // Auto-set activeTab berdasarkan kamar pertama yang dimiliki
+  // Auto-set activeTab HANYA SEKALI: jika tidak ada kamar SD, fallback ke unit pertama
   useEffect(() => {
-    if (kamarList.length > 0) {
-      const firstKamarUnit = kamarList[0].unit as 'SD' | 'SMP' | 'SMA'
-      if (firstKamarUnit) {
-        setActiveTab(firstKamarUnit)
+    if (!tabInitialized.current && kamarList.length > 0) {
+      const hasSD = kamarList.some((k) => k.unit === 'SD')
+      if (!hasSD) {
+        setActiveTab(kamarList[0].unit as 'SD' | 'SMP' | 'SMA')
       }
+      tabInitialized.current = true
     }
   }, [kamarList])
 
@@ -135,7 +154,6 @@ export default function InputHarianPage() {
     queryKey: ['kegiatan-with-sub'],
     queryFn: getKegiatanWithSub,
   })
-  // Menstabilkan referensi kegiatanList agar memiliki referensi konstan selama data belum termuat/berubah
   const kegiatanList = useMemo(() => rawKegiatanList ?? [], [rawKegiatanList])
 
   // ── Query Siswa ──
@@ -144,7 +162,6 @@ export default function InputHarianPage() {
     queryFn: () => (selectedKamar ? getSiswaByKamar(selectedKamar) : Promise.resolve([])),
     enabled: !!selectedKamar,
   })
-  // Menstabilkan referensi siswaList
   const siswaList = useMemo(() => rawSiswaList ?? [], [rawSiswaList])
 
   // ── Query Data Mutabaah yang sudah ada ──
@@ -156,13 +173,12 @@ export default function InputHarianPage() {
         : Promise.resolve([]),
     enabled: !!tanggalStr && !!selectedKamar,
   })
-  // Menstabilkan referensi existingData agar tidak memicu loop rendering di dalam useEffect
   const existingData = useMemo(() => rawExistingData ?? [], [rawExistingData])
 
-  // Bangun mutabaahData dari existing + default Hadir/L
+  // Bangun mutabaahData dari existing + default '-' (atau 'L' jika libur)
   useEffect(() => {
     const newMap: MutabaahMap = new Map()
-    const defaultStatus: MutabaahStatus = hariLiburInfo.isLibur ? 'L' : 'Hadir'
+    const defaultStatus: MutabaahStatus = hariLiburInfo.isLibur ? 'L' : '-'
 
     for (const siswa of siswaList as SiswaRow[]) {
       for (const kegiatan of kegiatanList) {
@@ -179,7 +195,7 @@ export default function InputHarianPage() {
       }
     }
 
-    // Gabungkan dengan data existing yang didapatkan dari database
+    // Gabungkan dengan data existing dari database
     for (const entry of existingData) {
       const key = buildKey(entry.siswa_id, entry.kegiatan_id, entry.sub_kegiatan_id)
       newMap.set(key, entry.status)
@@ -200,18 +216,25 @@ export default function InputHarianPage() {
     []
   )
 
-  // ── Hadir Semua per kegiatan ──
-  const hadirSemua = useCallback(
-    (kegiatanId: string, subId: string | null) => {
+  // ── Hadir Semua per SISWA (klik di bawah nama siswa) ──
+  const hadirSemuaSiswa = useCallback(
+    (siswaId: string) => {
       setMutabaahData((prev) => {
         const next = new Map(prev)
-        for (const siswa of siswaList as SiswaRow[]) {
-          next.set(buildKey(siswa.id, kegiatanId, subId), 'Hadir')
+        for (const kegiatan of kegiatanList) {
+          const subs = kegiatan.sub_kegiatan ?? []
+          if (subs.length > 0) {
+            for (const sub of subs) {
+              next.set(buildKey(siswaId, kegiatan.id, sub.id), 'Hadir')
+            }
+          } else {
+            next.set(buildKey(siswaId, kegiatan.id, null), 'Hadir')
+          }
         }
         return next
       })
     },
-    [siswaList]
+    [kegiatanList]
   )
 
   // ── Tandai Semua Libur ──
@@ -225,43 +248,44 @@ export default function InputHarianPage() {
     })
   }, [])
 
-  // ── Flatten columns dari kegiatanList ──
-  interface ColHeader {
-    kegiatanId: string
-    namaKegiatan: string
-    subId: string | null
-    namaSub: string | null
-    colSpan: number
-    isFirst: boolean
-  }
-
-  const columns = useMemo<ColHeader[]>(() => {
-    const cols: ColHeader[] = []
+  // ── Bangun definisi baris (kegiatan/sub kegiatan) ──
+  const rows = useMemo<RowDef[]>(() => {
+    const result: RowDef[] = []
     for (const kegiatan of kegiatanList) {
       const subs = kegiatan.sub_kegiatan ?? []
       if (subs.length === 0) {
-        cols.push({
+        result.push({
           kegiatanId: kegiatan.id,
           namaKegiatan: kegiatan.nama_kegiatan,
           subId: null,
           namaSub: null,
-          colSpan: 1,
-          isFirst: true,
+          isGroupHeader: false,
+          isSub: false,
         })
       } else {
-        subs.forEach((sub, i) => {
-          cols.push({
+        // Baris header grup (tidak memiliki cell input)
+        result.push({
+          kegiatanId: kegiatan.id,
+          namaKegiatan: kegiatan.nama_kegiatan,
+          subId: null,
+          namaSub: null,
+          isGroupHeader: true,
+          isSub: false,
+        })
+        // Baris sub kegiatan
+        for (const sub of subs) {
+          result.push({
             kegiatanId: kegiatan.id,
             namaKegiatan: kegiatan.nama_kegiatan,
             subId: sub.id,
             namaSub: sub.nama_sub,
-            colSpan: subs.length,
-            isFirst: i === 0,
+            isGroupHeader: false,
+            isSub: true,
           })
-        })
+        }
       }
     }
-    return cols
+    return result
   }, [kegiatanList])
 
   // ── Libur Massal Mutation ──
@@ -271,7 +295,6 @@ export default function InputHarianPage() {
       const siswaIds = siswaList.map((s) => s.id)
       const kegiatanIds = kegiatanList.map((k) => k.id)
       await setAllLiburOnDate(tanggalStr, siswaIds, kegiatanIds, profile.id)
-
       await logAudit(profile.id, 'CREATE', 'mutabaah', tanggalStr, null, {
         tanggal: tanggalStr,
         kamar: selectedKamar,
@@ -362,7 +385,7 @@ export default function InputHarianPage() {
     <div className="space-y-4">
       <PageHeader
         title="Input Harian Mutabaah"
-        description="Catat kehadiran kegiatan pesantren per siswa per tanggal"
+        description="Catat kehadiran kegiatan pesantren per tanggal — kegiatan (baris) × siswa (kolom)"
         actions={
           <div className="flex items-center gap-2">
             <Button
@@ -452,7 +475,7 @@ export default function InputHarianPage() {
         </div>
       )}
 
-      {/* ── Empty State ── */}
+      {/* ── Empty States ── */}
       {!selectedKamar && (
         <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-[var(--border)] py-16 text-center">
           <Squircle className="mb-3 h-10 w-10 text-[var(--text-tertiary)]" />
@@ -476,7 +499,7 @@ export default function InputHarianPage() {
       {selectedKamar && siswaList.length > 0 && kegiatanList.length === 0 && !loadingKegiatan && (
         <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-[var(--border)] py-16 text-center">
           <p className="text-sm text-[var(--text-secondary)]">
-            Belum ada kegiatan. Tambahkan kegiatan di menu{' '}
+            Belum ada kegiatan. Tambahkan di menu{' '}
             <a href="/mutabaah/kegiatan" className="text-primary underline">
               Kegiatan Mutabaah
             </a>
@@ -485,7 +508,7 @@ export default function InputHarianPage() {
         </div>
       )}
 
-      {/* ── Grid Checklist ── */}
+      {/* ── PIVOT TABEL: baris=Kegiatan, kolom=Siswa ── */}
       {selectedKamar && siswaList.length > 0 && kegiatanList.length > 0 && (
         <div className="overflow-x-auto rounded-lg border border-[var(--border)] bg-[var(--surface)]">
           {isLoading && (
@@ -496,126 +519,125 @@ export default function InputHarianPage() {
           {!isLoading && (
             <table className="min-w-max border-collapse text-sm">
               <thead>
-                {/* Baris 1: Nama kegiatan (group header untuk yang punya sub) */}
                 <tr className="border-b border-[var(--border)] bg-[var(--surface-2)]">
-                  {/* Kolom sticky: nama siswa */}
+                  {/* Kolom No — sticky */}
                   <th
-                    rowSpan={2}
-                    className="sticky left-0 z-20 min-w-[160px] border-r border-[var(--border)] bg-[var(--surface-2)] px-3 py-2 text-left text-xs font-semibold text-[var(--text-secondary)]"
+                    className="sticky left-0 z-20 w-10 border-r border-[var(--border)] bg-[var(--surface-2)] px-2 py-2 text-center text-xs font-semibold text-[var(--text-secondary)]"
                   >
-                    Nama Siswa
+                    No
                   </th>
-                  {/* Kegiatan unik sebagai group header */}
-                  {kegiatanList.map((kegiatan) => {
-                    const subs = kegiatan.sub_kegiatan ?? []
-                    const colSpan = subs.length > 0 ? subs.length : 1
-                    return (
-                      <th
-                        key={kegiatan.id}
-                        colSpan={colSpan}
-                        className="border-r border-[var(--border)] px-2 py-2 text-center text-xs font-semibold text-[var(--text-primary)]"
-                      >
-                        <div className="flex flex-col items-center gap-1">
-                          <span>{kegiatan.nama_kegiatan}</span>
-                          {subs.length === 0 && (
-                            <button
-                              type="button"
-                              onClick={() => hadirSemua(kegiatan.id, null)}
-                              className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-normal text-primary hover:bg-primary-light"
-                              title="Hadir Semua"
-                            >
-                              <CheckCheck className="h-3 w-3" />
-                              Hadir Semua
-                            </button>
-                          )}
-                        </div>
-                      </th>
-                    )
-                  })}
-                </tr>
-                {/* Baris 2: Sub kegiatan header */}
-                <tr className="border-b border-[var(--border)] bg-[var(--surface-2)]">
-                  {columns.map((col, i) => {
-                    if (!col.namaSub) return null
-                    return (
-                      <th
-                        key={`sub-${col.kegiatanId}-${col.subId ?? i}`}
-                        className="border-r border-[var(--border)] px-2 py-1 text-center text-[10px] font-medium text-[var(--text-secondary)]"
-                      >
-                        <div className="flex flex-col items-center gap-0.5">
-                          <span>{col.namaSub}</span>
-                          <button
-                            type="button"
-                            onClick={() => hadirSemua(col.kegiatanId, col.subId)}
-                            className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[9px] text-primary hover:bg-primary-light"
-                            title="Hadir Semua"
-                          >
-                            <CheckCheck className="h-2.5 w-2.5" />
-                            Semua
-                          </button>
-                        </div>
-                      </th>
-                    )
-                  })}
-                  {/* Placeholder untuk kolom kegiatan tanpa sub */}
-                  {columns
-                    .filter((c) => !c.namaSub)
-                    .map((_, i) => (
-                      <th key={`nosub-${i}`} />
-                    ))}
+                  {/* Kolom Nama Kegiatan — sticky */}
+                  <th
+                    className="sticky left-10 z-20 min-w-[180px] border-r border-[var(--border)] bg-[var(--surface-2)] px-3 py-2 text-left text-xs font-semibold text-[var(--text-secondary)]"
+                  >
+                    Nama Kegiatan
+                  </th>
+                  {/* Satu kolom per siswa */}
+                  {(siswaList as SiswaRow[]).map((siswa) => (
+                    <th
+                      key={siswa.id}
+                      className="min-w-[140px] border-r border-[var(--border)] px-2 py-1.5 text-center text-xs font-semibold text-[var(--text-primary)]"
+                    >
+                      <div className="flex flex-col items-center gap-1">
+                        <span className="leading-tight">{siswa.nama}</span>
+                        <span className="text-[10px] font-normal text-[var(--text-tertiary)]">{siswa.kelas}</span>
+                        {/* Tombol Hadir Semua per siswa */}
+                        <button
+                          type="button"
+                          id={`btn-hadir-semua-${siswa.id}`}
+                          onClick={() => hadirSemuaSiswa(siswa.id)}
+                          className="mt-0.5 flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-medium text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-900/50 dark:text-emerald-300 dark:hover:bg-emerald-900"
+                          title={`Hadir Semua untuk ${siswa.nama}`}
+                        >
+                          <CheckCheck className="h-2.5 w-2.5" />
+                          Hadir Semua
+                        </button>
+                      </div>
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
-                {(siswaList as SiswaRow[]).map((siswa, rowIdx) => (
-                  <tr
-                    key={siswa.id}
-                    className={rowIdx % 2 === 0 ? 'bg-[var(--surface)]' : 'bg-[var(--surface-2)]'}
-                  >
-                    {/* Nama siswa sticky */}
-                    <td className={`sticky left-0 z-10 border-b border-r border-[var(--border)] px-3 py-2 ${
-                      rowIdx % 2 === 0 ? 'bg-[var(--surface)]' : 'bg-[var(--surface-2)]'
-                    }`}>
-                      <div className="min-w-[140px]">
-                        <p className="text-sm font-medium text-[var(--text-primary)] leading-tight">
-                          {siswa.nama}
-                        </p>
-                        <p className="text-xs text-[var(--text-tertiary)]">{siswa.kelas}</p>
-                      </div>
-                    </td>
-                    {/* Sel kegiatan/sub */}
-                    {columns.map((col, ci) => {
-                      const key = buildKey(siswa.id, col.kegiatanId, col.subId)
-                      const currentStatus = mutabaahData.get(key) ?? 'Hadir'
-                      return (
-                        <td
-                           key={`${siswa.id}-${col.kegiatanId}-${col.subId ?? ci}`}
-                          className={`border-b border-r border-[var(--border)] p-1 ${STATUS_CELL_CLASS[currentStatus]}`}
-                        >
-                          <Select
-                            value={currentStatus}
-                            onValueChange={(val) =>
-                              setStatus(siswa.id, col.kegiatanId, col.subId, val as MutabaahStatus)
-                            }
+                {rows.map((row, rowIdx) => {
+                  const isEven = rowIdx % 2 === 0
+                  const rowBg = row.isGroupHeader
+                    ? 'bg-[var(--surface-2)]'
+                    : isEven
+                      ? 'bg-[var(--surface)]'
+                      : 'bg-[var(--surface-2)]/60'
+
+                  return (
+                    <tr key={`${row.kegiatanId}-${row.subId ?? 'main'}-${rowIdx}`} className={`border-b border-[var(--border)] ${rowBg}`}>
+                      {/* Kolom No */}
+                      <td className={`sticky left-0 z-10 border-r border-[var(--border)] px-2 py-2 text-center text-xs text-[var(--text-tertiary)] ${rowBg}`}>
+                        {row.isGroupHeader ? '' : (
+                          // Hitung nomor urut baris kegiatan (excludes group headers)
+                          rows.slice(0, rowIdx + 1).filter((r) => !r.isGroupHeader).length
+                        )}
+                      </td>
+
+                      {/* Kolom Nama Kegiatan */}
+                      <td className={`sticky left-10 z-10 border-r border-[var(--border)] px-3 py-2 ${rowBg}`}>
+                        {row.isGroupHeader ? (
+                          <span className="text-xs font-bold text-[var(--text-primary)] uppercase tracking-wide">
+                            {row.namaKegiatan}
+                          </span>
+                        ) : row.isSub ? (
+                          <span className="ml-3 text-xs text-[var(--text-secondary)]">
+                            ↳ {row.namaSub}
+                          </span>
+                        ) : (
+                          <span className="text-xs font-medium text-[var(--text-primary)]">
+                            {row.namaKegiatan}
+                          </span>
+                        )}
+                      </td>
+
+                      {/* Sel per siswa */}
+                      {(siswaList as SiswaRow[]).map((siswa) => {
+                        if (row.isGroupHeader) {
+                          return (
+                            <td
+                              key={`${siswa.id}-group-${row.kegiatanId}`}
+                              className="border-r border-[var(--border)] px-2 py-1"
+                            />
+                          )
+                        }
+
+                        const key = buildKey(siswa.id, row.kegiatanId, row.subId)
+                        const currentStatus = mutabaahData.get(key) ?? '-'
+
+                        return (
+                          <td
+                            key={`${siswa.id}-${row.kegiatanId}-${row.subId ?? 'main'}`}
+                            className={`border-r border-[var(--border)] p-1 ${STATUS_CELL_CLASS[currentStatus]}`}
                           >
-                            <SelectTrigger
-                              id={`sel-${siswa.id}-${col.kegiatanId}-${col.subId ?? 'main'}`}
-                              className="h-7 min-w-[100px] border-none bg-transparent text-xs font-medium focus:ring-0"
+                            <Select
+                              value={currentStatus}
+                              onValueChange={(val) =>
+                                setStatus(siswa.id, row.kegiatanId, row.subId, val as MutabaahStatus)
+                              }
                             >
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {STATUS_OPTIONS.map((s) => (
-                                <SelectItem key={s} value={s} className="text-xs">
-                                  {s}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </td>
-                      )
-                    })}
-                  </tr>
-                ))}
+                              <SelectTrigger
+                                id={`sel-${siswa.id}-${row.kegiatanId}-${row.subId ?? 'main'}`}
+                                className="h-7 min-w-[110px] border-none bg-transparent text-xs font-medium focus:ring-0"
+                              >
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {ALL_STATUS_OPTIONS.map((s) => (
+                                  <SelectItem key={s} value={s} className="text-xs">
+                                    {STATUS_LABEL[s]}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </td>
+                        )
+                      })}
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           )}

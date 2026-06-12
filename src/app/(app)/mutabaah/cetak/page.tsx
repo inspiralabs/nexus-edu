@@ -3,7 +3,7 @@
 import { format } from 'date-fns'
 import { id as idLocale } from 'date-fns/locale'
 import { Printer, Search } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { PageHeader } from '@/components/layout/page-header'
 import { DatePicker } from '@/components/shared/date-picker'
@@ -37,18 +37,20 @@ const STATUS_BADGE_CLASS: Record<MutabaahStatus, string> = {
   Haid: 'bg-pink-100 text-pink-700 print:bg-transparent print:text-black',
   Alpha: 'bg-[var(--status-red-bg)] text-[var(--status-red)] print:bg-transparent print:text-black',
   L: 'bg-[var(--surface-2)] text-[var(--text-tertiary)] print:bg-transparent print:text-black',
+  '-': 'bg-[var(--surface-2)] text-[var(--text-tertiary)] print:bg-transparent print:text-black',
 }
 
 const STATUS_ABBR: Record<MutabaahStatus, string> = {
-  Hadir: 'H',
+  Hadir: '✅',
   Izin: 'I',
   Sakit: 'S',
   Terlambat: 'T',
   'Terlambat Sekali': 'TS',
-  Istihadhah: 'Is',
-  Haid: 'Hd',
+  Istihadhah: 'ISH',
+  Haid: 'H',
   Alpha: 'A',
   L: 'L',
+  '-': '-',
 }
 
 // ─── Tipe Lokal ───────────────────────────────────────────────────────────────
@@ -97,13 +99,15 @@ export default function CetakMutabaahPage() {
     enabled: !!profile,
   })
 
-  // Auto-set activeTab berdasarkan kamar pertama yang dimiliki
+  // Auto-set activeTab HANYA SEKALI — default SD
+  const cetakTabInitialized = useRef(false)
   useEffect(() => {
-    if (kamarList.length > 0) {
-      const firstKamarUnit = kamarList[0].unit as 'SD' | 'SMP' | 'SMA'
-      if (firstKamarUnit) {
-        setActiveTab(firstKamarUnit)
+    if (!cetakTabInitialized.current && kamarList.length > 0) {
+      const hasSD = kamarList.some((k) => k.unit === 'SD')
+      if (!hasSD) {
+        setActiveTab(kamarList[0].unit as 'SD' | 'SMP' | 'SMA')
       }
+      cetakTabInitialized.current = true
     }
   }, [kamarList])
 
