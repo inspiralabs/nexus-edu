@@ -1,6 +1,6 @@
 'use client'
 
-import { Eye, Search, X } from 'lucide-react'
+import { Eye, Search } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { PageHeader } from '@/components/layout/page-header'
@@ -21,6 +21,7 @@ import {
   getSiswaByKamar,
   getMutabaahProgress,
   getMutabaahProgressWithNames,
+  getTargetMutabaah,
   type NilaiMutabaah,
   type MutabaahProgressItem,
   type MutabaahProgressWithName,
@@ -155,13 +156,6 @@ function TargetDetailDialog({
                 </div>
               )}
             </div>
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded-full p-1 hover:bg-[var(--surface-2)] text-[var(--text-tertiary)]"
-            >
-              <X className="h-4 w-4" />
-            </button>
           </div>
         </DialogHeader>
 
@@ -172,60 +166,112 @@ function TargetDetailDialog({
             Belum ada data target untuk siswa ini di semester yang dipilih.
           </div>
         ) : (
-          <div className="overflow-auto max-h-[60vh] p-0">
-            <table className="w-full border-collapse text-sm">
+          <div className="overflow-auto max-h-[60vh]">
+            <table className="min-w-max border-collapse text-sm">
               <thead>
-                <tr className="border-b border-[var(--border)] bg-[var(--surface-2)]">
-                  <th className="px-3 py-2.5 text-left text-xs font-semibold text-[var(--text-secondary)]">No</th>
-                  <th className="min-w-[200px] px-3 py-2.5 text-left text-xs font-semibold text-[var(--text-secondary)]">Nama Kegiatan</th>
-                  <th className="px-3 py-2.5 text-center text-xs font-semibold text-[var(--text-secondary)]">Kehadiran</th>
-                  <th className="px-3 py-2.5 text-center text-xs font-semibold text-[var(--text-secondary)]">Persentase</th>
-                  <th className="min-w-[120px] px-3 py-2.5 text-left text-xs font-semibold text-[var(--text-secondary)]">Bar Kehadiran</th>
-                  <th className="px-3 py-2.5 text-center text-xs font-semibold text-[var(--text-secondary)]">Nilai</th>
+                <tr className="bg-[var(--surface-2)]" style={{ position: 'sticky', top: 0, zIndex: 20 }}>
+                  <th
+                    className="min-w-[120px] border-b border-r border-[var(--border)] bg-[var(--surface-2)] px-3 py-2.5 text-left font-semibold text-[var(--text-secondary)]"
+                    style={{ position: 'sticky', left: 0, zIndex: 30 }}
+                  >
+                    Metrik
+                  </th>
+                  {progressList.map((item, idx) => (
+                    <th
+                      key={`${item.kegiatan_id}-${item.sub_kegiatan_id ?? 'main'}`}
+                      className="border-b border-r border-[var(--border)] bg-[var(--surface-2)] px-3 py-2.5 text-center font-semibold text-[var(--text-primary)] min-w-[150px]"
+                    >
+                      <div className="flex flex-col gap-0.5">
+                        <span className="text-[10px] font-normal text-[var(--text-tertiary)]">#{idx + 1}</span>
+                        {item.nama_sub ? (
+                          <>
+                            <span className="text-[10px] font-normal text-[var(--text-tertiary)] line-clamp-1">{item.nama_kegiatan}</span>
+                            <span className="text-xs font-medium line-clamp-1">↳ {item.nama_sub}</span>
+                          </>
+                        ) : (
+                          <span className="text-xs font-semibold line-clamp-1">{item.nama_kegiatan}</span>
+                        )}
+                      </div>
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
-                {progressList.map((item: MutabaahProgressWithName, idx) => (
-                  <tr
-                    key={`${item.kegiatan_id}-${item.sub_kegiatan_id ?? 'main'}`}
-                    className={`border-b border-[var(--border)] ${idx % 2 === 0 ? 'bg-[var(--surface)]' : 'bg-[var(--surface-2)]/60'}`}
+                {/* Baris 1: Kehadiran */}
+                <tr className="border-b border-[var(--border)] bg-[var(--surface)]">
+                  <td
+                    className="sticky left-0 z-10 border-r border-[var(--border)] bg-[var(--surface)] px-3 py-2 font-medium text-[var(--text-secondary)]"
                   >
-                    <td className="px-3 py-2 text-xs text-[var(--text-tertiary)]">{idx + 1}</td>
-                    <td className="px-3 py-2">
-                      {item.nama_sub ? (
-                        <div>
-                          <p className="text-[10px] text-[var(--text-tertiary)]">{item.nama_kegiatan}</p>
-                          <p className="text-xs font-medium text-[var(--text-primary)]">↳ {item.nama_sub}</p>
-                        </div>
-                      ) : (
-                        <p className="text-xs font-semibold text-[var(--text-primary)]">{item.nama_kegiatan}</p>
-                      )}
+                    Kehadiran
+                  </td>
+                  {progressList.map((item) => (
+                    <td
+                      key={`kehadiran-${item.kegiatan_id}-${item.sub_kegiatan_id ?? 'main'}`}
+                      className="border-r border-[var(--border)] px-3 py-2 text-center text-sm font-semibold text-[var(--text-primary)]"
+                    >
+                      {item.total_hadir}/{item.target}
                     </td>
-                    <td className="px-3 py-2 text-center">
-                      <span className="text-sm font-semibold text-[var(--text-primary)]">
-                        {item.total_hadir}/{item.target}
-                      </span>
-                    </td>
-                    <td className="px-3 py-2 text-center">
+                  ))}
+                </tr>
+                {/* Baris 2: Persentase */}
+                <tr className="border-b border-[var(--border)] bg-[var(--surface-2)]/60">
+                  <td
+                    className="sticky left-0 z-10 border-r border-[var(--border)] bg-[var(--surface-2)] px-3 py-2 font-medium text-[var(--text-secondary)]"
+                  >
+                    Persentase
+                  </td>
+                  {progressList.map((item) => (
+                    <td
+                      key={`persentase-${item.kegiatan_id}-${item.sub_kegiatan_id ?? 'main'}`}
+                      className="border-r border-[var(--border)] px-3 py-2 text-center"
+                    >
                       <span className={cn('text-sm font-bold', NILAI_TEXT[item.nilai])}>
                         {item.persentase}%
                       </span>
                     </td>
-                    <td className="px-3 py-2">
-                      <ProgressBar persentase={item.persentase} />
+                  ))}
+                </tr>
+                {/* Baris 3: Bar Kehadiran */}
+                <tr className="border-b border-[var(--border)] bg-[var(--surface)]">
+                  <td
+                    className="sticky left-0 z-10 border-r border-[var(--border)] bg-[var(--surface)] px-3 py-2 font-medium text-[var(--text-secondary)]"
+                  >
+                    Bar Capaian
+                  </td>
+                  {progressList.map((item) => (
+                    <td
+                      key={`bar-${item.kegiatan_id}-${item.sub_kegiatan_id ?? 'main'}`}
+                      className="border-r border-[var(--border)] px-3 py-2"
+                    >
+                      <div className="flex justify-center px-1">
+                        <ProgressBar persentase={item.persentase} />
+                      </div>
                     </td>
-                    <td className="px-3 py-2 text-center">
+                  ))}
+                </tr>
+                {/* Baris 4: Nilai */}
+                <tr className="border-b border-[var(--border)] bg-[var(--surface-2)]/60">
+                  <td
+                    className="sticky left-0 z-10 border-r border-[var(--border)] bg-[var(--surface-2)] px-3 py-2 font-medium text-[var(--text-secondary)]"
+                  >
+                    Nilai
+                  </td>
+                  {progressList.map((item) => (
+                    <td
+                      key={`nilai-${item.kegiatan_id}-${item.sub_kegiatan_id ?? 'main'}`}
+                      className="border-r border-[var(--border)] px-3 py-2 text-center"
+                    >
                       <div className="flex flex-col items-center">
-                        <span className={cn('text-lg font-bold', NILAI_TEXT[item.nilai])}>
+                        <span className={cn('text-sm font-bold', NILAI_TEXT[item.nilai])}>
                           {item.nilai}
                         </span>
-                        <span className="text-[10px] text-[var(--text-tertiary)]">
+                        <span className="text-[10px] text-[var(--text-tertiary)] leading-tight">
                           {NILAI_LABEL[item.nilai]}
                         </span>
                       </div>
                     </td>
-                  </tr>
-                ))}
+                  ))}
+                </tr>
               </tbody>
             </table>
           </div>
@@ -307,6 +353,13 @@ export default function TargetMutabaahPage() {
   })
 
   const effectiveSemesterId = selectedSemesterId || activeSemester?.id || ''
+
+  // ── Query Target dari Database untuk mengecek apakah data kosong ──
+  const { data: targetsDb = [] } = useQuery({
+    queryKey: ['targets-db', effectiveSemesterId],
+    queryFn: () => getTargetMutabaah(undefined, effectiveSemesterId),
+    enabled: !!effectiveSemesterId,
+  })
 
   // ── Query Kegiatan ──
   const { data: kegiatanList = [], isLoading: loadingKegiatan } = useQuery({
@@ -447,6 +500,17 @@ export default function TargetMutabaahPage() {
           </div>
         </div>
       </div>
+
+      {effectiveSemesterId && !isLoading && targetsDb.length === 0 && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-900/30 dark:bg-amber-950/20 text-amber-800 dark:text-amber-300">
+          <p className="text-sm font-semibold mb-1">⚠️ Master Data Target Belum Terisi</p>
+          <p className="text-xs leading-relaxed">
+            Belum ada data target mutabaah yang terkonfigurasi untuk semester ini di database. 
+            Sistem saat ini menampilkan <strong>target default (30 hari)</strong> sebagai fallback agar tidak terjadi error.
+            Untuk mengisi data target yang valid di database, silakan hubungi Administrator atau jalankan SQL query inisialisasi default target.
+          </p>
+        </div>
+      )}
 
       {/* ── PIVOT TABEL: baris=Kegiatan, kolom=Siswa ── */}
       {isLoading ? (

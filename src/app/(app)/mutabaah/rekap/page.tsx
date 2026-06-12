@@ -2,7 +2,7 @@
 
 import { format } from 'date-fns'
 import { id as idLocale } from 'date-fns/locale'
-import { Eye, Search, SlidersHorizontal, X } from 'lucide-react'
+import { Eye, Search, SlidersHorizontal } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { PageHeader } from '@/components/layout/page-header'
@@ -191,13 +191,6 @@ function RekapDetailDialog({
                 </div>
               )}
             </div>
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded-full p-1 hover:bg-[var(--surface-2)] text-[var(--text-tertiary)]"
-            >
-              <X className="h-4 w-4" />
-            </button>
           </div>
         </DialogHeader>
 

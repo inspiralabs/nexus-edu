@@ -809,6 +809,44 @@ export async function getMutabaahProgress(
 
   if (targetError) throw new Error(targetError.message)
 
+  let targets = (targetData ?? []) as Array<{
+    kegiatan_id: string
+    sub_kegiatan_id: string | null
+    target_jumlah: number
+  }>
+
+  // Fallback defensif jika data target di database kosong
+  if (targets.length === 0) {
+    const { data: kegiatanData } = await supabase
+      .from('kegiatan')
+      .select('id, sub_kegiatan(id)')
+      .order('urutan', { ascending: true })
+
+    if (kegiatanData) {
+      const virtualTargets: typeof targets = []
+      for (const k of kegiatanData) {
+        const kRow = k as { id: string; sub_kegiatan: { id: string }[] | null }
+        const subs = kRow.sub_kegiatan ?? []
+        if (subs.length === 0) {
+          virtualTargets.push({
+            kegiatan_id: kRow.id,
+            sub_kegiatan_id: null,
+            target_jumlah: 30, // Default target fallback
+          })
+        } else {
+          for (const sub of subs) {
+            virtualTargets.push({
+              kegiatan_id: kRow.id,
+              sub_kegiatan_id: sub.id,
+              target_jumlah: 30, // Default target fallback
+            })
+          }
+        }
+      }
+      targets = virtualTargets
+    }
+  }
+
   // Group total hadir per kegiatan × sub_kegiatan
   const hadirMap = new Map<string, number>()
 
@@ -830,12 +868,8 @@ export async function getMutabaahProgress(
   // Hitung progress per kegiatan × sub_kegiatan
   const result: MutabaahProgressItem[] = []
 
-  for (const target of targetData ?? []) {
-    const t = target as {
-      kegiatan_id: string
-      sub_kegiatan_id: string | null
-      target_jumlah: number
-    }
+  for (const target of targets) {
+    const t = target
 
     const key = `${t.kegiatan_id}__${t.sub_kegiatan_id ?? 'null'}`
     const totalHadir = hadirMap.get(key) ?? 0
@@ -1232,6 +1266,12 @@ export async function getMutabaahProgressWithNames(
 
   if (targetError) throw new Error(targetError.message)
 
+  let targets = (targetData ?? []) as Array<{
+    kegiatan_id: string
+    sub_kegiatan_id: string | null
+    target_jumlah: number
+  }>
+
   // Ambil semua kegiatan + sub kegiatan untuk nama
   const { data: kegiatanData, error: kegiatanError } = await supabase
     .from('kegiatan')
@@ -1239,6 +1279,31 @@ export async function getMutabaahProgressWithNames(
     .order('urutan', { ascending: true })
 
   if (kegiatanError) throw new Error(kegiatanError.message)
+
+  // Fallback defensif jika data target di database kosong
+  if (targets.length === 0) {
+    const virtualTargets: typeof targets = []
+    for (const k of kegiatanData ?? []) {
+      const kRow = k as { id: string; nama_kegiatan: string; sub_kegiatan: { id: string; nama_sub: string }[] | null }
+      const subs = kRow.sub_kegiatan ?? []
+      if (subs.length === 0) {
+        virtualTargets.push({
+          kegiatan_id: kRow.id,
+          sub_kegiatan_id: null,
+          target_jumlah: 30, // Default target fallback
+        })
+      } else {
+        for (const sub of subs) {
+          virtualTargets.push({
+            kegiatan_id: kRow.id,
+            sub_kegiatan_id: sub.id,
+            target_jumlah: 30, // Default target fallback
+          })
+        }
+      }
+    }
+    targets = virtualTargets
+  }
 
   const kegiatanMap = new Map<string, { nama_kegiatan: string }>()
   const subKegiatanMap = new Map<string, { nama_sub: string }>()
@@ -1273,12 +1338,8 @@ export async function getMutabaahProgressWithNames(
 
   const result: MutabaahProgressWithName[] = []
 
-  for (const target of targetData ?? []) {
-    const t = target as {
-      kegiatan_id: string
-      sub_kegiatan_id: string | null
-      target_jumlah: number
-    }
+  for (const target of targets) {
+    const t = target
     const key = `${t.kegiatan_id}__${t.sub_kegiatan_id ?? 'null'}`
     const totalHadir = hadirMap.get(key) ?? 0
     const persentase =
