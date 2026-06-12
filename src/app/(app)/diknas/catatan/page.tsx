@@ -181,11 +181,23 @@ export default function CatatanKelakuanPage() {
       siswaPerKelas.forEach((s) => {
         initial[s.id] = { tipe: 'Baik', catatan: '' }
       })
-      setBulkData(initial)
+
+      setBulkData((prev) => {
+        const currentSiswaIds = siswaPerKelas.map((s) => s.id)
+        const existingSiswaIds = Object.keys(prev)
+        const isSame =
+          currentSiswaIds.length === existingSiswaIds.length &&
+          currentSiswaIds.every((id) => id in prev)
+        if (isSame) return prev
+        return initial
+      })
     } else {
-      setBulkData({})
+      setBulkData((prev) => {
+        if (Object.keys(prev).length === 0) return prev
+        return {}
+      })
     }
-  }, [siswaPerKelas])
+  }, [siswaPerKelas?.length, bulkKelas])
 
   useQuery({
     queryKey: ['siswa-search-catatan', debouncedSiswaSearch, activeUnit],
@@ -424,7 +436,7 @@ export default function CatatanKelakuanPage() {
     if (filterKelas !== 'all' && kelasList.length > 0 && !kelasList.includes(filterKelas)) {
       setFilterKelas('all')
     }
-  }, [activeUnit, kelasList, filterKelas])
+  }, [activeUnit, kelasList?.length, filterKelas])
 
   // ─── Render ─────────────────────────────────────────────────────────────────
 
@@ -467,7 +479,7 @@ export default function CatatanKelakuanPage() {
             <SelectItem value="aktif">Semester Aktif</SelectItem>
             <SelectItem value="all">Semua Semester</SelectItem>
             {semesterList.map((s) => (
-              <SelectItem key={s.id} value={s.id}>
+              <SelectItem key={s.id} value={s.id || ""}>
                 Smt {s.nomor_semester} — {s.tahun_pelajaran?.nama}
               </SelectItem>
             ))}
