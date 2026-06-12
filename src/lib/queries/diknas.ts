@@ -439,17 +439,111 @@ export async function bulkCreatePresensi(
   if (data.length === 0) return []
 
   const supabase = createClient()
+  const siswaIds = data.map((d) => d.siswa_id)
+  const tanggal = data[0].tanggal
+  const mataPelajaranId = data[0].mata_pelajaran_id
 
-  const { data: result, error } = await supabase
+  // 1. Ambil data presensi yang sudah ada pada tanggal & mapel & daftar siswa tersebut
+  const { data: existing, error: fetchError } = await supabase
     .from('presensi')
-    .upsert(data, { onConflict: 'siswa_id,mata_pelajaran_id,tanggal', ignoreDuplicates: false })
-    .select(
-      'id, siswa_id, mata_pelajaran_id, semester_id, tanggal, status, keterangan, dicatat_oleh, students(nama, kelas, unit), mata_pelajaran(nama_mapel, unit)'
+    .select('id, siswa_id')
+    .eq('tanggal', tanggal)
+    .eq('mata_pelajaran_id', mataPelajaranId)
+    .in('siswa_id', siswaIds)
+
+  if (fetchError) throw new Error(fetchError.message)
+
+  const existingMap = new Map<string, string>()
+  existing?.forEach((r) => existingMap.set(r.siswa_id, r.id))
+
+  interface PresensiPayload {
+    siswa_id: string
+    mata_pelajaran_id: string
+    semester_id: string | null
+    tanggal: string
+    status: string
+    keterangan: string | null
+    dicatat_oleh: string | null
+  }
+
+  const toInsert: PresensiPayload[] = []
+  const toUpdate: { id: string; payload: PresensiPayload }[] = []
+
+  for (const item of data) {
+    const existingId = existingMap.get(item.siswa_id)
+    const payload: PresensiPayload = {
+      siswa_id: item.siswa_id,
+      mata_pelajaran_id: item.mata_pelajaran_id,
+      semester_id: item.semester_id,
+      tanggal: item.tanggal,
+      status: item.status,
+      keterangan: item.keterangan || null,
+      dicatat_oleh: item.dicatat_oleh || null,
+    }
+
+    if (existingId) {
+      toUpdate.push({ id: existingId, payload })
+    } else {
+      toInsert.push(payload)
+    }
+  }
+
+  const promises: Promise<any>[] = []
+
+  let insertPromiseIdx = -1
+  if (toInsert.length > 0) {
+    insertPromiseIdx = promises.length
+    promises.push(
+      Promise.resolve(
+        supabase
+          .from('presensi')
+          .insert(toInsert)
+          .select(
+            'id, siswa_id, mata_pelajaran_id, semester_id, tanggal, status, keterangan, dicatat_oleh, students(nama, kelas, unit), mata_pelajaran(nama_mapel, unit)'
+          )
+      )
     )
+  }
 
-  if (error) throw new Error(error.message)
+  const updatePromiseStartIdx = promises.length
+  for (const item of toUpdate) {
+    promises.push(
+      Promise.resolve(
+        supabase
+          .from('presensi')
+          .update(item.payload)
+          .eq('id', item.id)
+          .select(
+            'id, siswa_id, mata_pelajaran_id, semester_id, tanggal, status, keterangan, dicatat_oleh, students(nama, kelas, unit), mata_pelajaran(nama_mapel, unit)'
+          )
+          .single()
+      )
+    )
+  }
 
-  return (result ?? []).map(mapPresensi)
+  const results = await Promise.all(promises)
+
+  for (const res of results) {
+    if (res.error) throw new Error(res.error.message)
+  }
+
+  const finalRecords: any[] = []
+
+  if (insertPromiseIdx !== -1) {
+    const insertRes = results[insertPromiseIdx]
+    if (insertRes.data) {
+      finalRecords.push(...insertRes.data)
+    }
+  }
+
+  for (let i = updatePromiseStartIdx; i < results.length; i++) {
+    const updateRes = results[i]
+    if (updateRes.data) {
+      finalRecords.push(updateRes.data)
+    }
+  }
+
+  return finalRecords.map(mapPresensi)
 }
 
 // ─── Nilai Harian ─────────────────────────────────────────────────────────────

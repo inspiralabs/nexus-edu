@@ -154,7 +154,7 @@ export default function BankSoalPage() {
 
   // ─── Helpers ────────────────────────────────────────────────────────────────
 
-  const getUserId = () => profile?.user_id ?? null
+  const getUserId = () => profile?.id ?? null
 
   const invalidate = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: ['bank-soal'] })
@@ -191,15 +191,18 @@ export default function BankSoalPage() {
   }
 
   const createMutation = useMutation({
-    mutationFn: (values: BankSoalFormValues & { pdf_url: string }) =>
-      createBankSoal({
+    mutationFn: (values: BankSoalFormValues & { pdf_url: string }) => {
+      if (!profile?.id) throw new Error('Sesi pengguna tidak valid')
+      if (!(values.semester_id ?? activeSemester?.id)) throw new Error('Semester aktif tidak ditemukan')
+      return createBankSoal({
         judul: values.judul,
         tipe: values.tipe,
         mata_pelajaran_id: values.mata_pelajaran_id,
         semester_id: values.semester_id ?? activeSemester?.id ?? null,
         konten: { pdf_url: values.pdf_url },
-        dibuat_oleh: profile?.user_id ?? null,
-      }),
+        dibuat_oleh: profile.id,
+      })
+    },
     onSuccess: async (result) => {
       const userId = getUserId()
       if (userId) await logAudit(userId, 'CREATE', 'bank_soal', result.id, null, { id: result.id })
@@ -321,6 +324,15 @@ export default function BankSoalPage() {
   )
 
   const onSubmit = async (values: BankSoalFormValues) => {
+    if (!profile?.id) {
+      toast({ title: 'Sesi pengguna tidak valid', variant: 'destructive' })
+      return
+    }
+    const effectiveSemesterId = values.semester_id || activeSemester?.id
+    if (!effectiveSemesterId) {
+      toast({ title: 'Semester aktif tidak ditemukan', variant: 'destructive' })
+      return
+    }
     try {
       setIsUploading(true)
       let finalPdfUrl = ''
@@ -528,7 +540,13 @@ export default function BankSoalPage() {
         onOpenChange={setIsDeleteOpen}
         title="Hapus Bank Soal"
         description="Bank soal ini akan dihapus permanen. Lanjutkan?"
-        onConfirm={() => deletingItem && deleteMutation.mutate([deletingItem.id])}
+        onConfirm={() => {
+          if (!profile?.id) {
+            toast({ title: 'Sesi pengguna tidak valid', variant: 'destructive' })
+            return
+          }
+          deletingItem && deleteMutation.mutate([deletingItem.id])
+        }}
         isLoading={deleteMutation.isPending}
       />
       <ConfirmDialog
@@ -536,7 +554,13 @@ export default function BankSoalPage() {
         onOpenChange={setIsBulkDeleteOpen}
         title="Hapus Bank Soal Terpilih"
         description={`${selectedRows.length} bank soal akan dihapus permanen. Lanjutkan?`}
-        onConfirm={() => deleteMutation.mutate(selectedRows)}
+        onConfirm={() => {
+          if (!profile?.id) {
+            toast({ title: 'Sesi pengguna tidak valid', variant: 'destructive' })
+            return
+          }
+          deleteMutation.mutate(selectedRows)
+        }}
         isLoading={deleteMutation.isPending}
       />
     </div>

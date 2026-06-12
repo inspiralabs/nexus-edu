@@ -220,8 +220,8 @@ export default function NilaiHarianPage() {
 
   // ─── Helpers ────────────────────────────────────────────────────────────────
 
-  const getUserId = () => profile?.user_id ?? null
-  const dicatatOleh = profile?.user_id ?? null
+  const getUserId = () => profile?.id ?? null
+  const dicatatOleh = profile?.id ?? null
 
   const invalidate = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: ['nilai-harian'] })
@@ -286,8 +286,10 @@ export default function NilaiHarianPage() {
   // ─── Mutations ──────────────────────────────────────────────────────────────
 
   const createMutation = useMutation({
-    mutationFn: (values: NilaiHarianFormValues) =>
-      createNilaiHarian({
+    mutationFn: (values: NilaiHarianFormValues) => {
+      if (!profile?.id) throw new Error('Sesi pengguna tidak valid')
+      if (!(values.semester_id ?? activeSemester?.id)) throw new Error('Semester aktif tidak ditemukan')
+      return createNilaiHarian({
         siswa_id: values.siswa_id,
         mata_pelajaran_id: values.mata_pelajaran_id,
         semester_id: values.semester_id ?? activeSemester?.id ?? null,
@@ -299,9 +301,10 @@ export default function NilaiHarianPage() {
         nilai_remedial: values.ada_remedial ? values.nilai_remedial : null,
         tipe_remedial: values.ada_remedial ? values.tipe_remedial : null,
         bank_soal_id: values.bank_soal_id,
-        dicatat_oleh: dicatatOleh,
+        dicatat_oleh: profile.id,
         tanggal: values.tanggal ? format(values.tanggal, 'yyyy-MM-dd') : null,
-      }),
+      })
+    },
     onSuccess: async (result) => {
       const userId = getUserId()
       if (userId) {
@@ -367,8 +370,8 @@ export default function NilaiHarianPage() {
 
   const approveMutation = useMutation({
     mutationFn: () => {
-      const userId = profile?.user_id ?? ''
-      return approveNilaiHarian(selectedRows, userId)
+      if (!profile?.id) throw new Error('Sesi pengguna tidak valid')
+      return approveNilaiHarian(selectedRows, profile.id)
     },
     onSuccess: async () => {
       const userId = getUserId()
@@ -480,6 +483,15 @@ export default function NilaiHarianPage() {
   // ─── Submit ─────────────────────────────────────────────────────────────────
 
   const onSubmit = (values: NilaiHarianFormValues) => {
+    if (!profile?.id) {
+      toast({ title: 'Sesi pengguna tidak valid', variant: 'destructive' })
+      return
+    }
+    const effectiveSemesterId = values.semester_id || activeSemester?.id
+    if (!effectiveSemesterId) {
+      toast({ title: 'Semester aktif tidak ditemukan', variant: 'destructive' })
+      return
+    }
     if (isEditOpen && editingItem) {
       updateMutation.mutate({ id: editingItem.id, values })
     } else {
@@ -782,13 +794,18 @@ export default function NilaiHarianPage() {
         </DialogContent>
       </Dialog>
 
-      {/* ─── Confirm Approve ─── */}
       <ConfirmDialog
         open={isApproveOpen}
         onOpenChange={setIsApproveOpen}
         title="Approve Nilai Terpilih"
         description={`Nilai yang diapprove akan tampil di dashboard orang tua siswa. Approve ${selectedDraftRows.length} nilai?`}
-        onConfirm={() => approveMutation.mutate()}
+        onConfirm={() => {
+          if (!profile?.id) {
+            toast({ title: 'Sesi pengguna tidak valid', variant: 'destructive' })
+            return
+          }
+          approveMutation.mutate()
+        }}
         isLoading={approveMutation.isPending}
         variant="default"
       />
@@ -799,7 +816,13 @@ export default function NilaiHarianPage() {
         onOpenChange={setIsDeleteOpen}
         title="Hapus Nilai Harian"
         description="Data nilai ini akan dihapus permanen. Lanjutkan?"
-        onConfirm={() => deletingItem && deleteMutation.mutate([deletingItem.id])}
+        onConfirm={() => {
+          if (!profile?.id) {
+            toast({ title: 'Sesi pengguna tidak valid', variant: 'destructive' })
+            return
+          }
+          deletingItem && deleteMutation.mutate([deletingItem.id])
+        }}
         isLoading={deleteMutation.isPending}
       />
       <ConfirmDialog
@@ -807,7 +830,13 @@ export default function NilaiHarianPage() {
         onOpenChange={setIsBulkDeleteOpen}
         title="Hapus Nilai Terpilih"
         description={`${selectedRows.length} data nilai akan dihapus permanen. Lanjutkan?`}
-        onConfirm={() => deleteMutation.mutate(selectedRows)}
+        onConfirm={() => {
+          if (!profile?.id) {
+            toast({ title: 'Sesi pengguna tidak valid', variant: 'destructive' })
+            return
+          }
+          deleteMutation.mutate(selectedRows)
+        }}
         isLoading={deleteMutation.isPending}
       />
     </div>

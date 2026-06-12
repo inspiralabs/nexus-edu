@@ -187,8 +187,8 @@ export default function NilaiUASPage() {
 
   // ─── Helpers ────────────────────────────────────────────────────────────────
 
-  const getUserId = () => profile?.user_id ?? null
-  const dicatatOleh = profile?.user_id ?? null
+  const getUserId = () => profile?.id ?? null
+  const dicatatOleh = profile?.id ?? null
 
   const invalidate = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: ['nilai-uas'] })
@@ -231,16 +231,19 @@ export default function NilaiUASPage() {
   // ─── Mutations ──────────────────────────────────────────────────────────────
 
   const createMutation = useMutation({
-    mutationFn: (values: NilaiUASFormValues) =>
-      createNilaiUAS({
+    mutationFn: (values: NilaiUASFormValues) => {
+      if (!profile?.id) throw new Error('Sesi pengguna tidak valid')
+      if (!(values.semester_id ?? activeSemester?.id)) throw new Error('Semester aktif tidak ditemukan')
+      return createNilaiUAS({
         siswa_id: values.siswa_id,
         mata_pelajaran_id: values.mata_pelajaran_id,
         semester_id: values.semester_id ?? activeSemester?.id ?? null,
         nilai_asli: values.nilai_asli,
         nilai_remedial: values.ada_remedial ? values.nilai_remedial : null,
         tipe_remedial: values.ada_remedial ? values.tipe_remedial : null,
-        dicatat_oleh: dicatatOleh,
-      }),
+        dicatat_oleh: profile.id,
+      })
+    },
     onSuccess: async (result) => {
       const userId = getUserId()
       if (userId) await logAudit(userId, 'CREATE', 'nilai_uas', result.id, null, { id: result.id })
@@ -293,7 +296,10 @@ export default function NilaiUASPage() {
   })
 
   const approveMutation = useMutation({
-    mutationFn: () => approveNilaiUAS(selectedRows, profile?.user_id ?? ''),
+    mutationFn: () => {
+      if (!profile?.id) throw new Error('Sesi pengguna tidak valid')
+      return approveNilaiUAS(selectedRows, profile.id)
+    },
     onSuccess: async () => {
       const userId = getUserId()
       if (userId) {
@@ -394,6 +400,15 @@ export default function NilaiUASPage() {
   )
 
   const onSubmit = (values: NilaiUASFormValues) => {
+    if (!profile?.id) {
+      toast({ title: 'Sesi pengguna tidak valid', variant: 'destructive' })
+      return
+    }
+    const effectiveSemesterId = values.semester_id || activeSemester?.id
+    if (!effectiveSemesterId) {
+      toast({ title: 'Semester aktif tidak ditemukan', variant: 'destructive' })
+      return
+    }
     if (isEditOpen && editingItem) {
       updateMutation.mutate({ id: editingItem.id, values })
     } else {
@@ -619,7 +634,13 @@ export default function NilaiUASPage() {
         onOpenChange={setIsApproveOpen}
         title="Approve Nilai UAS Terpilih"
         description={`Nilai yang diapprove akan tampil di dashboard orang tua. Approve ${selectedDraftRows.length} nilai UAS?`}
-        onConfirm={() => approveMutation.mutate()}
+        onConfirm={() => {
+          if (!profile?.id) {
+            toast({ title: 'Sesi pengguna tidak valid', variant: 'destructive' })
+            return
+          }
+          approveMutation.mutate()
+        }}
         isLoading={approveMutation.isPending}
         variant="default"
       />
@@ -628,7 +649,13 @@ export default function NilaiUASPage() {
         onOpenChange={setIsDeleteOpen}
         title="Hapus Nilai UAS"
         description="Data nilai UAS ini akan dihapus permanen. Lanjutkan?"
-        onConfirm={() => deletingItem && deleteMutation.mutate([deletingItem.id])}
+        onConfirm={() => {
+          if (!profile?.id) {
+            toast({ title: 'Sesi pengguna tidak valid', variant: 'destructive' })
+            return
+          }
+          deletingItem && deleteMutation.mutate([deletingItem.id])
+        }}
         isLoading={deleteMutation.isPending}
       />
       <ConfirmDialog
@@ -636,7 +663,13 @@ export default function NilaiUASPage() {
         onOpenChange={setIsBulkDeleteOpen}
         title="Hapus Nilai UAS Terpilih"
         description={`${selectedRows.length} data nilai UAS akan dihapus permanen. Lanjutkan?`}
-        onConfirm={() => deleteMutation.mutate(selectedRows)}
+        onConfirm={() => {
+          if (!profile?.id) {
+            toast({ title: 'Sesi pengguna tidak valid', variant: 'destructive' })
+            return
+          }
+          deleteMutation.mutate(selectedRows)
+        }}
         isLoading={deleteMutation.isPending}
       />
     </div>

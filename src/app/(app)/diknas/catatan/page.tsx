@@ -160,7 +160,7 @@ export default function CatatanKelakuanPage() {
 
   // ─── Helpers ────────────────────────────────────────────────────────────────
 
-  const getUserId = () => profile?.user_id ?? null
+  const getUserId = () => profile?.id ?? null
 
   const invalidate = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: ['catatan-kelakuan'] })
@@ -204,15 +204,18 @@ export default function CatatanKelakuanPage() {
   // ─── Mutations ──────────────────────────────────────────────────────────────
 
   const createMutation = useMutation({
-    mutationFn: (values: CatatanFormValues) =>
-      createCatatanKelakuan({
+    mutationFn: (values: CatatanFormValues) => {
+      if (!profile?.id) throw new Error('Sesi pengguna tidak valid')
+      if (!(values.semester_id ?? activeSemester?.id)) throw new Error('Semester aktif tidak ditemukan')
+      return createCatatanKelakuan({
         siswa_id: values.siswa_id,
         semester_id: values.semester_id ?? activeSemester?.id ?? null,
         tipe: values.tipe,
         catatan: values.catatan,
         tanggal: values.tanggal ? format(values.tanggal, 'yyyy-MM-dd') : null,
-        dicatat_oleh: profile?.user_id ?? null,
-      }),
+        dicatat_oleh: profile.id,
+      })
+    },
     onSuccess: async (result) => {
       const userId = getUserId()
       if (userId) await logAudit(userId, 'CREATE', 'catatan_kelakuan', result.id, null, { id: result.id })
@@ -329,6 +332,15 @@ export default function CatatanKelakuanPage() {
   )
 
   const onSubmit = (values: CatatanFormValues) => {
+    if (!profile?.id) {
+      toast({ title: 'Sesi pengguna tidak valid', variant: 'destructive' })
+      return
+    }
+    const effectiveSemesterId = values.semester_id || activeSemester?.id
+    if (!effectiveSemesterId) {
+      toast({ title: 'Semester aktif tidak ditemukan', variant: 'destructive' })
+      return
+    }
     if (isEditOpen && editingItem) {
       updateMutation.mutate({ id: editingItem.id, values })
     } else {
@@ -504,7 +516,13 @@ export default function CatatanKelakuanPage() {
         onOpenChange={setIsDeleteOpen}
         title="Hapus Catatan Kelakuan"
         description="Catatan ini akan dihapus permanen. Lanjutkan?"
-        onConfirm={() => deletingItem && deleteMutation.mutate([deletingItem.id])}
+        onConfirm={() => {
+          if (!profile?.id) {
+            toast({ title: 'Sesi pengguna tidak valid', variant: 'destructive' })
+            return
+          }
+          deletingItem && deleteMutation.mutate([deletingItem.id])
+        }}
         isLoading={deleteMutation.isPending}
       />
       <ConfirmDialog
@@ -512,7 +530,13 @@ export default function CatatanKelakuanPage() {
         onOpenChange={setIsBulkDeleteOpen}
         title="Hapus Catatan Terpilih"
         description={`${selectedRows.length} catatan kelakuan akan dihapus permanen. Lanjutkan?`}
-        onConfirm={() => deleteMutation.mutate(selectedRows)}
+        onConfirm={() => {
+          if (!profile?.id) {
+            toast({ title: 'Sesi pengguna tidak valid', variant: 'destructive' })
+            return
+          }
+          deleteMutation.mutate(selectedRows)
+        }}
         isLoading={deleteMutation.isPending}
       />
     </div>

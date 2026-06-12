@@ -215,8 +215,8 @@ export default function PresensiPage() {
 
   // ─── Helpers ────────────────────────────────────────────────────────────────
 
-  const getUserId = () => profile?.user_id ?? null
-  const dicatatOleh = profile?.nama_lengkap ?? null
+  const getUserId = () => profile?.id ?? null
+  const dicatatOleh = profile?.id ?? null
 
   const invalidate = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: ['presensi'] })
@@ -248,16 +248,19 @@ export default function PresensiPage() {
   // ─── Mutations ──────────────────────────────────────────────────────────────
 
   const createMutation = useMutation({
-    mutationFn: (values: PresensiFormValues) =>
-      createPresensi({
+    mutationFn: (values: PresensiFormValues) => {
+      if (!profile?.id) throw new Error('Sesi pengguna tidak valid')
+      if (!(values.semester_id ?? activeSemester?.id)) throw new Error('Semester aktif tidak ditemukan')
+      return createPresensi({
         siswa_id: values.siswa_id,
         mata_pelajaran_id: values.mata_pelajaran_id,
         semester_id: values.semester_id ?? activeSemester?.id ?? null,
         tanggal: format(values.tanggal, 'yyyy-MM-dd'),
         status: values.status,
         keterangan: values.keterangan,
-        dicatat_oleh: dicatatOleh,
-      }),
+        dicatat_oleh: profile.id,
+      })
+    },
     onSuccess: async (result) => {
       const userId = getUserId()
       if (userId) {
@@ -322,17 +325,20 @@ export default function PresensiPage() {
   })
 
   const bulkCreateMutation = useMutation({
-    mutationFn: () =>
-      bulkCreatePresensi(
+    mutationFn: () => {
+      if (!profile?.id) throw new Error('Sesi pengguna tidak valid')
+      if (!activeSemester?.id) throw new Error('Semester aktif tidak ditemukan')
+      return bulkCreatePresensi(
         bulkItems.map((item) => ({
           siswa_id: item.siswa_id,
           mata_pelajaran_id: bulkMapel,
-          semester_id: activeSemester?.id ?? null,
+          semester_id: activeSemester.id,
           tanggal: format(bulkTanggal, 'yyyy-MM-dd'),
           status: item.status,
-          dicatat_oleh: dicatatOleh,
+          dicatat_oleh: profile.id,
         }))
-      ),
+      )
+    },
     onSuccess: async (results) => {
       const userId = getUserId()
       if (userId) {
@@ -443,7 +449,28 @@ export default function PresensiPage() {
 
   // ─── Submit ─────────────────────────────────────────────────────────────────
 
+  const handleBulkSave = () => {
+    if (!profile?.id) {
+      toast({ title: 'Sesi pengguna tidak valid', variant: 'destructive' })
+      return
+    }
+    if (!activeSemester?.id) {
+      toast({ title: 'Semester aktif tidak ditemukan', variant: 'destructive' })
+      return
+    }
+    bulkCreateMutation.mutate()
+  }
+
   const onSubmit = (values: PresensiFormValues) => {
+    if (!profile?.id) {
+      toast({ title: 'Sesi pengguna tidak valid', variant: 'destructive' })
+      return
+    }
+    const effectiveSemesterId = values.semester_id || activeSemester?.id
+    if (!effectiveSemesterId) {
+      toast({ title: 'Semester aktif tidak ditemukan', variant: 'destructive' })
+      return
+    }
     if (isEditOpen && editingItem) {
       updateMutation.mutate({ id: editingItem.id, values })
     } else {
@@ -608,7 +635,7 @@ export default function PresensiPage() {
               </div>
               <div className="flex justify-end">
                 <Button
-                  onClick={() => bulkCreateMutation.mutate()}
+                  onClick={handleBulkSave}
                   disabled={bulkCreateMutation.isPending || !bulkMapel || !bulkKelas}
                 >
                   <Save className="mr-2 h-4 w-4" />
