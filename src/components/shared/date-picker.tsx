@@ -17,6 +17,8 @@ interface DatePickerProps {
   onChange: (date: Date | undefined) => void
   placeholder?: string
   disabled?: boolean
+  minDate?: Date
+  maxDate?: Date
 }
 
 function DatePicker({
@@ -24,6 +26,8 @@ function DatePicker({
   onChange,
   placeholder = 'Pilih tanggal',
   disabled = false,
+  minDate,
+  maxDate,
 }: DatePickerProps) {
   const [open, setOpen] = React.useState(false)
 
@@ -50,6 +54,11 @@ function DatePicker({
           onSelect={(date) => {
             onChange(date)
             setOpen(false)
+          }}
+          disabled={(date) => {
+            if (minDate && date < minDate) return true
+            if (maxDate && date > maxDate) return true
+            return false
           }}
         />
       </PopoverContent>

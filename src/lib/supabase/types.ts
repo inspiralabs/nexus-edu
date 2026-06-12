@@ -28,6 +28,7 @@ export interface Profile {
   is_approved: boolean
   avatar_url: string | null
   email: string | null
+  mapel_ids: string[] | null
   created_at: string
   updated_at: string
 }

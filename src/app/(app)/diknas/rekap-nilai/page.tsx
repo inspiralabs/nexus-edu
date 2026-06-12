@@ -332,87 +332,89 @@ export default function RekapNilaiPage() {
       {/* ─── Sheet Detail ─── */}
       <Sheet open={isDetailOpen} onOpenChange={setIsDetailOpen}>
         <SheetContent className="w-full sm:max-w-2xl overflow-y-auto">
-          <SheetHeader>
-            <SheetTitle>Detail Nilai — {detailSiswa?.nama}</SheetTitle>
-          </SheetHeader>
-          <div className="mt-4 space-y-4">
-            {/* Summary card */}
-            {detailSiswa && (
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                {[
-                  { label: 'Kelas', value: detailSiswa.kelas },
-                  { label: 'Avg Formatif', value: formatNilai(detailSiswa.avg_formatif) },
-                  { label: 'Avg Sumatif', value: formatNilai(detailSiswa.avg_sumatif) },
-                  {
-                    label: 'Nilai Rapor',
-                    value: formatNilai(detailSiswa.nilai_rapor),
-                    highlight: true,
-                  },
-                ].map((item) => (
-                  <div
-                    key={item.label}
-                    className={`rounded-lg border p-3 ${
-                      item.highlight
-                        ? 'border-primary/30 bg-[var(--primary-light)]'
-                        : 'border-[var(--border)] bg-[var(--surface)]'
-                    }`}
-                  >
-                    <p className="text-xs text-[var(--text-secondary)]">{item.label}</p>
-                    <p
-                      className={`text-lg font-bold ${
-                        item.highlight ? 'text-primary' : 'text-[var(--text-primary)]'
+          <div className="px-4 md:px-6 space-y-4">
+            <SheetHeader>
+              <SheetTitle>Detail Nilai — {detailSiswa?.nama}</SheetTitle>
+            </SheetHeader>
+            <div className="mt-4 space-y-4">
+              {/* Summary card */}
+              {detailSiswa && (
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                  {[
+                    { label: 'Kelas', value: detailSiswa.kelas },
+                    { label: 'Avg Formatif', value: formatNilai(detailSiswa.avg_formatif) },
+                    { label: 'Avg Sumatif', value: formatNilai(detailSiswa.avg_sumatif) },
+                    {
+                      label: 'Nilai Rapor',
+                      value: formatNilai(detailSiswa.nilai_rapor),
+                      highlight: true,
+                    },
+                  ].map((item) => (
+                    <div
+                      key={item.label}
+                      className={`rounded-lg border p-3 ${
+                        item.highlight
+                          ? 'border-primary/30 bg-[var(--primary-light)]'
+                          : 'border-[var(--border)] bg-[var(--surface)]'
                       }`}
                     >
-                      {item.value}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* Tabel detail nilai harian */}
-            <div>
-              <Label className="mb-2 block text-sm font-semibold">Riwayat Nilai Harian</Label>
-              {!detailNilai ? (
-                <div className="space-y-2">
-                  {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-8 w-full" />)}
-                </div>
-              ) : detailNilai.data.length === 0 ? (
-                <p className="text-sm text-[var(--text-secondary)]">Belum ada nilai harian tercatat.</p>
-              ) : (
-                <div className="overflow-auto rounded-lg border border-[var(--border)]">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-[var(--border)] bg-[var(--surface-2)]">
-                        <th className="px-3 py-2 text-left font-medium text-[var(--text-secondary)]">Tugas</th>
-                        <th className="px-3 py-2 text-left font-medium text-[var(--text-secondary)]">Tipe</th>
-                        <th className="px-3 py-2 text-right font-medium text-[var(--text-secondary)]">Nilai Asli</th>
-                        <th className="px-3 py-2 text-right font-medium text-[var(--text-secondary)]">Remedial</th>
-                        <th className="px-3 py-2 text-right font-medium text-[var(--text-secondary)]">Final</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {detailNilai.data.map((n: NilaiHarianEntry) => (
-                        <tr key={n.id} className="border-b border-[var(--border)] last:border-0">
-                          <td className="px-3 py-2 text-[var(--text-primary)]">{n.nama_tugas}</td>
-                          <td className="px-3 py-2 text-[var(--text-secondary)]">{n.tipe_nilai}</td>
-                          <td className="px-3 py-2 text-right text-[var(--text-primary)]">
-                            {n.nilai_asli ?? '-'}
-                          </td>
-                          <td className="px-3 py-2 text-right text-[var(--text-secondary)]">
-                            {n.nilai_remedial ?? '-'}
-                          </td>
-                          <td className="px-3 py-2 text-right">
-                            <span className={getNilaiColor(n.nilai_final ?? 0)}>
-                              {n.nilai_final ?? '-'}
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      <p className="text-xs text-[var(--text-secondary)]">{item.label}</p>
+                      <p
+                        className={`text-lg font-bold ${
+                          item.highlight ? 'text-primary' : 'text-[var(--text-primary)]'
+                        }`}
+                      >
+                        {item.value}
+                      </p>
+                    </div>
+                  ))}
                 </div>
               )}
+
+              {/* Tabel detail nilai harian */}
+              <div>
+                <Label className="mb-2 block text-sm font-semibold">Riwayat Nilai Harian</Label>
+                {!detailNilai ? (
+                  <div className="space-y-2">
+                    {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-8 w-full" />)}
+                  </div>
+                ) : detailNilai.data.length === 0 ? (
+                  <p className="text-sm text-[var(--text-secondary)]">Belum ada nilai harian tercatat.</p>
+                ) : (
+                  <div className="overflow-auto rounded-lg border border-[var(--border)]">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-[var(--border)] bg-[var(--surface-2)]">
+                          <th className="px-3 py-2 text-left font-medium text-[var(--text-secondary)]">Tugas</th>
+                          <th className="px-3 py-2 text-left font-medium text-[var(--text-secondary)]">Tipe</th>
+                          <th className="px-3 py-2 text-right font-medium text-[var(--text-secondary)]">Nilai Asli</th>
+                          <th className="px-3 py-2 text-right font-medium text-[var(--text-secondary)]">Remedial</th>
+                          <th className="px-3 py-2 text-right font-medium text-[var(--text-secondary)]">Final</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {detailNilai.data.map((n: NilaiHarianEntry) => (
+                          <tr key={n.id} className="border-b border-[var(--border)] last:border-0">
+                            <td className="px-3 py-2 text-[var(--text-primary)]">{n.nama_tugas}</td>
+                            <td className="px-3 py-2 text-[var(--text-secondary)]">{n.tipe_nilai}</td>
+                            <td className="px-3 py-2 text-right text-[var(--text-primary)]">
+                              {n.nilai_asli ?? '-'}
+                            </td>
+                            <td className="px-3 py-2 text-right text-[var(--text-secondary)]">
+                              {n.nilai_remedial ?? '-'}
+                            </td>
+                            <td className="px-3 py-2 text-right">
+                              <span className={getNilaiColor(n.nilai_final ?? 0)}>
+                                {n.nilai_final ?? '-'}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </SheetContent>

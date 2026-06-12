@@ -39,6 +39,7 @@ import { useDebounce } from '@/hooks/use-debounce'
 import { logAudit } from '@/lib/audit/log'
 import {
   approveNilaiHarian,
+  bulkCreateNilaiHarian,
   createNilaiHarian,
   deleteNilaiHarian,
   getActiveSemesterDiknas,
@@ -73,11 +74,6 @@ const nilaiHarianSchema = z.object({
   nilai_asli: z.number().min(0).max(100).nullable(),
   bank_soal_id: z.string().nullable(),
   tanggal: z.date().nullable(),
-  // Remedial
-  ada_remedial: z.boolean(),
-  nilai_remedial: z.number().min(0).max(100).nullable(),
-  tipe_remedial: z.string().nullable(),
-  bank_soal_remedial_id: z.string().nullable(),
 })
 
 type NilaiHarianFormValues = z.infer<typeof nilaiHarianSchema>
@@ -110,6 +106,23 @@ export default function NilaiHarianPage() {
   const [editingItem, setEditingItem] = useState<NilaiHarianEntry | null>(null)
   const [deletingItem, setDeletingItem] = useState<NilaiHarianEntry | null>(null)
 
+  // Remedial dialog states
+  const [isRemedialOpen, setIsRemedialOpen] = useState(false)
+  const [remedialItem, setRemedialItem] = useState<NilaiHarianEntry | null>(null)
+  const [remedialNilai, setRemedialNilai] = useState<number | null>(null)
+  const [remedialTipe, setRemedialTipe] = useState('')
+
+  // Bulk input states
+  const [bulkKelas, setBulkKelas] = useState('')
+  const [bulkMapel, setBulkMapel] = useState('')
+  const [bulkTanggal, setBulkTanggal] = useState<Date>(new Date())
+  const [bulkTipeNilai, setBulkTipeNilai] = useState<'Formatif' | 'Sumatif'>('Formatif')
+  const [bulkNamaTugas, setBulkNamaTugas] = useState('')
+  const [bulkMateri, setBulkMateri] = useState('')
+  const [bulkBab, setBulkBab] = useState('')
+  const [bulkBankSoal, setBulkBankSoal] = useState('')
+  const [bulkScores, setBulkScores] = useState<Record<string, number | null>>({})
+
   // Combobox search states
   const [siswaSearch, setSiswaSearch] = useState('')
   const [mapelSearch, setMapelSearch] = useState('')
@@ -123,11 +136,20 @@ export default function NilaiHarianPage() {
   const debouncedMapelSearch = useDebounce(mapelSearch, 300)
   const debouncedBankSoalSearch = useDebounce(bankSoalSearch, 300)
 
+  // ─── Guru Mapel Lock ────────────────────────────────────────────────────────
+  const isSingleMapel = useMemo(() => {
+    return profile?.role === 'user' && profile?.mapel_ids?.length === 1
+  }, [profile])
+
+  const singleMapelId = useMemo(() => {
+    return isSingleMapel ? profile?.mapel_ids?.[0] : null
+  }, [isSingleMapel, profile])
+
   const form = useForm<NilaiHarianFormValues>({
     resolver: zodResolver(nilaiHarianSchema),
     defaultValues: {
       siswa_id: '',
-      mata_pelajaran_id: '',
+      mata_pelajaran_id: singleMapelId ?? '',
       semester_id: null,
       tipe_nilai: 'Formatif',
       nama_tugas: '',
@@ -136,15 +158,19 @@ export default function NilaiHarianPage() {
       nilai_asli: null,
       bank_soal_id: null,
       tanggal: new Date(),
-      ada_remedial: false,
-      nilai_remedial: null,
-      tipe_remedial: null,
-      bank_soal_remedial_id: null,
     },
   })
 
-  const adaRemedial = form.watch('ada_remedial')
-  const isFormOpen = isAddOpen || isEditOpen
+  // Sync mapel lock
+  useEffect(() => {
+    if (singleMapelId) {
+      setFilterMapel(singleMapelId)
+      setBulkMapel(singleMapelId)
+      form.setValue('mata_pelajaran_id', singleMapelId)
+    }
+  }, [singleMapelId, form])
+
+  const isFormOpen = isEditOpen
 
   // ─── Queries ────────────────────────────────────────────────────────────────
 
@@ -187,6 +213,26 @@ export default function NilaiHarianPage() {
     queryFn: () => getNilaiHarian(queryFilters),
   })
 
+  // Siswa untuk bulk input
+  const { data: siswaPerKelas = [], isLoading: siswaLoading } = useQuery({
+    queryKey: ['siswa-kelas-nilai', bulkKelas, activeUnit],
+    queryFn: async () => {
+      if (!bulkKelas) return []
+      const { createClient } = await import('@/lib/supabase/client')
+      const supabase = createClient()
+      const { data: rows, error } = await supabase
+        .from('students')
+        .select('id, nama, kelas')
+        .eq('kelas', bulkKelas)
+        .eq('unit', activeUnit)
+        .eq('is_alumni', false)
+        .order('nama')
+      if (error) throw new Error(error.message)
+      return rows as { id: string; nama: string; kelas: string }[]
+    },
+    enabled: isAddOpen && Boolean(bulkKelas),
+  })
+
   // Search combobox
   useQuery({
     queryKey: ['siswa-search-nilai', debouncedSiswaSearch, activeUnit],
@@ -205,7 +251,7 @@ export default function NilaiHarianPage() {
       setMapelOptions(results.map((m) => ({ value: m.id, label: m.nama_mapel })))
       return results
     },
-    enabled: isFormOpen,
+    enabled: isFormOpen || isAddOpen,
   })
 
   useQuery({
@@ -215,7 +261,7 @@ export default function NilaiHarianPage() {
       setBankSoalOptions(results.map((b) => ({ value: b.id, label: b.judul })))
       return results
     },
-    enabled: isFormOpen,
+    enabled: isFormOpen || isAddOpen,
   })
 
   // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -232,7 +278,18 @@ export default function NilaiHarianPage() {
     setIsAddOpen(false)
     setIsEditOpen(false)
     setEditingItem(null)
-    form.reset()
+    form.reset({
+      siswa_id: '',
+      mata_pelajaran_id: singleMapelId ?? '',
+      semester_id: null,
+      tipe_nilai: 'Formatif',
+      nama_tugas: '',
+      materi: null,
+      bab: null,
+      nilai_asli: null,
+      bank_soal_id: null,
+      tanggal: new Date(),
+    })
     setSiswaOptions([])
     setMapelOptions([])
     setBankSoalOptions([])
@@ -266,10 +323,6 @@ export default function NilaiHarianPage() {
       nilai_asli: item.nilai_asli,
       bank_soal_id: item.bank_soal_id,
       tanggal: item.tanggal ? parseISO(item.tanggal) : new Date(),
-      ada_remedial: item.nilai_remedial !== null,
-      nilai_remedial: item.nilai_remedial,
-      tipe_remedial: item.tipe_remedial,
-      bank_soal_remedial_id: null,
     })
     setIsEditOpen(true)
   }
@@ -298,8 +351,6 @@ export default function NilaiHarianPage() {
         materi: values.materi,
         bab: values.bab,
         nilai_asli: values.nilai_asli,
-        nilai_remedial: values.ada_remedial ? values.nilai_remedial : null,
-        tipe_remedial: values.ada_remedial ? values.tipe_remedial : null,
         bank_soal_id: values.bank_soal_id,
         dicatat_oleh: profile.id,
         tanggal: values.tanggal ? format(values.tanggal, 'yyyy-MM-dd') : null,
@@ -326,11 +377,8 @@ export default function NilaiHarianPage() {
         materi: values.materi,
         bab: values.bab,
         nilai_asli: values.nilai_asli,
-        nilai_remedial: values.ada_remedial ? values.nilai_remedial : null,
-        tipe_remedial: values.ada_remedial ? values.tipe_remedial : null,
         bank_soal_id: values.bank_soal_id,
         tanggal: values.tanggal ? format(values.tanggal, 'yyyy-MM-dd') : null,
-        // Setiap edit ulang, reset approval
         is_approved: false,
         approved_at: null,
         approved_by: null,
@@ -387,6 +435,71 @@ export default function NilaiHarianPage() {
     },
     onError: (e: Error) =>
       toast({ title: 'Gagal menyetujui nilai', description: e.message, variant: 'destructive' }),
+  })
+
+  const revertToDraftMutation = useMutation({
+    mutationFn: (id: string) =>
+      updateNilaiHarian(id, {
+        is_approved: false,
+        approved_at: null,
+        approved_by: null,
+      }),
+    onSuccess: async (_, id) => {
+      const userId = getUserId()
+      if (userId) {
+        await logAudit(userId, 'UPDATE', 'nilai_harian', id, { is_approved: true }, { is_approved: false })
+      }
+      invalidate()
+      toast({ title: 'Status nilai berhasil dikembalikan ke Draft' })
+    },
+    onError: (e: Error) =>
+      toast({ title: 'Gagal mengubah status', description: e.message, variant: 'destructive' }),
+  })
+
+  const saveRemedialMutation = useMutation({
+    mutationFn: ({ id, nilai_remedial, tipe_remedial }: { id: string; nilai_remedial: number | null; tipe_remedial: string | null }) =>
+      updateNilaiHarian(id, {
+        nilai_remedial,
+        tipe_remedial,
+        is_approved: false,
+      }),
+    onSuccess: async (result) => {
+      const userId = getUserId()
+      if (userId) {
+        await logAudit(userId, 'UPDATE', 'nilai_harian', result.id, null, { id: result.id, nilai_remedial: result.nilai_remedial })
+      }
+      invalidate()
+      toast({ title: 'Data remedial berhasil disimpan' })
+      setIsRemedialOpen(false)
+      setRemedialItem(null)
+      setRemedialNilai(null)
+      setRemedialTipe('')
+    },
+    onError: (e: Error) =>
+      toast({ title: 'Gagal menyimpan data remedial', description: e.message, variant: 'destructive' }),
+  })
+
+  const bulkCreateMutation = useMutation({
+    mutationFn: (payload: any[]) => bulkCreateNilaiHarian(payload),
+    onSuccess: async (results) => {
+      const userId = getUserId()
+      if (userId) {
+        for (const r of results) {
+          await logAudit(userId, 'CREATE', 'nilai_harian', r.id, null, { id: r.id })
+        }
+      }
+      invalidate()
+      toast({ title: 'Nilai harian massal berhasil disimpan' })
+      setIsAddOpen(false)
+      setBulkKelas('')
+      setBulkScores({})
+      setBulkNamaTugas('')
+      setBulkMateri('')
+      setBulkBab('')
+      setBulkBankSoal('')
+    },
+    onError: (e: Error) =>
+      toast({ title: 'Gagal menyimpan nilai massal', description: e.message, variant: 'destructive' }),
   })
 
   // ─── Columns ────────────────────────────────────────────────────────────────
@@ -452,10 +565,10 @@ export default function NilaiHarianPage() {
       },
       {
         accessorKey: 'is_approved',
-        header: 'Approved',
+        header: 'Status',
         cell: ({ row }) => (
           <Badge variant={row.original.is_approved ? 'success' : 'warning'}>
-            {row.original.is_approved ? 'Approved' : 'Draft'}
+            {row.original.is_approved ? 'Published' : 'Draft'}
           </Badge>
         ),
       },
@@ -463,18 +576,61 @@ export default function NilaiHarianPage() {
         id: 'aksi',
         header: 'Aksi',
         enableSorting: false,
-        cell: ({ row }) => (
-          <div className="flex gap-1">
-            <Button size="sm" variant="outline" className="h-7 w-7 p-0"
-              onClick={() => openEditDialog(row.original)}>
-              <Edit className="h-3.5 w-3.5" />
-            </Button>
-            <Button size="sm" variant="outline" className="h-7 w-7 p-0 text-destructive hover:bg-destructive/10"
-              onClick={() => { setDeletingItem(row.original); setIsDeleteOpen(true) }}>
-              <Trash2 className="h-3.5 w-3.5" />
-            </Button>
-          </div>
-        ),
+        cell: ({ row }) => {
+          const isApproved = row.original.is_approved
+          return (
+            <div className="flex gap-1.5 items-center">
+              {isApproved ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 px-2 text-xs"
+                  onClick={() => revertToDraftMutation.mutate(row.original.id)}
+                >
+                  Kembalikan ke Draft
+                </Button>
+              ) : (
+                <>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 w-7 p-0"
+                    onClick={() => openEditDialog(row.original)}
+                    title="Edit Nilai"
+                  >
+                    <Edit className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 px-2 text-xs text-primary"
+                    onClick={() => {
+                      setRemedialItem(row.original)
+                      setRemedialNilai(row.original.nilai_remedial)
+                      setRemedialTipe(row.original.tipe_remedial ?? '')
+                      setIsRemedialOpen(true)
+                    }}
+                    title="Remedial"
+                  >
+                    Remedial
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 w-7 p-0 text-destructive hover:bg-destructive/10"
+                    onClick={() => {
+                      setDeletingItem(row.original)
+                      setIsDeleteOpen(true)
+                    }}
+                    title="Hapus Nilai"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                </>
+              )}
+            </div>
+          )
+        },
       },
     ],
     [page, pageSize]
@@ -559,7 +715,7 @@ export default function NilaiHarianPage() {
             {kelasList.map((k) => <SelectItem key={k} value={k}>{k}</SelectItem>)}
           </SelectContent>
         </Select>
-        <Select value={filterMapel} onValueChange={(v) => { setFilterMapel(v); setPage(1) }}>
+        <Select value={filterMapel} onValueChange={(v) => { setFilterMapel(v); setPage(1) }} disabled={isSingleMapel}>
           <SelectTrigger className="w-48">
             <SelectValue placeholder="Mapel" />
           </SelectTrigger>
@@ -596,7 +752,25 @@ export default function NilaiHarianPage() {
               Hapus ({selectedRows.length})
             </Button>
           )}
-          <Button size="sm" onClick={() => { form.reset(); setIsAddOpen(true) }}>
+          <Button
+            size="sm"
+            onClick={() => {
+              setBulkKelas('')
+              setBulkScores({})
+              setBulkNamaTugas('')
+              setBulkMateri('')
+              setBulkBab('')
+              setBulkBankSoal('')
+              setBulkTanggal(new Date())
+              setBulkTipeNilai('Formatif')
+              if (singleMapelId) {
+                setBulkMapel(singleMapelId)
+              } else {
+                setBulkMapel('')
+              }
+              setIsAddOpen(true)
+            }}
+          >
             <Plus className="mr-2 h-4 w-4" />
             Tambah
           </Button>
@@ -630,11 +804,11 @@ export default function NilaiHarianPage() {
         />
       )}
 
-      {/* ─── Form Dialog ─── */}
+      {/* ─── Edit Dialog (Single Item) ─── */}
       <Dialog open={isFormOpen} onOpenChange={(o) => { if (!o) closeDialog() }}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{isEditOpen ? 'Edit Nilai Harian' : 'Tambah Nilai Harian'}</DialogTitle>
+            <DialogTitle>Edit Nilai Harian</DialogTitle>
           </DialogHeader>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
             <div className="grid gap-4 sm:grid-cols-2">
@@ -648,10 +822,8 @@ export default function NilaiHarianPage() {
                   onSearch={setSiswaSearch}
                   placeholder="Cari nama siswa..."
                   emptyMessage="Siswa tidak ditemukan"
+                  disabled
                 />
-                {form.formState.errors.siswa_id && (
-                  <p className="text-xs text-destructive">{form.formState.errors.siswa_id.message}</p>
-                )}
               </div>
 
               {/* Mapel */}
@@ -664,10 +836,8 @@ export default function NilaiHarianPage() {
                   onSearch={setMapelSearch}
                   placeholder="Cari mata pelajaran..."
                   emptyMessage="Mapel tidak ditemukan"
+                  disabled
                 />
-                {form.formState.errors.mata_pelajaran_id && (
-                  <p className="text-xs text-destructive">{form.formState.errors.mata_pelajaran_id.message}</p>
-                )}
               </div>
             </div>
 
@@ -749,41 +919,6 @@ export default function NilaiHarianPage() {
               </div>
             </div>
 
-            {/* Remedial Section */}
-            <div className="rounded-lg border border-[var(--border)] p-3 space-y-3">
-              <div className="flex items-center gap-3">
-                <Switch
-                  id="ada-remedial"
-                  checked={adaRemedial}
-                  onCheckedChange={(v) => form.setValue('ada_remedial', v)}
-                />
-                <Label htmlFor="ada-remedial" className="cursor-pointer">Ada Remedial</Label>
-              </div>
-              {adaRemedial && (
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div className="space-y-1">
-                    <Label>Nilai Remedial</Label>
-                    <Input
-                      type="number"
-                      min={0}
-                      max={100}
-                      step={0.01}
-                      value={form.watch('nilai_remedial') ?? ''}
-                      onChange={(e) => form.setValue('nilai_remedial', e.target.value === '' ? null : parseFloat(e.target.value))}
-                      placeholder="0–100"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <Label>Tipe Remedial</Label>
-                    <Input
-                      {...form.register('tipe_remedial')}
-                      placeholder="Tugas Ulang / Tes Lisan / dll"
-                    />
-                  </div>
-                </div>
-              )}
-            </div>
-
             <DialogFooter>
               <Button type="button" variant="outline" onClick={closeDialog}>Batal</Button>
               <Button type="submit" disabled={isSaving}>
@@ -794,6 +929,249 @@ export default function NilaiHarianPage() {
         </DialogContent>
       </Dialog>
 
+      {/* ─── Bulk Add Dialog (Tambah Massal) ─── */}
+      <Dialog open={isAddOpen} onOpenChange={(o) => { if (!o) setIsAddOpen(false) }}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Input Nilai Harian Massal</DialogTitle>
+          </DialogHeader>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault()
+              if (!bulkKelas) {
+                toast({ title: 'Pilih kelas terlebih dahulu', variant: 'destructive' })
+                return
+              }
+              if (!bulkMapel) {
+                toast({ title: 'Pilih mata pelajaran terlebih dahulu', variant: 'destructive' })
+                return
+              }
+              if (!bulkNamaTugas.trim()) {
+                toast({ title: 'Nama tugas wajib diisi', variant: 'destructive' })
+                return
+              }
+              const payload = siswaPerKelas.map((s) => ({
+                siswa_id: s.id,
+                mata_pelajaran_id: bulkMapel,
+                semester_id: activeSemester?.id ?? null,
+                tipe_nilai: bulkTipeNilai,
+                nama_tugas: bulkNamaTugas,
+                materi: bulkMateri || null,
+                bab: bulkBab || null,
+                nilai_asli: bulkScores[s.id] !== undefined && bulkScores[s.id] !== null ? bulkScores[s.id] : null,
+                dicatat_oleh: profile?.id ?? null,
+                tanggal: bulkTanggal ? format(bulkTanggal, 'yyyy-MM-dd') : null,
+              }))
+              bulkCreateMutation.mutate(payload)
+            }}
+            className="space-y-4"
+          >
+            {/* Meta Data Fields */}
+            <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-4">
+              <div className="space-y-1">
+                <Label>Kelas</Label>
+                <Select value={bulkKelas} onValueChange={setBulkKelas}>
+                  <SelectTrigger><SelectValue placeholder="Pilih Kelas" /></SelectTrigger>
+                  <SelectContent>
+                    {kelasList.map((k) => <SelectItem key={k} value={k}>{k}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1">
+                <Label>Mata Pelajaran</Label>
+                <Select value={bulkMapel} onValueChange={setBulkMapel} disabled={isSingleMapel}>
+                  <SelectTrigger><SelectValue placeholder="Pilih Mapel" /></SelectTrigger>
+                  <SelectContent>
+                    {mapelList.map((m: MataKuliah) => <SelectItem key={m.id} value={m.id}>{m.nama_mapel}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1">
+                <Label>Tipe Nilai</Label>
+                <Select value={bulkTipeNilai} onValueChange={(v) => setBulkTipeNilai(v as 'Formatif' | 'Sumatif')}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Formatif">Formatif</SelectItem>
+                    <SelectItem value="Sumatif">Sumatif</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1">
+                <Label>Tanggal</Label>
+                <DatePicker value={bulkTanggal} onChange={(d) => setBulkTanggal(d ?? new Date())} />
+              </div>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-3">
+              <div className="space-y-1">
+                <Label>Nama Tugas</Label>
+                <Input
+                  value={bulkNamaTugas}
+                  onChange={(e) => setBulkNamaTugas(e.target.value)}
+                  placeholder="Contoh: Ulangan Bab 1"
+                  required
+                />
+              </div>
+
+              <div className="space-y-1">
+                <Label>Materi (opsional)</Label>
+                <Input
+                  value={bulkMateri}
+                  onChange={(e) => setBulkMateri(e.target.value)}
+                  placeholder="Nama materi/topik"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <Label>Bab (opsional)</Label>
+                <Input
+                  value={bulkBab}
+                  onChange={(e) => setBulkBab(e.target.value)}
+                  placeholder="Contoh: Bab 1"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1 max-w-md">
+              <Label>Bank Soal (opsional)</Label>
+              <Combobox
+                options={bankSoalOptions}
+                value={bulkBankSoal}
+                onSelect={(v) => setBulkBankSoal(v || '')}
+                onSearch={setBankSoalSearch}
+                placeholder="Pilih bank soal..."
+                emptyMessage="Bank soal tidak ditemukan"
+              />
+            </div>
+
+            {/* Student List & Scores */}
+            <div className="border border-[var(--border)] rounded-lg overflow-hidden">
+              <div className="bg-[var(--bg-secondary)] px-4 py-2 border-b border-[var(--border)] font-semibold text-sm">
+                Daftar Siswa & Input Nilai Asli
+              </div>
+              <div className="p-4 max-h-[350px] overflow-y-auto space-y-3">
+                {!bulkKelas ? (
+                  <p className="text-center text-sm text-[var(--text-secondary)] py-8">
+                    Silakan pilih kelas terlebih dahulu untuk memuat daftar siswa.
+                  </p>
+                ) : siswaLoading ? (
+                  <p className="text-center text-sm text-[var(--text-secondary)] py-8">
+                    Memuat data siswa...
+                  </p>
+                ) : siswaPerKelas.length === 0 ? (
+                  <p className="text-center text-sm text-[var(--text-secondary)] py-8">
+                    Tidak ada siswa aktif di kelas ini.
+                  </p>
+                ) : (
+                  <div className="divide-y divide-[var(--border)]">
+                    {siswaPerKelas.map((siswa, idx) => (
+                      <div key={siswa.id} className="flex items-center justify-between py-2.5 first:pt-0 last:pb-0">
+                        <span className="text-sm font-medium">
+                          {idx + 1}. {siswa.nama}
+                        </span>
+                        <div className="flex items-center gap-2">
+                          <Label className="text-xs text-[var(--text-secondary)]">Nilai Asli:</Label>
+                          <Input
+                            type="number"
+                            min={0}
+                            max={100}
+                            step={0.01}
+                            placeholder="0-100"
+                            value={bulkScores[siswa.id] ?? ''}
+                            onChange={(e) => {
+                              const val = e.target.value === '' ? null : parseFloat(e.target.value)
+                              setBulkScores((prev) => ({ ...prev, [siswa.id]: val }))
+                            }}
+                            className="w-24 text-center h-8 text-sm"
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setIsAddOpen(false)}>Batal</Button>
+              <Button type="submit" disabled={bulkCreateMutation.isPending}>
+                {bulkCreateMutation.isPending ? 'Menyimpan...' : 'Simpan Nilai Massal'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* ─── Remedial Dialog ─── */}
+      <Dialog
+        open={isRemedialOpen}
+        onOpenChange={(o) => {
+          if (!o) {
+            setIsRemedialOpen(false)
+            setRemedialItem(null)
+          }
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Input Nilai Remedial</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1">
+              <Label>Nama Siswa</Label>
+              <Input value={remedialItem?.students?.nama ?? ''} disabled />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <Label>Nilai Asli</Label>
+                <Input value={remedialItem?.nilai_asli ?? '-'} disabled />
+              </div>
+              <div className="space-y-1">
+                <Label>Nilai Remedial</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  max={100}
+                  step={0.01}
+                  value={remedialNilai ?? ''}
+                  onChange={(e) => setRemedialNilai(e.target.value === '' ? null : parseFloat(e.target.value))}
+                  placeholder="0-100"
+                />
+              </div>
+            </div>
+            <div className="space-y-1">
+              <Label>Tipe Remedial</Label>
+              <Input
+                value={remedialTipe}
+                onChange={(e) => setRemedialTipe(e.target.value)}
+                placeholder="Contoh: Tugas Ulang, Tes Lisan"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setIsRemedialOpen(false); setRemedialItem(null); }}>Batal</Button>
+            <Button
+              onClick={() => {
+                if (remedialItem) {
+                  saveRemedialMutation.mutate({
+                    id: remedialItem.id,
+                    nilai_remedial: remedialNilai,
+                    tipe_remedial: remedialTipe || null,
+                  })
+                }
+              }}
+              disabled={saveRemedialMutation.isPending}
+            >
+              {saveRemedialMutation.isPending ? 'Menyimpan...' : 'Simpan'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ─── Confirm Approve ─── */}
       <ConfirmDialog
         open={isApproveOpen}
         onOpenChange={setIsApproveOpen}

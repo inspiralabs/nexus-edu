@@ -105,6 +105,7 @@ export default function PresensiPage() {
   // Mode massal
   const [inputMode, setInputMode] = useState<'tabel' | 'massal'>('tabel')
   const [bulkTanggal, setBulkTanggal] = useState<Date>(new Date())
+  const [bulkBulan, setBulkBulan] = useState('')
   const [bulkKelas, setBulkKelas] = useState('')
   const [bulkMapel, setBulkMapel] = useState('')
   const [bulkItems, setBulkItems] = useState<BulkPresensiItem[]>([])
@@ -123,12 +124,21 @@ export default function PresensiPage() {
   const debouncedSearch = useDebounce(search, 300)
   const debouncedSiswaSearch = useDebounce(siswaSearch, 300)
 
+  // ─── Guru Mapel Lock ────────────────────────────────────────────────────────
+  const isSingleMapel = useMemo(() => {
+    return profile?.role === 'user' && profile?.mapel_ids?.length === 1
+  }, [profile])
+
+  const singleMapelId = useMemo(() => {
+    return isSingleMapel ? profile?.mapel_ids?.[0] : null
+  }, [isSingleMapel, profile])
+
   // Form
   const form = useForm<PresensiFormValues>({
     resolver: zodResolver(presensiSchema),
     defaultValues: {
       siswa_id: '',
-      mata_pelajaran_id: '',
+      mata_pelajaran_id: singleMapelId ?? '',
       semester_id: null,
       tanggal: new Date(),
       status: 'Hadir',
@@ -136,12 +146,61 @@ export default function PresensiPage() {
     },
   })
 
+  // Sync mapel lock
+  useEffect(() => {
+    if (singleMapelId) {
+      setFilterMapel(singleMapelId)
+      setBulkMapel(singleMapelId)
+      form.setValue('mata_pelajaran_id', singleMapelId)
+    }
+  }, [singleMapelId, form])
+
   // ─── Queries ────────────────────────────────────────────────────────────────
 
   const { data: activeSemester } = useQuery({
     queryKey: ['active-semester-diknas'],
     queryFn: getActiveSemesterDiknas,
   })
+
+  // Bulan dinamis
+  const monthOptions = useMemo(() => {
+    if (!activeSemester?.tanggal_mulai || !activeSemester?.tanggal_selesai) return []
+    const start = new Date(activeSemester.tanggal_mulai)
+    const end = new Date(activeSemester.tanggal_selesai)
+    const months: { value: string; label: string; minDate: Date; maxDate: Date }[] = []
+    
+    const monthNamesIndo = [
+      'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+      'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
+    ]
+
+    let current = new Date(start.getFullYear(), start.getMonth(), 1)
+    const last = new Date(end.getFullYear(), end.getMonth(), 1)
+
+    while (current <= last) {
+      const m = current.getMonth()
+      const y = current.getFullYear()
+      
+      const firstDayOfMonth = new Date(y, m, 1)
+      const lastDayOfMonth = new Date(y, m + 1, 0)
+      
+      const minDate = firstDayOfMonth < start ? start : firstDayOfMonth
+      const maxDate = lastDayOfMonth > end ? end : lastDayOfMonth
+
+      months.push({
+        value: `${y}-${String(m + 1).padStart(2, '0')}`,
+        label: `${monthNamesIndo[m]} - ${y}`,
+        minDate,
+        maxDate,
+      })
+      current.setMonth(current.getMonth() + 1)
+    }
+    return months
+  }, [activeSemester])
+
+  const selectedMonthOpt = useMemo(() => {
+    return monthOptions.find((m) => m.value === bulkBulan)
+  }, [monthOptions, bulkBulan])
 
   const { data: semesterList = [] } = useQuery({
     queryKey: ['semester-options'],
@@ -516,7 +575,7 @@ export default function PresensiPage() {
           setPage(1)
           setSelectedRows([])
           setFilterKelas('all')
-          setFilterMapel('all')
+          setFilterMapel(isSingleMapel ? (singleMapelId ?? 'all') : 'all')
         }}
       >
         <TabsList className="no-print">
@@ -528,35 +587,43 @@ export default function PresensiPage() {
         </TabsList>
       </Tabs>
 
-      {/* Mode Toggle */}
-      <div className="no-print flex items-center gap-3">
-        <Button
-          variant={inputMode === 'tabel' ? 'default' : 'outline'}
-          size="sm"
-          onClick={() => setInputMode('tabel')}
-        >
-          Per Siswa
-        </Button>
-        <Button
-          variant={inputMode === 'massal' ? 'default' : 'outline'}
-          size="sm"
-          onClick={() => setInputMode('massal')}
-        >
-          <Users className="mr-2 h-4 w-4" />
-          Input Massal
-        </Button>
-      </div>
-
       {/* ─── Mode Massal ─── */}
       {inputMode === 'massal' && (
         <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 space-y-4">
-          <h3 className="font-semibold text-[var(--text-primary)]">Input Presensi Massal</h3>
-          <div className="grid gap-4 sm:grid-cols-3">
+          <div className="flex items-center justify-between">
+            <h3 className="font-semibold text-[var(--text-primary)]">Input Presensi Massal</h3>
+            <Button variant="outline" size="sm" onClick={() => setInputMode('tabel')}>
+              Kembali ke Tabel
+            </Button>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-4">
+            <div className="space-y-1">
+              <Label>Bulan</Label>
+              <Select value={bulkBulan} onValueChange={(v) => {
+                setBulkBulan(v)
+                const opt = monthOptions.find((m) => m.value === v)
+                if (opt) {
+                  setBulkTanggal(opt.minDate)
+                }
+              }}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Pilih bulan" />
+                </SelectTrigger>
+                <SelectContent>
+                  {monthOptions.map((m) => (
+                    <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <div className="space-y-1">
               <Label>Tanggal</Label>
               <DatePicker
                 value={bulkTanggal}
                 onChange={(d) => d && setBulkTanggal(d)}
+                minDate={selectedMonthOpt?.minDate}
+                maxDate={selectedMonthOpt?.maxDate}
+                disabled={!bulkBulan}
               />
             </div>
             <div className="space-y-1">
@@ -574,7 +641,7 @@ export default function PresensiPage() {
             </div>
             <div className="space-y-1">
               <Label>Mata Pelajaran</Label>
-              <Select value={bulkMapel} onValueChange={setBulkMapel}>
+              <Select value={bulkMapel} onValueChange={setBulkMapel} disabled={isSingleMapel}>
                 <SelectTrigger>
                   <SelectValue placeholder="Pilih mapel" />
                 </SelectTrigger>
@@ -589,6 +656,10 @@ export default function PresensiPage() {
 
           {siswaLoading ? (
             <Skeleton className="h-48 w-full" />
+          ) : !bulkBulan ? (
+            <div className="py-8 text-center text-sm text-[var(--text-secondary)]">
+              Pilih bulan terlebih dahulu
+            </div>
           ) : bulkItems.length === 0 ? (
             <div className="py-8 text-center text-sm text-[var(--text-secondary)]">
               {bulkKelas ? 'Tidak ada siswa di kelas ini' : 'Pilih kelas terlebih dahulu'}
@@ -601,7 +672,22 @@ export default function PresensiPage() {
                     <tr className="border-b border-[var(--border)] bg-[var(--surface-2)]">
                       <th className="px-4 py-2 text-left font-medium text-[var(--text-secondary)]">Nama</th>
                       <th className="px-4 py-2 text-left font-medium text-[var(--text-secondary)]">Kelas</th>
-                      <th className="px-4 py-2 text-left font-medium text-[var(--text-secondary)]">Status</th>
+                      <th className="px-4 py-2 text-left font-medium text-[var(--text-secondary)] flex items-center gap-4">
+                        <span>Status</span>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setBulkItems((prev) =>
+                              prev.map((item) => ({ ...item, status: 'Hadir' }))
+                            )
+                          }}
+                          className="h-6 px-2 text-[10px]"
+                        >
+                          Hadir Semua
+                        </Button>
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
@@ -672,7 +758,7 @@ export default function PresensiPage() {
                 ))}
               </SelectContent>
             </Select>
-            <Select value={filterMapel} onValueChange={(v) => { setFilterMapel(v); setPage(1) }}>
+            <Select value={filterMapel} onValueChange={(v) => { setFilterMapel(v); setPage(1) }} disabled={isSingleMapel}>
               <SelectTrigger className="w-48">
                 <SelectValue placeholder="Mapel" />
               </SelectTrigger>
@@ -708,9 +794,9 @@ export default function PresensiPage() {
                   Hapus ({selectedRows.length})
                 </Button>
               )}
-              <Button size="sm" onClick={() => { form.reset(); setIsAddOpen(true) }}>
+              <Button size="sm" onClick={() => setInputMode('massal')}>
                 <Plus className="mr-2 h-4 w-4" />
-                Tambah
+                Input Presensi Massal
               </Button>
             </div>
           </div>
@@ -773,6 +859,7 @@ export default function PresensiPage() {
               <Select
                 value={form.watch('mata_pelajaran_id')}
                 onValueChange={(v) => form.setValue('mata_pelajaran_id', v)}
+                disabled={isSingleMapel}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Pilih mata pelajaran" />

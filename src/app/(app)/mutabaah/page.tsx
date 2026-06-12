@@ -522,115 +522,6 @@ export default function DashboardMutabaahPage() {
         </div>
       )}
 
-      {/* ── Charts ── */}
-      <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
-        {/* BarChart: Kehadiran Per Kegiatan */}
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base font-semibold text-[var(--text-primary)]">
-              Kehadiran per Kegiatan (Top 5)
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {loadingBar ? (
-              <Skeleton className="h-56 w-full" />
-            ) : barData.length === 0 ? (
-              <EmptyState
-                title="Belum ada data"
-                description="Tidak ada data kehadiran untuk periode ini"
-              />
-            ) : (
-              <ResponsiveContainer width="100%" height={220}>
-                <BarChart data={barData} margin={{ top: 4, right: 8, left: -10, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                  <XAxis
-                    dataKey="name"
-                    tick={{ fontSize: 11, fill: 'var(--text-secondary)' }}
-                  />
-                  <YAxis
-                    tick={{ fontSize: 11, fill: 'var(--text-secondary)' }}
-                  />
-                  <Tooltip
-                    contentStyle={{
-                      background: 'var(--surface)',
-                      border: '1px solid var(--border)',
-                      borderRadius: 8,
-                      color: 'var(--text-primary)',
-                      fontSize: 12,
-                    }}
-                    formatter={(value: unknown, name: unknown) => {
-                      const labels: Record<string, string> = { hadir: 'Total Hadir', persen: 'Persentase (%)' }
-                      const nameStr = String(name)
-                      return [value as number, labels[nameStr] ?? nameStr]
-                    }}
-                    labelFormatter={(label, payload) => {
-                      const fullName = payload?.[0]?.payload?.fullName ?? label
-                      return fullName
-                    }}
-                  />
-                  <Bar dataKey="hadir" fill="#1e5d7e" radius={[4, 4, 0, 0]} name="hadir" />
-                </BarChart>
-              </ResponsiveContainer>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* LineChart: Tren Kehadiran Harian */}
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base font-semibold text-[var(--text-primary)]">
-              Tren Kehadiran Harian (%)
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {loadingLine ? (
-              <Skeleton className="h-56 w-full" />
-            ) : lineData.length === 0 ? (
-              <EmptyState
-                title="Belum ada data"
-                description="Tidak ada data tren kehadiran untuk periode ini"
-              />
-            ) : (
-              <ResponsiveContainer width="100%" height={220}>
-                <LineChart data={lineData} margin={{ top: 4, right: 8, left: -10, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                  <XAxis
-                    dataKey="tgl"
-                    tick={{ fontSize: 11, fill: 'var(--text-secondary)' }}
-                    label={{ value: 'Tanggal', position: 'insideBottom', offset: -4, fontSize: 11 }}
-                  />
-                  <YAxis
-                    domain={[0, 100]}
-                    tickFormatter={(v: number) => `${v}%`}
-                    tick={{ fontSize: 11, fill: 'var(--text-secondary)' }}
-                  />
-                  <Tooltip
-                    contentStyle={{
-                      background: 'var(--surface)',
-                      border: '1px solid var(--border)',
-                      borderRadius: 8,
-                      color: 'var(--text-primary)',
-                      fontSize: 12,
-                    }}
-                    formatter={(value: unknown) => [`${value as number}%`, 'Kehadiran']}
-                    labelFormatter={(label) => `Tanggal ${label}`}
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="persen"
-                    stroke="#1e5d7e"
-                    strokeWidth={2}
-                    dot={{ fill: '#1e5d7e', r: 3 }}
-                    activeDot={{ r: 5 }}
-                    name="persen"
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
       {/* ── Top 10 Rankings ── */}
       <Card>
         <CardHeader className="pb-3 border-b border-[var(--border)]">
@@ -770,6 +661,115 @@ export default function DashboardMutabaahPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* ── Charts ── */}
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+        {/* BarChart: Kehadiran Per Kegiatan */}
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base font-semibold text-[var(--text-primary)]">
+              Kehadiran per Kegiatan (Top 5)
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {loadingBar ? (
+              <Skeleton className="h-56 w-full" />
+            ) : barData.length === 0 ? (
+              <EmptyState
+                title="Belum ada data"
+                description="Tidak ada data kehadiran untuk periode ini"
+              />
+            ) : (
+              <ResponsiveContainer width="100%" height={220}>
+                <BarChart data={barData} margin={{ top: 4, right: 8, left: -10, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                  <XAxis
+                    dataKey="name"
+                    tick={{ fontSize: 11, fill: 'var(--text-secondary)' }}
+                  />
+                  <YAxis
+                    tick={{ fontSize: 11, fill: 'var(--text-secondary)' }}
+                  />
+                  <Tooltip
+                    contentStyle={{
+                      background: 'var(--surface)',
+                      border: '1px solid var(--border)',
+                      borderRadius: 8,
+                      color: 'var(--text-primary)',
+                      fontSize: 12,
+                    }}
+                    formatter={(value: unknown, name: unknown) => {
+                      const labels: Record<string, string> = { hadir: 'Total Hadir', persen: 'Persentase (%)' }
+                      const nameStr = String(name)
+                      return [value as number, labels[nameStr] ?? nameStr]
+                    }}
+                    labelFormatter={(label, payload) => {
+                      const fullName = payload?.[0]?.payload?.fullName ?? label
+                      return fullName
+                    }}
+                  />
+                  <Bar dataKey="hadir" fill="#1e5d7e" radius={[4, 4, 0, 0]} name="hadir" />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* LineChart: Tren Kehadiran Harian */}
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base font-semibold text-[var(--text-primary)]">
+              Tren Kehadiran Harian (%)
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {loadingLine ? (
+              <Skeleton className="h-56 w-full" />
+            ) : lineData.length === 0 ? (
+              <EmptyState
+                title="Belum ada data"
+                description="Tidak ada data tren kehadiran untuk periode ini"
+              />
+            ) : (
+              <ResponsiveContainer width="100%" height={220}>
+                <LineChart data={lineData} margin={{ top: 4, right: 8, left: -10, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                  <XAxis
+                    dataKey="tgl"
+                    tick={{ fontSize: 11, fill: 'var(--text-secondary)' }}
+                    label={{ value: 'Tanggal', position: 'insideBottom', offset: -4, fontSize: 11 }}
+                  />
+                  <YAxis
+                    domain={[0, 100]}
+                    tickFormatter={(v: number) => `${v}%`}
+                    tick={{ fontSize: 11, fill: 'var(--text-secondary)' }}
+                  />
+                  <Tooltip
+                    contentStyle={{
+                      background: 'var(--surface)',
+                      border: '1px solid var(--border)',
+                      borderRadius: 8,
+                      color: 'var(--text-primary)',
+                      fontSize: 12,
+                    }}
+                    formatter={(value: unknown) => [`${value as number}%`, 'Kehadiran']}
+                    labelFormatter={(label) => `Tanggal ${label}`}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="persen"
+                    stroke="#1e5d7e"
+                    strokeWidth={2}
+                    dot={{ fill: '#1e5d7e', r: 3 }}
+                    activeDot={{ r: 5 }}
+                    name="persen"
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            )}
+          </CardContent>
+        </Card>
+      </div>
 
       {/* ── Detail Dialog rankings ── */}
       <RankingDetailDialog

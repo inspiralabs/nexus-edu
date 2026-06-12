@@ -38,6 +38,7 @@ import { useAuth } from '@/hooks/use-auth'
 import { useDebounce } from '@/hooks/use-debounce'
 import { logAudit } from '@/lib/audit/log'
 import {
+  bulkCreateCatatanKelakuan,
   createCatatanKelakuan,
   deleteCatatanKelakuan,
   getActiveSemesterDiknas,
@@ -94,6 +95,11 @@ export default function CatatanKelakuanPage() {
   const [editingItem, setEditingItem] = useState<CatatanKelakuanEntry | null>(null)
   const [deletingItem, setDeletingItem] = useState<CatatanKelakuanEntry | null>(null)
 
+  // Bulk input states
+  const [bulkKelas, setBulkKelas] = useState('')
+  const [bulkTanggal, setBulkTanggal] = useState<Date>(new Date())
+  const [bulkData, setBulkData] = useState<Record<string, { tipe: 'Baik' | 'Kurang Baik'; catatan: string }>>({})
+
   const [siswaSearch, setSiswaSearch] = useState('')
   const [siswaOptions, setSiswaOptions] = useState<ComboboxOption[]>([])
 
@@ -111,7 +117,7 @@ export default function CatatanKelakuanPage() {
     },
   })
 
-  const isFormOpen = isAddOpen || isEditOpen
+  const isFormOpen = isEditOpen
 
   // ─── Queries ────────────────────────────────────────────────────────────────
 
@@ -148,6 +154,39 @@ export default function CatatanKelakuanPage() {
     queryFn: () => getCatatanKelakuan(queryFilters),
   })
 
+  // Siswa untuk bulk input
+  const { data: siswaPerKelas = [], isLoading: siswaLoading } = useQuery({
+    queryKey: ['siswa-kelas-catatan', bulkKelas, activeUnit],
+    queryFn: async () => {
+      if (!bulkKelas) return []
+      const { createClient } = await import('@/lib/supabase/client')
+      const supabase = createClient()
+      const { data: rows, error } = await supabase
+        .from('students')
+        .select('id, nama, kelas')
+        .eq('kelas', bulkKelas)
+        .eq('unit', activeUnit)
+        .eq('is_alumni', false)
+        .order('nama')
+      if (error) throw new Error(error.message)
+      return rows as { id: string; nama: string; kelas: string }[]
+    },
+    enabled: isAddOpen && Boolean(bulkKelas),
+  })
+
+  // Sync bulk data siswa
+  useEffect(() => {
+    if (siswaPerKelas.length > 0) {
+      const initial: Record<string, { tipe: 'Baik' | 'Kurang Baik'; catatan: string }> = {}
+      siswaPerKelas.forEach((s) => {
+        initial[s.id] = { tipe: 'Baik', catatan: '' }
+      })
+      setBulkData(initial)
+    } else {
+      setBulkData({})
+    }
+  }, [siswaPerKelas])
+
   useQuery({
     queryKey: ['siswa-search-catatan', debouncedSiswaSearch, activeUnit],
     queryFn: async () => {
@@ -171,7 +210,13 @@ export default function CatatanKelakuanPage() {
     setIsAddOpen(false)
     setIsEditOpen(false)
     setEditingItem(null)
-    form.reset()
+    form.reset({
+      siswa_id: '',
+      semester_id: null,
+      tipe: 'Baik',
+      catatan: '',
+      tanggal: new Date(),
+    })
     setSiswaOptions([])
   }
 
@@ -266,6 +311,25 @@ export default function CatatanKelakuanPage() {
       toast({ title: 'Gagal menghapus data', description: e.message, variant: 'destructive' }),
   })
 
+  const bulkCreateMutation = useMutation({
+    mutationFn: (payload: any[]) => bulkCreateCatatanKelakuan(payload),
+    onSuccess: async (results) => {
+      const userId = getUserId()
+      if (userId) {
+        for (const r of results) {
+          await logAudit(userId, 'CREATE', 'catatan_kelakuan', r.id, null, { id: r.id })
+        }
+      }
+      invalidate()
+      toast({ title: 'Catatan kelakuan massal berhasil disimpan' })
+      setIsAddOpen(false)
+      setBulkKelas('')
+      setBulkData({})
+    },
+    onError: (e: Error) =>
+      toast({ title: 'Gagal menyimpan catatan massal', description: e.message, variant: 'destructive' }),
+  })
+
   // ─── Columns ────────────────────────────────────────────────────────────────
 
   const columns = useMemo<ColumnDef<CatatanKelakuanEntry>[]>(
@@ -309,7 +373,7 @@ export default function CatatanKelakuanPage() {
       {
         id: 'dicatat_oleh',
         header: 'Dicatat Oleh',
-        cell: ({ row }) => row.original.dicatat_oleh ?? '-',
+        cell: ({ row }) => row.original.profiles?.nama_lengkap ?? '-',
       },
       {
         id: 'aksi',
@@ -416,7 +480,15 @@ export default function CatatanKelakuanPage() {
               Hapus ({selectedRows.length})
             </Button>
           )}
-          <Button size="sm" onClick={() => { form.reset(); setIsAddOpen(true) }}>
+          <Button
+            size="sm"
+            onClick={() => {
+              setBulkKelas('')
+              setBulkTanggal(new Date())
+              setBulkData({})
+              setIsAddOpen(true)
+            }}
+          >
             <Plus className="mr-2 h-4 w-4" />
             Tambah
           </Button>
@@ -449,10 +521,11 @@ export default function CatatanKelakuanPage() {
         />
       )}
 
+      {/* Edit Dialog */}
       <Dialog open={isFormOpen} onOpenChange={(o) => { if (!o) closeDialog() }}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>{isEditOpen ? 'Edit Catatan Kelakuan' : 'Tambah Catatan Kelakuan'}</DialogTitle>
+            <DialogTitle>Edit Catatan Kelakuan</DialogTitle>
           </DialogHeader>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
             <div className="space-y-1">
@@ -464,10 +537,8 @@ export default function CatatanKelakuanPage() {
                 onSearch={setSiswaSearch}
                 placeholder="Cari nama siswa..."
                 emptyMessage="Siswa tidak ditemukan"
+                disabled
               />
-              {form.formState.errors.siswa_id && (
-                <p className="text-xs text-destructive">{form.formState.errors.siswa_id.message}</p>
-              )}
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-1">
@@ -505,6 +576,143 @@ export default function CatatanKelakuanPage() {
               <Button type="button" variant="outline" onClick={closeDialog}>Batal</Button>
               <Button type="submit" disabled={isSaving}>
                 {isSaving ? 'Menyimpan...' : 'Simpan'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Bulk Add Dialog */}
+      <Dialog open={isAddOpen} onOpenChange={(o) => { if (!o) setIsAddOpen(false) }}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Input Catatan Kelakuan Massal</DialogTitle>
+          </DialogHeader>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault()
+              if (!bulkKelas) {
+                toast({ title: 'Pilih kelas terlebih dahulu', variant: 'destructive' })
+                return
+              }
+              const payload = Object.entries(bulkData)
+                .filter(([_, item]) => item.catatan.trim() !== '')
+                .map(([siswaId, item]) => ({
+                  siswa_id: siswaId,
+                  semester_id: activeSemester?.id ?? null,
+                  tipe: item.tipe,
+                  catatan: item.catatan.trim(),
+                  tanggal: bulkTanggal ? format(bulkTanggal, 'yyyy-MM-dd') : null,
+                  dicatat_oleh: profile?.id ?? null,
+                }))
+
+              if (payload.length === 0) {
+                toast({ title: 'Input catatan kelakuan minimal untuk 1 siswa', variant: 'destructive' })
+                return
+              }
+              bulkCreateMutation.mutate(payload)
+            }}
+            className="space-y-4"
+          >
+            {/* Meta Data */}
+            <div className="grid gap-4 sm:grid-cols-3">
+              <div className="space-y-1">
+                <Label>Kelas</Label>
+                <Select value={bulkKelas} onValueChange={setBulkKelas}>
+                  <SelectTrigger><SelectValue placeholder="Pilih Kelas" /></SelectTrigger>
+                  <SelectContent>
+                    {kelasList.map((k) => <SelectItem key={k} value={k}>{k}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1">
+                <Label>Tanggal</Label>
+                <DatePicker value={bulkTanggal} onChange={(d) => setBulkTanggal(d ?? new Date())} />
+              </div>
+
+              <div className="space-y-1">
+                <Label>Semester</Label>
+                <Input value={activeSemester ? `Smt ${activeSemester.nomor_semester} — ${activeSemester.tahun_pelajaran?.nama}` : 'Tidak Aktif'} disabled />
+              </div>
+            </div>
+
+            {/* Student List */}
+            <div className="border border-[var(--border)] rounded-lg overflow-hidden">
+              <div className="bg-[var(--bg-secondary)] px-4 py-2 border-b border-[var(--border)] font-semibold text-sm">
+                Daftar Catatan Kelakuan Siswa
+              </div>
+              <div className="p-4 max-h-[400px] overflow-y-auto space-y-4">
+                {!bulkKelas ? (
+                  <p className="text-center text-sm text-[var(--text-secondary)] py-8">
+                    Silakan pilih kelas terlebih dahulu untuk memuat daftar siswa.
+                  </p>
+                ) : siswaLoading ? (
+                  <p className="text-center text-sm text-[var(--text-secondary)] py-8">
+                    Memuat data siswa...
+                  </p>
+                ) : siswaPerKelas.length === 0 ? (
+                  <p className="text-center text-sm text-[var(--text-secondary)] py-8">
+                    Tidak ada siswa aktif di kelas ini.
+                  </p>
+                ) : (
+                  <div className="space-y-4 divide-y divide-[var(--border)]">
+                    {siswaPerKelas.map((siswa, idx) => (
+                      <div key={siswa.id} className="pt-4 first:pt-0 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-semibold">
+                            {idx + 1}. {siswa.nama}
+                          </span>
+                          <div className="flex items-center gap-2">
+                            <Label className="text-xs text-[var(--text-secondary)]">Tipe Catatan:</Label>
+                            <Select
+                              value={bulkData[siswa.id]?.tipe ?? 'Baik'}
+                              onValueChange={(v) => {
+                                setBulkData((prev) => ({
+                                  ...prev,
+                                  [siswa.id]: {
+                                    ...prev[siswa.id],
+                                    tipe: v as 'Baik' | 'Kurang Baik',
+                                  },
+                                }))
+                              }}
+                            >
+                              <SelectTrigger className="w-32 h-8 text-xs">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {TIPE_CATATAN.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+                        <Textarea
+                          placeholder="Masukkan catatan kelakuan (kosongkan jika tidak ada catatan untuk siswa ini)..."
+                          value={bulkData[siswa.id]?.catatan ?? ''}
+                          onChange={(e) => {
+                            const val = e.target.value
+                            setBulkData((prev) => ({
+                              ...prev,
+                              [siswa.id]: {
+                                ...prev[siswa.id],
+                                catatan: val,
+                              },
+                            }))
+                          }}
+                          rows={2}
+                          className="text-sm"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setIsAddOpen(false)}>Batal</Button>
+              <Button type="submit" disabled={bulkCreateMutation.isPending}>
+                {bulkCreateMutation.isPending ? 'Menyimpan...' : 'Simpan Catatan Massal'}
               </Button>
             </DialogFooter>
           </form>
