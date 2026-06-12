@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/client'
+import type { Semester } from './semester'
 
 // ─── TypeScript Types ─────────────────────────────────────────────────────────
 
@@ -91,6 +92,7 @@ export interface KegiatanItem {
   poin_target: number
   semester_id?: string | null
   sub_kegiatan?: SubKegiatanItem[]
+  semester?: Semester
 }
 
 export interface SubKegiatanItem {
@@ -100,6 +102,8 @@ export interface SubKegiatanItem {
   urutan: number
   poin_target: number
   semester_id?: string | null
+  semester?: Semester
+  kegiatan?: KegiatanItem
 }
 
 export interface KamarItem {
@@ -126,7 +130,7 @@ export async function getKegiatan(search?: string): Promise<KegiatanItem[]> {
 
   let query = supabase
     .from('kegiatan')
-    .select('*, sub_kegiatan(*)')
+    .select('*, sub_kegiatan(*), semester(*, tahun_pelajaran(*))')
 
   if (search) {
     query = query.ilike('nama_kegiatan', `%${search}%`)
@@ -150,7 +154,7 @@ export async function getKegiatanWithSub(): Promise<KegiatanItem[]> {
 
   const { data, error } = await supabase
     .from('kegiatan')
-    .select('*, sub_kegiatan(*)')
+    .select('*, sub_kegiatan(*), semester(*, tahun_pelajaran(*))')
     .order('urutan', { ascending: true })
 
   if (error) throw new Error(error.message)
@@ -170,7 +174,7 @@ export async function getSubKegiatan(kegiatanId?: string): Promise<SubKegiatanIt
 
   let query = supabase
     .from('sub_kegiatan')
-    .select('*')
+    .select('*, kegiatan(*), semester(*, tahun_pelajaran(*))')
 
   if (kegiatanId && kegiatanId !== 'all') {
     query = query.eq('kegiatan_id', kegiatanId)
@@ -836,7 +840,7 @@ export interface MutabaahProgressItem {
 }
 
 /** Hitung nilai A-E berdasarkan persentase capaian */
-function hitungNilai(persentase: number): NilaiMutabaah {
+export function hitungNilai(persentase: number): NilaiMutabaah {
   if (persentase >= 90) return 'A'
   if (persentase >= 75) return 'B'
   if (persentase >= 60) return 'C'

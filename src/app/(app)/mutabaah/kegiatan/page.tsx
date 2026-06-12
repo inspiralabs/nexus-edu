@@ -287,11 +287,16 @@ export default function KegiatanMutabaahPage() {
         id: 'semester',
         header: 'Semester',
         enableSorting: false,
-        cell: ({ row }) => (
-          <span className="text-[var(--text-secondary)]">
-            {getSemesterLabel(row.original.semester_id)}
-          </span>
-        ),
+        cell: ({ row }) => {
+          const s = row.original.semester
+          if (!s) return <span className="text-[var(--text-secondary)]">—</span>
+          const tp = s.tahun_pelajaran
+          return (
+            <span className="text-[var(--text-secondary)]">
+              Semester {s.nomor_semester} — {tp?.nama ?? ''}
+            </span>
+          )
+        },
       },
       {
         accessorKey: 'poin_target',

@@ -360,11 +360,16 @@ export default function SubKegiatanMutabaahPage() {
         id: 'semester',
         header: 'Semester',
         enableSorting: false,
-        cell: ({ row }) => (
-          <span className="text-[var(--text-secondary)]">
-            {getSemesterLabel(row.original.semester_id)}
-          </span>
-        ),
+        cell: ({ row }) => {
+          const s = row.original.semester
+          if (!s) return <span className="text-[var(--text-secondary)]">—</span>
+          const tp = s.tahun_pelajaran
+          return (
+            <span className="text-[var(--text-secondary)]">
+              Semester {s.nomor_semester} — {tp?.nama ?? ''}
+            </span>
+          )
+        },
       },
       {
         accessorKey: 'poin_target',
@@ -502,6 +507,23 @@ export default function SubKegiatanMutabaahPage() {
             </DialogTitle>
           </DialogHeader>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            {/* Nama Sub Kegiatan */}
+            <div className="space-y-2">
+              <Label htmlFor="nama_sub">
+                Nama Sub Kegiatan <span className="text-status-red">*</span>
+              </Label>
+              <Input
+                id="nama_sub"
+                placeholder="Contoh: Rakaat 1, Sesi Pagi"
+                {...form.register('nama_sub')}
+              />
+              {form.formState.errors.nama_sub && (
+                <p className="text-xs text-status-red">
+                  {form.formState.errors.nama_sub.message}
+                </p>
+              )}
+            </div>
+
             {/* Kegiatan Utama */}
             <div className="space-y-2">
               <Label htmlFor="form-kegiatan-id">
@@ -514,7 +536,15 @@ export default function SubKegiatanMutabaahPage() {
                 onSearch={setFormKegiatanSearch}
                 placeholder="Pilih kegiatan utama..."
                 emptyMessage="Tidak ada kegiatan"
+                disabled={!!editingItem || filterKegiatanId !== 'all'}
               />
+              {(!!editingItem || filterKegiatanId !== 'all') && (
+                <p className="text-xs text-[var(--text-secondary)] mt-1">
+                  {editingItem 
+                    ? 'Kegiatan utama tidak dapat diubah setelah sub kegiatan dibuat.'
+                    : 'Kegiatan utama dikunci berdasarkan filter kegiatan yang aktif.'}
+                </p>
+              )}
               {form.formState.errors.kegiatan_id && (
                 <p className="text-xs text-status-red">
                   {form.formState.errors.kegiatan_id.message}
@@ -549,23 +579,6 @@ export default function SubKegiatanMutabaahPage() {
               {form.formState.errors.semester_id && (
                 <p className="text-xs text-status-red">
                   {form.formState.errors.semester_id.message}
-                </p>
-              )}
-            </div>
-
-            {/* Nama Sub Kegiatan */}
-            <div className="space-y-2">
-              <Label htmlFor="nama_sub">
-                Nama Sub Kegiatan <span className="text-status-red">*</span>
-              </Label>
-              <Input
-                id="nama_sub"
-                placeholder="Contoh: Rakaat 1, Sesi Pagi"
-                {...form.register('nama_sub')}
-              />
-              {form.formState.errors.nama_sub && (
-                <p className="text-xs text-status-red">
-                  {form.formState.errors.nama_sub.message}
                 </p>
               )}
             </div>

@@ -1,7 +1,7 @@
 'use client'
 
-import { Eye, Search } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { Eye, Search, ChevronDown, ChevronRight } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState, Fragment } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { PageHeader } from '@/components/layout/page-header'
 import { EmptyState } from '@/components/shared/empty-state'
@@ -22,9 +22,12 @@ import {
   getMutabaahProgress,
   getMutabaahProgressWithNames,
   getTargetMutabaah,
+  hitungNilai,
   type NilaiMutabaah,
   type MutabaahProgressItem,
   type MutabaahProgressWithName,
+  type KegiatanItem,
+  type SubKegiatanItem,
 } from '@/lib/queries/mutabaah'
 import { getActiveSemester, getSemester, type Semester } from '@/lib/queries/semester'
 
@@ -125,11 +128,13 @@ function TargetDetailDialog({
   siswa,
   kamar,
   semesterId,
+  kegiatanList,
   onClose,
 }: {
   siswa: SiswaRow | null
   kamar: string
   semesterId: string
+  kegiatanList: KegiatanItem[]
   onClose: () => void
 }) {
   const { data: progressList = [], isLoading } = useQuery({
@@ -138,6 +143,53 @@ function TargetDetailDialog({
       siswa ? getMutabaahProgressWithNames(siswa.id, semesterId) : Promise.resolve([]),
     enabled: !!siswa && !!semesterId,
   })
+
+  // State expanded
+  const [expandedKegiatan, setExpandedKegiatan] = useState<Record<string, boolean>>({})
+
+  const toggleKegiatan = (id: string) => {
+    setExpandedKegiatan((prev) => ({
+      ...prev,
+      [id]: !prev[id],
+    }))
+  }
+
+  const getParentProgress = (kegiatan: KegiatanItem) => {
+    const subs = kegiatan.sub_kegiatan ?? []
+    if (subs.length === 0) {
+      return progressList.find(
+        (p) => p.kegiatan_id === kegiatan.id && p.sub_kegiatan_id === null
+      )
+    }
+
+    const subIds = new Set(subs.map(s => s.id))
+    const relevant = progressList.filter(
+      p => p.kegiatan_id === kegiatan.id && p.sub_kegiatan_id && subIds.has(p.sub_kegiatan_id)
+    )
+
+    if (relevant.length === 0) return undefined
+
+    const totalHadir = relevant.reduce((sum, p) => sum + p.total_hadir, 0)
+    const target = relevant.reduce((sum, p) => sum + p.target, 0)
+    const persentase = target > 0 ? Math.min(100, Math.round((totalHadir / target) * 100)) : 0
+
+    return {
+      kegiatan_id: kegiatan.id,
+      sub_kegiatan_id: null,
+      total_hadir: totalHadir,
+      target: target,
+      persentase,
+      nilai: hitungNilai(persentase),
+      nama_kegiatan: kegiatan.nama_kegiatan,
+      nama_sub: null
+    }
+  }
+
+  const getChildProgress = (kegiatanId: string, subId: string) => {
+    return progressList.find(
+      (p) => p.kegiatan_id === kegiatanId && p.sub_kegiatan_id === subId
+    )
+  }
 
   return (
     <Dialog open={!!siswa} onOpenChange={(open) => { if (!open) onClose() }}>
@@ -188,67 +240,165 @@ function TargetDetailDialog({
                 </tr>
               </thead>
               <tbody>
-                {progressList.map((item, rowIdx) => {
-                  const isEven = rowIdx % 2 === 0
-                  return (
-                    <tr
-                      key={`${item.kegiatan_id}-${item.sub_kegiatan_id ?? 'main'}`}
-                      className={cn(
-                        "border-b border-[var(--border)] transition-colors hover:bg-[var(--surface-2)]/40",
-                        isEven ? 'bg-[var(--surface)]' : 'bg-[var(--surface-2)]/60'
-                      )}
+                {kegiatanList.length === 0 ? (
+                  <tr>
+                    <td
+                      colSpan={5}
+                      className="px-4 py-8 text-center text-[var(--text-tertiary)]"
                     >
-                      {/* Nama Kegiatan */}
-                      <td className="px-4 py-3 font-medium text-[var(--text-primary)]">
-                        {item.nama_sub ? (
-                          <div>
-                            <span className="text-[10px] text-[var(--text-tertiary)] block">
-                              {item.nama_kegiatan}
-                            </span>
-                            <span className="text-xs font-semibold block">
-                              ↳ {item.nama_sub}
-                            </span>
-                          </div>
-                        ) : (
-                          <span className="text-xs font-bold block">
-                            {item.nama_kegiatan}
-                          </span>
-                        )}
-                      </td>
+                      Tidak ada kegiatan yang terkonfigurasi.
+                    </td>
+                  </tr>
+                ) : (
+                  kegiatanList.map((kegiatan, idx) => {
+                    const parentNo = String(idx + 1)
+                    const hasSubs = kegiatan.sub_kegiatan && kegiatan.sub_kegiatan.length > 0
+                    const isExpanded = !!expandedKegiatan[kegiatan.id]
+                    const parentItem = getParentProgress(kegiatan)
 
-                      {/* Kehadiran */}
-                      <td className="px-4 py-3 text-center text-sm font-semibold text-[var(--text-primary)]">
-                        {item.total_hadir} / {item.target}
-                      </td>
+                    const isEven = idx % 2 === 0
+                    const parentBg = isEven ? 'bg-[var(--surface)]' : 'bg-[var(--surface-2)]/60'
 
-                      {/* Persentase */}
-                      <td className="px-4 py-3 text-center">
-                        <span className={cn('text-sm font-bold', NILAI_TEXT[item.nilai])}>
-                          {item.persentase}%
-                        </span>
-                      </td>
+                    return (
+                      <Fragment key={kegiatan.id}>
+                        {/* Parent Row */}
+                        <tr
+                          className={cn(
+                            "border-b border-[var(--border)] transition-colors hover:bg-[var(--surface-2)]/40",
+                            parentBg
+                          )}
+                        >
+                          {/* Nama Kegiatan */}
+                          <td className="px-4 py-3 font-semibold text-[var(--text-primary)]">
+                            <div 
+                              className={cn(
+                                "flex items-center gap-1.5",
+                                hasSubs && "cursor-pointer select-none"
+                              )}
+                              onClick={() => hasSubs && toggleKegiatan(kegiatan.id)}
+                            >
+                              {hasSubs && (
+                                <span className="text-[var(--text-secondary)]">
+                                  {isExpanded ? (
+                                    <ChevronDown className="h-3 w-3 shrink-0" />
+                                  ) : (
+                                    <ChevronRight className="h-3 w-3 shrink-0" />
+                                  )}
+                                </span>
+                              )}
+                              <span className="text-xs font-mono text-[var(--text-secondary)] mr-1">
+                                {parentNo}
+                              </span>
+                              <span className="text-xs truncate" title={kegiatan.nama_kegiatan}>
+                                {kegiatan.nama_kegiatan}
+                              </span>
+                            </div>
+                          </td>
 
-                      {/* Bar Capaian */}
-                      <td className="px-4 py-3">
-                        <div className="flex justify-center w-full">
-                          <ProgressBar persentase={item.persentase} />
-                        </div>
-                      </td>
+                          {/* Kehadiran */}
+                          <td className="px-4 py-3 text-center text-sm font-semibold text-[var(--text-primary)] font-mono">
+                            {parentItem ? `${parentItem.total_hadir} / ${parentItem.target}` : '—'}
+                          </td>
 
-                      {/* Nilai */}
-                      <td className="px-4 py-3 text-center">
-                        <div className="flex flex-col items-center">
-                          <span className={cn('text-sm font-bold', NILAI_TEXT[item.nilai])}>
-                            {item.nilai}
-                          </span>
-                          <span className="text-[10px] text-[var(--text-tertiary)] leading-tight">
-                            {NILAI_LABEL[item.nilai]}
-                          </span>
-                        </div>
-                      </td>
-                    </tr>
-                  )
-                })}
+                          {/* Persentase */}
+                          <td className="px-4 py-3 text-center">
+                            {parentItem ? (
+                              <span className={cn('text-sm font-bold', NILAI_TEXT[parentItem.nilai])}>
+                                {parentItem.persentase}%
+                              </span>
+                            ) : '—'}
+                          </td>
+
+                          {/* Bar Capaian */}
+                          <td className="px-4 py-3">
+                            <div className="flex justify-center w-full">
+                              {parentItem ? (
+                                <ProgressBar persentase={parentItem.persentase} />
+                              ) : '—'}
+                            </div>
+                          </td>
+
+                          {/* Nilai */}
+                          <td className="px-4 py-3 text-center">
+                            {parentItem ? (
+                              <div className="flex flex-col items-center">
+                                <span className={cn('text-sm font-bold', NILAI_TEXT[parentItem.nilai])}>
+                                  {parentItem.nilai}
+                                </span>
+                                <span className="text-[10px] text-[var(--text-secondary)] leading-tight">
+                                  {NILAI_LABEL[parentItem.nilai]}
+                                </span>
+                              </div>
+                            ) : '—'}
+                          </td>
+                        </tr>
+
+                        {/* Child Rows if Expanded */}
+                        {hasSubs && isExpanded && kegiatan.sub_kegiatan!.map((sub, subIdx) => {
+                          const childNo = `${parentNo}.${subIdx + 1}`
+                          const childBg = 'bg-[var(--surface-2)]/30'
+                          const childItem = getChildProgress(kegiatan.id, sub.id)
+
+                          return (
+                            <tr
+                              key={`${kegiatan.id}-${sub.id}`}
+                              className="border-b border-[var(--border)] bg-[var(--surface-2)]/20 hover:bg-[var(--surface-2)]/40 transition-colors"
+                            >
+                              {/* Nama Sub */}
+                              <td className={cn("px-4 py-2.5", childBg)}>
+                                <div className="pl-6 flex items-center gap-1.5">
+                                  <span className="text-[10px] font-mono text-[var(--text-tertiary)] mr-1">
+                                    {childNo}
+                                  </span>
+                                  <span className="text-xs text-[var(--text-secondary)] font-medium truncate" title={sub.nama_sub}>
+                                    ↳ {sub.nama_sub}
+                                  </span>
+                                </div>
+                              </td>
+
+                              {/* Kehadiran */}
+                              <td className={cn("px-4 py-2.5 text-center text-xs font-medium text-[var(--text-secondary)] font-mono", childBg)}>
+                                {childItem ? `${childItem.total_hadir} / ${childItem.target}` : '—'}
+                              </td>
+
+                              {/* Persentase */}
+                              <td className={cn("px-4 py-2.5 text-center", childBg)}>
+                                {childItem ? (
+                                  <span className={cn('text-xs font-semibold', NILAI_TEXT[childItem.nilai])}>
+                                    {childItem.persentase}%
+                                  </span>
+                                ) : '—'}
+                              </td>
+
+                              {/* Bar Capaian */}
+                              <td className={cn("px-4 py-2.5", childBg)}>
+                                <div className="flex justify-center w-full">
+                                  {childItem ? (
+                                    <ProgressBar persentase={childItem.persentase} />
+                                  ) : '—'}
+                                </div>
+                              </td>
+
+                              {/* Nilai */}
+                              <td className={cn("px-4 py-2.5 text-center", childBg)}>
+                                {childItem ? (
+                                  <div className="flex flex-col items-center">
+                                    <span className={cn('text-xs font-semibold', NILAI_TEXT[childItem.nilai])}>
+                                      {childItem.nilai}
+                                    </span>
+                                    <span className="text-[9px] text-[var(--text-tertiary)] leading-tight">
+                                      {NILAI_LABEL[childItem.nilai]}
+                                    </span>
+                                  </div>
+                                ) : '—'}
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </Fragment>
+                    )
+                  })
+                )}
               </tbody>
             </table>
           </div>
@@ -273,6 +423,16 @@ export default function TargetMutabaahPage() {
   const [detailSiswa, setDetailSiswa] = useState<SiswaRow | null>(null)
 
   const tabInitialized = useRef(false)
+
+  // ── State expanded kegiatan di tabel utama ──
+  const [expandedKegiatan, setExpandedKegiatan] = useState<Record<string, boolean>>({})
+
+  const toggleKegiatan = (id: string) => {
+    setExpandedKegiatan((prev) => ({
+      ...prev,
+      [id]: !prev[id],
+    }))
+  }
 
   // ── Query Kamar ──
   const { data: kamarList = [], isLoading: loadingKamar } = useQuery({
@@ -344,6 +504,15 @@ export default function TargetMutabaahPage() {
     queryFn: getKegiatanWithSub,
   })
 
+  const sortedKegiatanList = useMemo(() => {
+    return [...kegiatanList]
+      .map((k) => ({
+        ...k,
+        sub_kegiatan: k.sub_kegiatan ? [...k.sub_kegiatan].sort((a, b) => a.urutan - b.urutan) : [],
+      }))
+      .sort((a, b) => a.urutan - b.urutan)
+  }, [kegiatanList])
+
   // ── Query Siswa ──
   const { data: siswaList = [], isLoading: loadingSiswa } = useQuery({
     queryKey: ['siswa-by-kamar-target', selectedKamar],
@@ -366,21 +535,34 @@ export default function TargetMutabaahPage() {
     enabled: !!effectiveSemesterId && siswaList.length > 0,
   })
 
-  // ── Buat kolom kegiatan ──
-  const kegiatanCols = useMemo(() => {
-    const cols: { kegiatanId: string; namaKegiatan: string; subId: string | null; namaSub: string | null }[] = []
-    for (const kg of kegiatanList) {
-      const subs = kg.sub_kegiatan ?? []
-      if (subs.length === 0) {
-        cols.push({ kegiatanId: kg.id, namaKegiatan: kg.nama_kegiatan, subId: null, namaSub: null })
-      } else {
-        for (const sub of subs) {
-          cols.push({ kegiatanId: kg.id, namaKegiatan: kg.nama_kegiatan, subId: sub.id, namaSub: sub.nama_sub })
-        }
-      }
+  const getSiswaParentProgress = (siswaProgress: MutabaahProgressItem[], kegiatan: KegiatanItem) => {
+    const subs = kegiatan.sub_kegiatan ?? []
+    if (subs.length === 0) {
+      return siswaProgress.find(
+        (p) => p.kegiatan_id === kegiatan.id && p.sub_kegiatan_id === null
+      )
     }
-    return cols
-  }, [kegiatanList])
+
+    const subIds = new Set(subs.map(s => s.id))
+    const relevantProgress = siswaProgress.filter(
+      p => p.kegiatan_id === kegiatan.id && p.sub_kegiatan_id && subIds.has(p.sub_kegiatan_id)
+    )
+
+    if (relevantProgress.length === 0) return undefined
+
+    const totalHadir = relevantProgress.reduce((sum, p) => sum + p.total_hadir, 0)
+    const target = relevantProgress.reduce((sum, p) => sum + p.target, 0)
+    const persentase = target > 0 ? Math.min(100, Math.round((totalHadir / target) * 100)) : 0
+
+    return {
+      kegiatan_id: kegiatan.id,
+      sub_kegiatan_id: null,
+      total_hadir: totalHadir,
+      target: target,
+      persentase,
+      nilai: hitungNilai(persentase)
+    }
+  }
 
   // ── Filter siswa ──
   const filteredData = useMemo(() => {
@@ -392,6 +574,14 @@ export default function TargetMutabaahPage() {
 
   const totalRows = filteredData.length
   const totalPages = Math.max(1, Math.ceil(totalRows / pageSize))
+
+  // ── Penanganan Out-Of-Bounds Page ──
+  useEffect(() => {
+    if (page > totalPages) {
+      setPage(1)
+    }
+  }, [totalPages, page])
+
   const paginatedData = useMemo(() => {
     const from = (page - 1) * pageSize
     return filteredData.slice(from, from + pageSize)
@@ -547,45 +737,103 @@ export default function TargetMutabaahPage() {
               </tr>
             </thead>
             <tbody>
-              {kegiatanCols.map((col, rowIdx) => {
-                const isEven = rowIdx % 2 === 0
+              {sortedKegiatanList.map((kegiatan, idx) => {
+                const parentNo = String(idx + 1)
+                const hasSubs = kegiatan.sub_kegiatan && kegiatan.sub_kegiatan.length > 0
+                const isExpanded = !!expandedKegiatan[kegiatan.id]
+                
+                const isEven = idx % 2 === 0
+                const parentBg = isEven ? 'bg-[var(--surface)]' : 'bg-[var(--surface-2)]/60'
+
                 return (
-                  <tr
-                    key={`${col.kegiatanId}-${col.subId ?? 'main'}`}
-                    className={`border-b border-[var(--border)] ${isEven ? 'bg-[var(--surface)]' : 'bg-[var(--surface-2)]/60'}`}
-                  >
-                    {/* No */}
-                    <td className={`sticky left-0 z-10 border-r border-[var(--border)] px-2 py-2 text-center text-xs text-[var(--text-tertiary)] ${isEven ? 'bg-[var(--surface)]' : 'bg-[var(--surface-2)]'}`}>
-                      {rowIdx + 1}
-                    </td>
-                    {/* Nama Kegiatan */}
-                    <td className={`sticky left-10 z-10 border-r border-[var(--border)] px-3 py-2 ${isEven ? 'bg-[var(--surface)]' : 'bg-[var(--surface-2)]'}`}>
-                      {col.namaSub ? (
-                        <div>
-                          <p className="text-[10px] text-[var(--text-tertiary)]">{col.namaKegiatan}</p>
-                          <p className="text-xs font-medium text-[var(--text-primary)]">↳ {col.namaSub}</p>
-                        </div>
-                      ) : (
-                        <p className="text-xs font-semibold text-[var(--text-primary)]">{col.namaKegiatan}</p>
-                      )}
-                    </td>
-                    {/* Progress per siswa */}
-                    {paginatedData.map(({ siswa, progress }, colIdx) => {
-                      const progressMap = new Map(
-                        progress.map((p) => [`${p.kegiatan_id}__${p.sub_kegiatan_id ?? 'null'}`, p])
-                      )
-                      const key = `${col.kegiatanId}__${col.subId ?? 'null'}`
-                      const item = progressMap.get(key)
-                      return (
-                        <td
-                          key={`${siswa.id}-${key}-${colIdx}`}
-                          className="min-w-[140px] border-r border-[var(--border)] px-2 py-1.5"
+                  <Fragment key={kegiatan.id}>
+                    {/* Parent Row */}
+                    <tr
+                      className={`border-b border-[var(--border)] hover:bg-[var(--surface-2)]/40 transition-colors ${parentBg}`}
+                    >
+                      {/* No */}
+                      <td className={`sticky left-0 z-10 border-r border-[var(--border)] px-2 py-2 text-center text-xs text-[var(--text-tertiary)] ${parentBg}`}>
+                        {parentNo}
+                      </td>
+                      {/* Nama Kegiatan */}
+                      <td className={`sticky left-10 z-10 border-r border-[var(--border)] px-3 py-2 ${parentBg}`}>
+                        <div 
+                          className={cn(
+                            "flex items-center gap-1.5",
+                            hasSubs && "cursor-pointer select-none"
+                          )}
+                          onClick={() => hasSubs && toggleKegiatan(kegiatan.id)}
                         >
-                          <ProgressCell item={item} />
-                        </td>
+                          {hasSubs && (
+                            <span className="text-[var(--text-secondary)]">
+                              {isExpanded ? (
+                                <ChevronDown className="h-3 w-3 shrink-0" />
+                              ) : (
+                                <ChevronRight className="h-3 w-3 shrink-0" />
+                              )}
+                            </span>
+                          )}
+                          <span className="text-xs font-semibold text-[var(--text-primary)] truncate" title={kegiatan.nama_kegiatan}>
+                            {kegiatan.nama_kegiatan}
+                          </span>
+                        </div>
+                      </td>
+                      {/* Progress per siswa */}
+                      {paginatedData.map(({ siswa, progress }, colIdx) => {
+                        const item = getSiswaParentProgress(progress, kegiatan)
+                        return (
+                          <td
+                            key={`${siswa.id}-${kegiatan.id}-parent-${colIdx}`}
+                            className="min-w-[140px] border-r border-[var(--border)] px-2 py-1.5"
+                          >
+                            <ProgressCell item={item} />
+                          </td>
+                        )
+                      })}
+                    </tr>
+
+                    {/* Child Rows if Expanded */}
+                    {hasSubs && isExpanded && kegiatan.sub_kegiatan!.map((sub, subIdx) => {
+                      const childNo = `${parentNo}.${subIdx + 1}`
+                      const childBg = 'bg-[var(--surface-2)]/30'
+
+                      return (
+                        <tr
+                          key={`${kegiatan.id}-${sub.id}`}
+                          className="border-b border-[var(--border)] bg-[var(--surface-2)]/20 hover:bg-[var(--surface-2)]/40 transition-colors"
+                        >
+                          {/* No */}
+                          <td className={`sticky left-0 z-10 border-r border-[var(--border)] px-2 py-2 text-center text-xs text-[var(--text-tertiary)] ${childBg}`}>
+                            {childNo}
+                          </td>
+                          {/* Nama Sub */}
+                          <td className={`sticky left-10 z-10 border-r border-[var(--border)] px-3 py-2 ${childBg}`}>
+                            <div className="pl-6 flex items-center gap-1">
+                              <span className="text-xs text-[var(--text-secondary)] font-medium truncate" title={sub.nama_sub}>
+                                ↳ {sub.nama_sub}
+                              </span>
+                            </div>
+                          </td>
+                          {/* Progress per siswa */}
+                          {paginatedData.map(({ siswa, progress }, colIdx) => {
+                            const progressMap = new Map(
+                              progress.map((p) => [`${p.kegiatan_id}__${p.sub_kegiatan_id ?? 'null'}`, p])
+                            )
+                            const key = `${kegiatan.id}__${sub.id}`
+                            const item = progressMap.get(key)
+                            return (
+                              <td
+                                key={`${siswa.id}-${kegiatan.id}-${sub.id}-${colIdx}`}
+                                className="min-w-[140px] border-r border-[var(--border)] px-2 py-1.5"
+                              >
+                                <ProgressCell item={item} />
+                              </td>
+                            )
+                          })}
+                        </tr>
                       )
                     })}
-                  </tr>
+                  </Fragment>
                 )
               })}
             </tbody>
@@ -640,6 +888,7 @@ export default function TargetMutabaahPage() {
         siswa={detailSiswa}
         kamar={selectedKamar}
         semesterId={effectiveSemesterId}
+        kegiatanList={sortedKegiatanList}
         onClose={() => setDetailSiswa(null)}
       />
     </div>

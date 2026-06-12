@@ -2,8 +2,8 @@
 
 import { format } from 'date-fns'
 import { id as idLocale } from 'date-fns/locale'
-import { Eye, Search, SlidersHorizontal } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { Eye, Search, SlidersHorizontal, ChevronDown, ChevronRight } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState, Fragment } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { PageHeader } from '@/components/layout/page-header'
 import { DatePicker } from '@/components/shared/date-picker'
@@ -109,21 +109,15 @@ function RekapDetailDialog({
     enabled: !!target,
   })
 
-  // Bangun kolom: kegiatan/sub (horizontal)
-  const cols = useMemo(() => {
-    const result: { kegiatanId: string; subId: string | null; label: string; namaKegiatan: string }[] = []
-    for (const kg of kegiatanList) {
-      const subs = kg.sub_kegiatan ?? []
-      if (subs.length === 0) {
-        result.push({ kegiatanId: kg.id, subId: null, label: kg.nama_kegiatan, namaKegiatan: kg.nama_kegiatan })
-      } else {
-        for (const sub of subs) {
-          result.push({ kegiatanId: kg.id, subId: sub.id, label: sub.nama_sub, namaKegiatan: kg.nama_kegiatan })
-        }
-      }
-    }
-    return result
-  }, [kegiatanList])
+  // State expanded
+  const [expandedKegiatan, setExpandedKegiatan] = useState<Record<string, boolean>>({})
+
+  const toggleKegiatan = (id: string) => {
+    setExpandedKegiatan((prev) => ({
+      ...prev,
+      [id]: !prev[id],
+    }))
+  }
 
   // Bangun baris: tanggal (vertikal, bisa di-scroll)
   const tanggalList = useMemo(() => {
@@ -141,20 +135,29 @@ function RekapDetailDialog({
     return m
   }, [detailData])
 
-  // Total hadir per kolom
-  const totalHadirPerCol = useMemo(() => {
-    const totals = new Map<string, number>()
-    for (const col of cols) {
-      let count = 0
-      for (const tgl of tanggalList) {
-        const k = `${tgl}__${col.kegiatanId}__${col.subId ?? 'null'}`
-        const s = dataMap.get(k)
-        if (s === 'Hadir') count++
-      }
-      totals.set(`${col.kegiatanId}__${col.subId ?? 'null'}`, count)
+  const getSubStatusOnDate = (tgl: string, kegiatanId: string, subId: string | null) => {
+    const k = `${tgl}__${kegiatanId}__${subId ?? 'null'}`
+    return dataMap.get(k)
+  }
+
+  const getParentStatusOnDate = (tgl: string, kegiatan: KegiatanItem) => {
+    const subs = kegiatan.sub_kegiatan ?? []
+    if (subs.length === 0) {
+      return getSubStatusOnDate(tgl, kegiatan.id, null)
     }
-    return totals
-  }, [cols, tanggalList, dataMap])
+    
+    let hadirCount = 0
+    let hasRecord = false
+    for (const sub of subs) {
+      const status = getSubStatusOnDate(tgl, kegiatan.id, sub.id)
+      if (status) {
+        hasRecord = true
+        if (status === 'Hadir') hadirCount++
+      }
+    }
+    if (!hasRecord) return undefined
+    return { hadirCount, total: subs.length }
+  }
 
   const renderCell = (status: MutabaahStatus | undefined): string => {
     if (!status) return '-'
@@ -225,7 +228,7 @@ function RekapDetailDialog({
                 </tr>
               </thead>
               <tbody>
-                {cols.length === 0 ? (
+                {kegiatanList.length === 0 ? (
                   <tr>
                     <td
                       colSpan={tanggalList.length + 2}
@@ -235,59 +238,171 @@ function RekapDetailDialog({
                     </td>
                   </tr>
                 ) : (
-                  cols.map((col, rowIdx) => {
-                    const isEven = rowIdx % 2 === 0
-                    const cellBg = isEven ? 'bg-[var(--surface)]' : 'bg-[var(--surface-2)]/60'
-                    const totalHadir = totalHadirPerCol.get(`${col.kegiatanId}__${col.subId ?? 'null'}`) ?? 0
+                  kegiatanList.map((kegiatan, idx) => {
+                    const parentNo = String(idx + 1)
+                    const hasSubs = kegiatan.sub_kegiatan && kegiatan.sub_kegiatan.length > 0
+                    const isExpanded = !!expandedKegiatan[kegiatan.id]
+                    
+                    let totalHadir = 0
+                    if (!hasSubs) {
+                      for (const tgl of tanggalList) {
+                        if (getSubStatusOnDate(tgl, kegiatan.id, null) === 'Hadir') {
+                          totalHadir++
+                        }
+                      }
+                    } else {
+                      for (const sub of kegiatan.sub_kegiatan!) {
+                        for (const tgl of tanggalList) {
+                          if (getSubStatusOnDate(tgl, kegiatan.id, sub.id) === 'Hadir') {
+                            totalHadir++
+                          }
+                        }
+                      }
+                    }
+
+                    const isEven = idx % 2 === 0
+                    const parentBg = isEven ? 'bg-[var(--surface)]' : 'bg-[var(--surface-2)]/60'
 
                     return (
-                      <tr
-                        key={`${col.kegiatanId}-${col.subId ?? 'main'}`}
-                        className={`border-b border-[var(--border)] ${isEven ? 'bg-[var(--surface)]' : 'bg-[var(--surface-2)]/60'}`}
-                      >
-                        {/* Nama Kegiatan (Sticky Left 0) */}
-                        <td
-                          className={cn(
-                            "border-r border-[var(--border)] px-3 py-2 font-medium text-[var(--text-primary)] w-[208px] min-w-[208px]",
-                            cellBg
-                          )}
-                          style={{ position: 'sticky', left: 0, zIndex: 10 }}
+                      <Fragment key={kegiatan.id}>
+                        {/* Parent Row */}
+                        <tr
+                          className={`border-b border-[var(--border)] hover:bg-[var(--surface-2)]/40 transition-colors ${parentBg}`}
                         >
-                          {col.subId ? (
-                            <div className="pl-3">
-                              <span className="text-[10px] text-[var(--text-tertiary)] block truncate">{col.namaKegiatan}</span>
-                              <span className="text-xs font-medium block truncate">↳ {col.label}</span>
-                            </div>
-                          ) : (
-                            <span className="text-xs font-semibold block truncate">{col.label}</span>
-                          )}
-                        </td>
-
-                        {/* Total Hadir (Sticky Left 208px) */}
-                        <td
-                          className={cn(
-                            "border-r border-[var(--border)] px-3 py-2 text-center font-mono font-bold text-primary w-[96px] min-w-[96px]",
-                            cellBg
-                          )}
-                          style={{ position: 'sticky', left: 208, zIndex: 10 }}
-                        >
-                          {totalHadir}
-                        </td>
-
-                        {/* Nilai per Tanggal */}
-                        {tanggalList.map((tgl) => {
-                          const k = `${tgl}__${col.kegiatanId}__${col.subId ?? 'null'}`
-                          const status = dataMap.get(k)
-                          return (
-                            <td
-                              key={`${tgl}-${col.kegiatanId}-${col.subId ?? 'main'}`}
-                              className={`border-r border-[var(--border)] px-2 py-2 text-center ${cellColor(status)}`}
+                          <td
+                            className={cn(
+                              "border-r border-[var(--border)] px-3 py-2.5 font-semibold text-[var(--text-primary)] w-[208px] min-w-[208px]",
+                              parentBg
+                            )}
+                            style={{ position: 'sticky', left: 0, zIndex: 10 }}
+                          >
+                            <div 
+                              className={cn(
+                                "flex items-center gap-1.5",
+                                hasSubs && "cursor-pointer select-none"
+                              )}
+                              onClick={() => hasSubs && toggleKegiatan(kegiatan.id)}
                             >
-                              {renderCell(status)}
-                            </td>
+                              {hasSubs && (
+                                <span className="text-[var(--text-secondary)]">
+                                  {isExpanded ? (
+                                    <ChevronDown className="h-3 w-3 shrink-0" />
+                                  ) : (
+                                    <ChevronRight className="h-3 w-3 shrink-0" />
+                                  )}
+                                </span>
+                              )}
+                              <span className="text-xs font-mono text-[var(--text-secondary)] mr-1">
+                                {parentNo}
+                              </span>
+                              <span className="text-xs truncate" title={kegiatan.nama_kegiatan}>
+                                {kegiatan.nama_kegiatan}
+                              </span>
+                            </div>
+                          </td>
+                          <td
+                            className={cn(
+                              "border-r border-[var(--border)] px-3 py-2 text-center font-mono font-bold text-primary w-[96px] min-w-[96px]",
+                              parentBg
+                            )}
+                            style={{ position: 'sticky', left: 208, zIndex: 10 }}
+                          >
+                            {totalHadir}
+                          </td>
+                          {tanggalList.map((tgl) => {
+                            const val = getParentStatusOnDate(tgl, kegiatan)
+                            if (val === undefined) {
+                              return (
+                                <td
+                                  key={`${tgl}-${kegiatan.id}-parent`}
+                                  className="border-r border-[var(--border)] px-2 py-2 text-center text-[var(--text-tertiary)]"
+                                >
+                                  —
+                                </td>
+                              )
+                            }
+                            if (typeof val === 'string') {
+                              return (
+                                <td
+                                  key={`${tgl}-${kegiatan.id}-parent`}
+                                  className={`border-r border-[var(--border)] px-2 py-2 text-center ${cellColor(val)}`}
+                                >
+                                  {renderCell(val)}
+                                </td>
+                              )
+                            }
+                            const isAllHadir = val.hadirCount === val.total
+                            return (
+                              <td
+                                key={`${tgl}-${kegiatan.id}-parent`}
+                                className={cn(
+                                  "border-r border-[var(--border)] px-2 py-2 text-center font-mono text-xs",
+                                  isAllHadir ? "text-emerald-600 font-bold" : "text-[var(--text-secondary)]"
+                                )}
+                              >
+                                {val.hadirCount}/{val.total}
+                              </td>
+                            )
+                          })}
+                        </tr>
+
+                        {/* Child Rows if Expanded */}
+                        {hasSubs && isExpanded && kegiatan.sub_kegiatan!.map((sub, subIdx) => {
+                          const childNo = `${parentNo}.${subIdx + 1}`
+                          const childBg = 'bg-[var(--surface-2)]/30'
+                          
+                          let subTotalHadir = 0
+                          for (const tgl of tanggalList) {
+                            if (getSubStatusOnDate(tgl, kegiatan.id, sub.id) === 'Hadir') {
+                              subTotalHadir++
+                            }
+                          }
+
+                          return (
+                            <tr
+                              key={`${kegiatan.id}-${sub.id}`}
+                              className="border-b border-[var(--border)] bg-[var(--surface-2)]/20 hover:bg-[var(--surface-2)]/40 transition-colors"
+                            >
+                              <td
+                                className={cn(
+                                  "border-r border-[var(--border)] px-3 py-2 w-[208px] min-w-[208px]",
+                                  childBg
+                                )}
+                                style={{ position: 'sticky', left: 0, zIndex: 10 }}
+                              >
+                                <div className="pl-6 flex items-center gap-1.5">
+                                  <span className="text-[10px] font-mono text-[var(--text-tertiary)] mr-1">
+                                    {childNo}
+                                  </span>
+                                  <span className="text-xs text-[var(--text-secondary)] font-medium truncate" title={sub.nama_sub}>
+                                    ↳ {sub.nama_sub}
+                                  </span>
+                                </div>
+                              </td>
+                              <td
+                                className={cn(
+                                  "border-r border-[var(--border)] px-3 py-2 text-center font-mono font-medium text-[var(--text-secondary)] w-[96px] min-w-[96px]",
+                                  childBg
+                                )}
+                                style={{ position: 'sticky', left: 208, zIndex: 10 }}
+                              >
+                                {subTotalHadir}
+                              </td>
+                              {tanggalList.map((tgl) => {
+                                const status = getSubStatusOnDate(tgl, kegiatan.id, sub.id)
+                                return (
+                                  <td
+                                    key={`${tgl}-${kegiatan.id}-${sub.id}`}
+                                    className={`border-r border-[var(--border)] px-2 py-2 text-center ${cellColor(status)}`}
+                                  >
+                                    {renderCell(status)}
+                                  </td>
+                                )
+                              })}
+                            </tr>
                           )
                         })}
-                      </tr>
+                      </Fragment>
                     )
                   })
                 )}
@@ -394,26 +509,76 @@ export default function RekapKegiatanPage() {
     return Array.from(map.values()).sort((a, b) => a.nama.localeCompare(b.nama))
   }, [rekapList, debouncedSearch, selectedKamar])
 
-  // ── Kolom kegiatan unik ──
-  const kegiatanCols = useMemo(() => {
-    const seen = new Map<string, { kegiatanId: string; namaKegiatan: string; subId: string | null; namaSub: string | null }>()
-    for (const item of rekapList) {
-      const k = `${item.kegiatan_id}__${item.sub_kegiatan_id ?? 'null'}`
-      if (!seen.has(k)) {
-        seen.set(k, {
-          kegiatanId: item.kegiatan_id,
-          namaKegiatan: item.nama_kegiatan,
-          subId: item.sub_kegiatan_id,
-          namaSub: item.nama_sub,
-        })
-      }
+  // ── State expanded kegiatan di tabel utama ──
+  const [expandedKegiatan, setExpandedKegiatan] = useState<Record<string, boolean>>({})
+
+  const toggleKegiatan = (id: string) => {
+    setExpandedKegiatan((prev) => ({
+      ...prev,
+      [id]: !prev[id],
+    }))
+  }
+
+  // Filter kegiatan yang mempunyai record di rekapList untuk rentang tanggal terpilih
+  const activeKegiatanList = useMemo(() => {
+    const rekapKegiatanIds = new Set(rekapList.map((r) => r.kegiatan_id))
+    const rekapSubIds = new Set(rekapList.map((r) => r.sub_kegiatan_id).filter(Boolean))
+
+    return kegiatanList
+      .filter((k) => rekapKegiatanIds.has(k.id))
+      .map((k) => ({
+        ...k,
+        sub_kegiatan: (k.sub_kegiatan ?? [])
+          .filter((s) => rekapSubIds.has(s.id))
+          .sort((a, b) => a.urutan - b.urutan),
+      }))
+      .sort((a, b) => a.urutan - b.urutan)
+  }, [kegiatanList, rekapList])
+
+  const getSiswaParentRecord = (siswaRecords: MutabaahRekapItem[], kegiatan: KegiatanItem) => {
+    const subs = kegiatan.sub_kegiatan ?? []
+    if (subs.length === 0) {
+      return siswaRecords.find(
+        (r) => r.kegiatan_id === kegiatan.id && r.sub_kegiatan_id === null
+      )
     }
-    return Array.from(seen.values())
-  }, [rekapList])
+
+    const subKeys = new Set(subs.map(s => `${kegiatan.id}__${s.id}`))
+    const relevantRecords = siswaRecords.filter(
+      r => r.kegiatan_id === kegiatan.id && r.sub_kegiatan_id && subKeys.has(`${kegiatan.id}__${r.sub_kegiatan_id}`)
+    )
+
+    if (relevantRecords.length === 0) return null
+
+    return {
+      siswa_id: relevantRecords[0].siswa_id,
+      nama: relevantRecords[0].nama,
+      kelas: relevantRecords[0].kelas,
+      kegiatan_id: kegiatan.id,
+      nama_kegiatan: kegiatan.nama_kegiatan,
+      sub_kegiatan_id: null,
+      nama_sub: null,
+      total_hadir: relevantRecords.reduce((sum, r) => sum + r.total_hadir, 0),
+      total_izin: relevantRecords.reduce((sum, r) => sum + r.total_izin, 0),
+      total_sakit: relevantRecords.reduce((sum, r) => sum + r.total_sakit, 0),
+      total_alpha: relevantRecords.reduce((sum, r) => sum + r.total_alpha, 0),
+      total_terlambat: relevantRecords.reduce((sum, r) => sum + r.total_terlambat, 0),
+      total_libur: relevantRecords.reduce((sum, r) => sum + r.total_libur, 0),
+      total_hari: relevantRecords.reduce((sum, r) => sum + r.total_hari, 0),
+    }
+  }
 
   // ── Paginate ──
   const totalRows = siswaGrouped.length
   const totalPages = Math.max(1, Math.ceil(totalRows / pageSize))
+
+  // ── Penanganan Out-Of-Bounds Page ──
+  useEffect(() => {
+    if (page > totalPages) {
+      setPage(1)
+    }
+  }, [totalPages, page])
+
   const paginatedSiswa = useMemo(() => {
     const from = (page - 1) * pageSize
     return siswaGrouped.slice(from, from + pageSize)
@@ -542,55 +707,124 @@ export default function RekapKegiatanPage() {
               </tr>
             </thead>
             <tbody>
-              {kegiatanCols.map((col, rowIdx) => {
-                const isEven = rowIdx % 2 === 0
+              {activeKegiatanList.map((kegiatan, idx) => {
+                const parentNo = String(idx + 1)
+                const hasSubs = kegiatan.sub_kegiatan && kegiatan.sub_kegiatan.length > 0
+                const isExpanded = !!expandedKegiatan[kegiatan.id]
+                
+                const isEven = idx % 2 === 0
+                const parentBg = isEven ? 'bg-[var(--surface)]' : 'bg-[var(--surface-2)]/60'
+
                 return (
-                  <tr
-                    key={`${col.kegiatanId}-${col.subId ?? 'main'}`}
-                    className={`border-b border-[var(--border)] ${isEven ? 'bg-[var(--surface)]' : 'bg-[var(--surface-2)]/60'}`}
-                  >
-                    {/* No */}
-                    <td className={`sticky left-0 z-10 border-r border-[var(--border)] px-2 py-2 text-center text-xs text-[var(--text-tertiary)] ${isEven ? 'bg-[var(--surface)]' : 'bg-[var(--surface-2)]'}`}>
-                      {rowIdx + 1}
-                    </td>
-                    {/* Nama Kegiatan */}
-                    <td className={`sticky left-10 z-10 border-r border-[var(--border)] px-3 py-2 ${isEven ? 'bg-[var(--surface)]' : 'bg-[var(--surface-2)]'}`}>
-                      {col.namaSub ? (
-                        <div>
-                          <p className="text-[10px] text-[var(--text-tertiary)]">{col.namaKegiatan}</p>
-                          <p className="text-xs font-medium text-[var(--text-primary)]">↳ {col.namaSub}</p>
-                        </div>
-                      ) : (
-                        <p className="text-xs font-semibold text-[var(--text-primary)]">{col.namaKegiatan}</p>
-                      )}
-                    </td>
-                    {/* Sel per Siswa */}
-                    {paginatedSiswa.map(({ siswaId, records }, colIdx) => {
-                      const key = `${col.kegiatanId}__${col.subId ?? 'null'}`
-                      const rec = records.find(
-                        (r) => `${r.kegiatan_id}__${r.sub_kegiatan_id ?? 'null'}` === key
-                      )
-                      return (
-                        <td
-                          key={`${siswaId}-${col.kegiatanId}-${col.subId ?? 'main'}-${colIdx}`}
-                          className="border-r border-[var(--border)] px-2 py-2 text-center"
-                        >
-                          {rec ? (
-                            <div className="flex flex-col gap-0.5 items-center">
-                              <StatusBadge label="Hadir" count={rec.total_hadir} />
-                              <StatusBadge label="Izin" count={rec.total_izin} />
-                              <StatusBadge label="Sakit" count={rec.total_sakit} />
-                              <StatusBadge label="Alpha" count={rec.total_alpha} />
-                              <StatusBadge label="Terlambat" count={rec.total_terlambat} />
-                              <StatusBadge label="Libur" count={rec.total_libur} />
-                            </div>
-                          ) : (
-                            <span className="text-xs text-[var(--text-tertiary)]">—</span>
+                  <Fragment key={kegiatan.id}>
+                    {/* Parent Row */}
+                    <tr
+                      className={`border-b border-[var(--border)] hover:bg-[var(--surface-2)]/40 transition-colors ${parentBg}`}
+                    >
+                      {/* No */}
+                      <td className={`sticky left-0 z-10 border-r border-[var(--border)] px-2 py-2 text-center text-xs text-[var(--text-tertiary)] ${parentBg}`}>
+                        {parentNo}
+                      </td>
+                      {/* Nama Kegiatan */}
+                      <td className={`sticky left-10 z-10 border-r border-[var(--border)] px-3 py-2 ${parentBg}`}>
+                        <div 
+                          className={cn(
+                            "flex items-center gap-1.5",
+                            hasSubs && "cursor-pointer select-none"
                           )}
-                        </td>
+                          onClick={() => hasSubs && toggleKegiatan(kegiatan.id)}
+                        >
+                          {hasSubs && (
+                            <span className="text-[var(--text-secondary)]">
+                              {isExpanded ? (
+                                <ChevronDown className="h-3 w-3 shrink-0" />
+                              ) : (
+                                <ChevronRight className="h-3 w-3 shrink-0" />
+                              )}
+                            </span>
+                          )}
+                          <span className="text-xs font-semibold text-[var(--text-primary)] truncate" title={kegiatan.nama_kegiatan}>
+                            {kegiatan.nama_kegiatan}
+                          </span>
+                        </div>
+                      </td>
+                      {/* Sel per Siswa */}
+                      {paginatedSiswa.map(({ siswaId, records }, colIdx) => {
+                        const rec = getSiswaParentRecord(records, kegiatan)
+                        return (
+                          <td
+                            key={`${siswaId}-${kegiatan.id}-parent-${colIdx}`}
+                            className="border-r border-[var(--border)] px-2 py-2 text-center"
+                          >
+                            {rec ? (
+                              <div className="flex flex-col gap-0.5 items-center">
+                                <StatusBadge label="Hadir" count={rec.total_hadir} />
+                                <StatusBadge label="Izin" count={rec.total_izin} />
+                                <StatusBadge label="Sakit" count={rec.total_sakit} />
+                                <StatusBadge label="Alpha" count={rec.total_alpha} />
+                                <StatusBadge label="Terlambat" count={rec.total_terlambat} />
+                                <StatusBadge label="Libur" count={rec.total_libur} />
+                              </div>
+                            ) : (
+                              <span className="text-xs text-[var(--text-tertiary)]">—</span>
+                            )}
+                          </td>
+                        )
+                      })}
+                    </tr>
+
+                    {/* Child Rows if Expanded */}
+                    {hasSubs && isExpanded && kegiatan.sub_kegiatan!.map((sub, subIdx) => {
+                      const childNo = `${parentNo}.${subIdx + 1}`
+                      const childBg = 'bg-[var(--surface-2)]/30'
+
+                      return (
+                        <tr
+                          key={`${kegiatan.id}-${sub.id}`}
+                          className="border-b border-[var(--border)] bg-[var(--surface-2)]/20 hover:bg-[var(--surface-2)]/40 transition-colors"
+                        >
+                          {/* No */}
+                          <td className={`sticky left-0 z-10 border-r border-[var(--border)] px-2 py-2 text-center text-xs text-[var(--text-tertiary)] ${childBg}`}>
+                            {childNo}
+                          </td>
+                          {/* Nama Sub */}
+                          <td className={`sticky left-10 z-10 border-r border-[var(--border)] px-3 py-2 ${childBg}`}>
+                            <div className="pl-6 flex items-center gap-1">
+                              <span className="text-xs text-[var(--text-secondary)] font-medium truncate" title={sub.nama_sub}>
+                                ↳ {sub.nama_sub}
+                              </span>
+                            </div>
+                          </td>
+                          {/* Sel per Siswa */}
+                          {paginatedSiswa.map(({ siswaId, records }, colIdx) => {
+                            const key = `${kegiatan.id}__${sub.id}`
+                            const rec = records.find(
+                              (r) => `${r.kegiatan_id}__${r.sub_kegiatan_id ?? 'null'}` === key
+                            )
+                            return (
+                              <td
+                                key={`${siswaId}-${kegiatan.id}-${sub.id}-${colIdx}`}
+                                className="border-r border-[var(--border)] px-2 py-2 text-center"
+                              >
+                                {rec ? (
+                                  <div className="flex flex-col gap-0.5 items-center">
+                                    <StatusBadge label="Hadir" count={rec.total_hadir} />
+                                    <StatusBadge label="Izin" count={rec.total_izin} />
+                                    <StatusBadge label="Sakit" count={rec.total_sakit} />
+                                    <StatusBadge label="Alpha" count={rec.total_alpha} />
+                                    <StatusBadge label="Terlambat" count={rec.total_terlambat} />
+                                    <StatusBadge label="Libur" count={rec.total_libur} />
+                                  </div>
+                                ) : (
+                                  <span className="text-xs text-[var(--text-tertiary)]">—</span>
+                                )}
+                              </td>
+                            )
+                          })}
+                        </tr>
                       )
                     })}
-                  </tr>
+                  </Fragment>
                 )
               })}
             </tbody>
