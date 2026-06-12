@@ -3,7 +3,7 @@
 import { format } from 'date-fns'
 import { id as idLocale } from 'date-fns/locale'
 import { CalendarDays, Moon, TrendingUp, Users } from 'lucide-react'
-import { useState } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
   Bar,
@@ -39,6 +39,7 @@ export default function DashboardMutabaahPage() {
   const now = new Date()
   const defaultBulan = format(now, 'yyyy-MM')
 
+  const [selectedUnit, setSelectedUnit] = useState<string>('all')
   const [selectedKamar, setSelectedKamar] = useState<string>('all')
   const [selectedBulan, setSelectedBulan] = useState<string>(defaultBulan)
 
@@ -63,24 +64,36 @@ export default function DashboardMutabaahPage() {
     enabled: !!profile,
   })
 
+  const filteredKamarList = useMemo(() => {
+    if (selectedUnit === 'all') return kamarList
+    return kamarList.filter((k) => k.unit === selectedUnit)
+  }, [kamarList, selectedUnit])
+
+  useEffect(() => {
+    if (selectedKamar !== 'all') {
+      const exists = filteredKamarList.some((k) => k.nama_kamar === selectedKamar)
+      if (!exists) setSelectedKamar('all')
+    }
+  }, [filteredKamarList, selectedKamar])
+
   const kamarFilter = selectedKamar === 'all' ? undefined : selectedKamar
 
   // ── Query Stats ──
   const { data: stats, isLoading: loadingStats } = useQuery({
-    queryKey: ['mutabaah-dashboard-stats', kamarFilter, selectedBulan],
-    queryFn: () => getMutabaahDashboardStats(kamarFilter, selectedBulan),
+    queryKey: ['mutabaah-dashboard-stats', kamarFilter, selectedBulan, selectedUnit],
+    queryFn: () => getMutabaahDashboardStats(kamarFilter, selectedBulan, selectedUnit),
   })
 
   // ── Query Kehadiran Per Kegiatan ──
   const { data: kehadiranPerKegiatan = [], isLoading: loadingBar } = useQuery({
-    queryKey: ['mutabaah-kehadiran-per-kegiatan', kamarFilter, selectedBulan],
-    queryFn: () => getKehadiranPerKegiatan(kamarFilter, selectedBulan, 5),
+    queryKey: ['mutabaah-kehadiran-per-kegiatan', kamarFilter, selectedBulan, selectedUnit],
+    queryFn: () => getKehadiranPerKegiatan(kamarFilter, selectedBulan, 5, selectedUnit),
   })
 
   // ── Query Tren Harian ──
   const { data: trendHarian = [], isLoading: loadingLine } = useQuery({
-    queryKey: ['mutabaah-trend-harian', kamarFilter, selectedBulan],
-    queryFn: () => getTrendKehadiranHarian(kamarFilter, selectedBulan),
+    queryKey: ['mutabaah-trend-harian', kamarFilter, selectedBulan, selectedUnit],
+    queryFn: () => getTrendKehadiranHarian(kamarFilter, selectedBulan, selectedUnit),
   })
 
   // Format data untuk chart
@@ -108,6 +121,20 @@ export default function DashboardMutabaahPage() {
       {/* ── Filter Bar ── */}
       <div className="flex flex-wrap items-end gap-3 rounded-lg border border-[var(--border)] bg-[var(--surface)] p-4 no-print">
         <div className="flex flex-col gap-1.5">
+          <label className="text-xs font-medium text-[var(--text-secondary)]">Unit</label>
+          <Select value={selectedUnit} onValueChange={setSelectedUnit}>
+            <SelectTrigger id="select-unit-dashboard" className="w-48">
+              <SelectValue placeholder="Semua Unit" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Semua Unit</SelectItem>
+              <SelectItem value="SD">SD</SelectItem>
+              <SelectItem value="SMP">SMP</SelectItem>
+              <SelectItem value="SMA">SMA</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="flex flex-col gap-1.5">
           <label className="text-xs font-medium text-[var(--text-secondary)]">Kamar</label>
           <Select value={selectedKamar} onValueChange={setSelectedKamar}>
             <SelectTrigger id="select-kamar-dashboard" className="w-48">
@@ -115,7 +142,7 @@ export default function DashboardMutabaahPage() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Semua Kamar</SelectItem>
-              {kamarList.map((k) => (
+              {filteredKamarList.map((k) => (
                 <SelectItem key={k.id} value={k.nama_kamar}>{k.nama_kamar}</SelectItem>
               ))}
             </SelectContent>

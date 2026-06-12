@@ -32,12 +32,15 @@ import {
 import { toast } from '@/components/ui/use-toast'
 import { useAuth } from '@/hooks/use-auth'
 import { logAudit } from '@/lib/audit/log'
+import { cn } from '@/lib/utils'
 import {
   createSubKegiatan,
+  createSubKegiatanBulk,
   deleteSubKegiatan,
   getKegiatan,
   getSubKegiatan,
   updateSubKegiatan,
+  updateSubKegiatanBulk,
   type KegiatanItem,
   type SubKegiatanItem,
 } from '@/lib/queries/mutabaah'
@@ -67,7 +70,6 @@ export default function SubKegiatanMutabaahPage() {
   const { profile } = useAuth()
   const searchParams = useSearchParams()
 
-  // Filter awal dari query param (dari link di halaman kegiatan)
   const defaultKegiatanId = searchParams.get('kegiatan_id') ?? ''
 
   // ── State Filter Kegiatan ──
@@ -82,8 +84,14 @@ export default function SubKegiatanMutabaahPage() {
   // ── State Dialog ──
   const [isFormOpen, setIsFormOpen] = useState(false)
   const [isDeleteOpen, setIsDeleteOpen] = useState(false)
+  const [isBulkInputOpen, setIsBulkInputOpen] = useState(false)
+  const [isBulkEditOpen, setIsBulkEditOpen] = useState(false)
+
   const [editingItem, setEditingItem] = useState<SubKegiatanItem | null>(null)
   const [deletingItem, setDeletingItem] = useState<SubKegiatanItem | null>(null)
+
+  // ── State Seleksi Baris untuk Bulk Edit ──
+  const [selectedRows, setSelectedRows] = useState<string[]>([])
 
   // ── State Combobox Pencarian Form ──
   const [formKegiatanSearch, setFormKegiatanSearch] = useState('')
@@ -115,6 +123,10 @@ export default function SubKegiatanMutabaahPage() {
     queryKey: ['mutabaah-sub-kegiatan', filterKegiatanId],
     queryFn: () => getSubKegiatan(filterKegiatanId || undefined),
   })
+
+  const selectedItems = useMemo(() => {
+    return allData.filter((d) => selectedRows.includes(d.id))
+  }, [allData, selectedRows])
 
   // ── Sorting Client-side ──
   const sortedData = useMemo(() => {
@@ -158,22 +170,23 @@ export default function SubKegiatanMutabaahPage() {
 
   const invalidate = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: ['mutabaah-sub-kegiatan'] })
-    queryClient.invalidateQueries({ queryKey: ['mutabaah-kegiatan'] }) // Invalidate parent to refresh totals
+    queryClient.invalidateQueries({ queryKey: ['mutabaah-kegiatan'] })
   }, [queryClient])
 
-  // Helper: nama kegiatan berdasarkan ID
   const getNamaKegiatan = (id: string): string => {
     return kegiatanList.find((k) => k.id === id)?.nama_kegiatan ?? id
   }
 
-  // Helper: nama semester
-  const getSemesterLabel = useCallback((semesterId: string | null | undefined): string => {
-    if (!semesterId) return '—'
-    const s = semesterList.find((sem) => sem.id === semesterId)
-    if (!s) return semesterId
-    const tp = s.tahun_pelajaran as { nama: string } | undefined
-    return `Semester ${s.nomor_semester} — ${tp?.nama ?? ''}`
-  }, [semesterList])
+  const getSemesterLabel = useCallback(
+    (semesterId: string | null | undefined): string => {
+      if (!semesterId) return '—'
+      const s = semesterList.find((sem) => sem.id === semesterId)
+      if (!s) return semesterId
+      const tp = s.tahun_pelajaran as { nama: string } | undefined
+      return `Semester ${s.nomor_semester} — ${tp?.nama ?? ''}`
+    },
+    [semesterList]
+  )
 
   // ── Mutasi Create ──
   const createMutation = useMutation({
@@ -204,6 +217,31 @@ export default function SubKegiatanMutabaahPage() {
         semester_id: '',
       })
       setFormKegiatanSearch('')
+    },
+    onError: (error: Error) => {
+      toast({ title: 'Gagal', description: error.message, variant: 'destructive' })
+    },
+  })
+
+  // ── Mutasi Create Bulk ──
+  const createBulkMutation = useMutation({
+    mutationFn: (values: { kegiatan_id: string; nama_sub: string; poin_target: number; semester_id: string }[]) =>
+      createSubKegiatanBulk(values),
+    onSuccess: async (results) => {
+      const userId = getUserId()
+      if (userId) {
+        for (const res of results) {
+          await logAudit(userId, 'CREATE', 'sub_kegiatan', res.id, null, {
+            kegiatan_id: res.kegiatan_id,
+            nama_sub: res.nama_sub,
+            poin_target: res.poin_target,
+            semester_id: res.semester_id,
+          })
+        }
+      }
+      invalidate()
+      toast({ title: 'Berhasil', description: `${results.length} sub kegiatan berhasil ditambahkan` })
+      setIsBulkInputOpen(false)
     },
     onError: (error: Error) => {
       toast({ title: 'Gagal', description: error.message, variant: 'destructive' })
@@ -265,6 +303,47 @@ export default function SubKegiatanMutabaahPage() {
     },
   })
 
+  // ── Mutasi Update Bulk ──
+  const updateBulkMutation = useMutation({
+    mutationFn: (updates: { id: string; kegiatan_id: string; nama_sub: string; poin_target: number; semester_id: string }[]) =>
+      updateSubKegiatanBulk(updates),
+    onSuccess: async (results) => {
+      const userId = getUserId()
+      if (userId) {
+        for (const res of results) {
+          const old = allData.find((d) => d.id === res.id)
+          await logAudit(
+            userId,
+            'UPDATE',
+            'sub_kegiatan',
+            res.id,
+            old
+              ? {
+                  kegiatan_id: old.kegiatan_id,
+                  nama_sub: old.nama_sub,
+                  poin_target: old.poin_target,
+                  semester_id: old.semester_id,
+                }
+              : null,
+            {
+              kegiatan_id: res.kegiatan_id,
+              nama_sub: res.nama_sub,
+              poin_target: res.poin_target,
+              semester_id: res.semester_id,
+            }
+          )
+        }
+      }
+      invalidate()
+      setSelectedRows([])
+      toast({ title: 'Berhasil', description: `${results.length} sub kegiatan berhasil diperbarui` })
+      setIsBulkEditOpen(false)
+    },
+    onError: (error: Error) => {
+      toast({ title: 'Gagal', description: error.message, variant: 'destructive' })
+    },
+  })
+
   // ── Mutasi Delete ──
   const deleteMutation = useMutation({
     mutationFn: (id: string) => deleteSubKegiatan(id),
@@ -286,6 +365,7 @@ export default function SubKegiatanMutabaahPage() {
         )
       }
       invalidate()
+      setSelectedRows((prev) => prev.filter((rowId) => rowId !== id))
       toast({ title: 'Berhasil', description: 'Sub kegiatan berhasil dihapus' })
       setIsDeleteOpen(false)
       setDeletingItem(null)
@@ -418,46 +498,85 @@ export default function SubKegiatanMutabaahPage() {
       <PageHeader
         title="Sub Kegiatan Mutabaah"
         actions={
-          <Button
-            type="button"
-            onClick={openAddDialog}
-            id="btn-tambah-sub-kegiatan"
-          >
-            <Plus className="mr-2 h-4 w-4" />
-            Tambah Sub Kegiatan
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setIsBulkInputOpen(true)}
+              id="btn-bulk-input-sub-kegiatan"
+            >
+              <Plus className="mr-2 h-4 w-4" />
+              Bulk Input
+            </Button>
+            <Button
+              type="button"
+              onClick={openAddDialog}
+              id="btn-tambah-sub-kegiatan"
+            >
+              <Plus className="mr-2 h-4 w-4" />
+              Tambah Sub Kegiatan
+            </Button>
+          </div>
         }
       />
 
       {/* Filter Kegiatan */}
-      <div className="flex items-center gap-3">
-        <Label htmlFor="filter-kegiatan" className="shrink-0 text-sm">
-          Filter Kegiatan:
-        </Label>
-        <Select
-          value={filterKegiatanId}
-          onValueChange={(val) => {
-            setFilterKegiatanId(val)
-            setPage(1)
-          }}
-        >
-          <SelectTrigger id="filter-kegiatan" className="w-[240px]">
-            <SelectValue placeholder="Pilih kegiatan..." />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Semua Kegiatan</SelectItem>
-            {kegiatanList.map((k) => (
-              <SelectItem key={k.id} value={k.id}>
-                {k.nama_kegiatan}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        {filterKegiatanId && filterKegiatanId !== 'all' && (
-          <span className="text-xs text-[var(--text-secondary)]">
-            Menampilkan sub kegiatan untuk:{' '}
-            <strong>{getNamaKegiatan(filterKegiatanId)}</strong>
-          </span>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-wrap items-center gap-3">
+          <Label htmlFor="filter-kegiatan" className="shrink-0 text-sm">
+            Filter Kegiatan:
+          </Label>
+          <Select
+            value={filterKegiatanId}
+            onValueChange={(val) => {
+              setFilterKegiatanId(val)
+              setPage(1)
+            }}
+          >
+            <SelectTrigger id="filter-kegiatan" className="w-[240px]">
+              <SelectValue placeholder="Pilih kegiatan..." />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Semua Kegiatan</SelectItem>
+              {kegiatanList.map((k) => (
+                <SelectItem key={k.id} value={k.id}>
+                  {k.nama_kegiatan}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {filterKegiatanId && filterKegiatanId !== 'all' && (
+            <span className="text-xs text-[var(--text-secondary)]">
+              Menampilkan sub kegiatan untuk:{' '}
+              <strong>{getNamaKegiatan(filterKegiatanId)}</strong>
+            </span>
+          )}
+        </div>
+
+        {selectedRows.length > 0 && (
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-[var(--text-secondary)] font-medium">
+              {selectedRows.length} sub-kegiatan terpilih
+            </span>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setIsBulkEditOpen(true)}
+              className="text-primary hover:text-primary-dark"
+            >
+              <Edit className="mr-1.5 h-3.5 w-3.5" />
+              Bulk Edit Terpilih
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => setSelectedRows([])}
+            >
+              Batal
+            </Button>
+          </div>
         )}
       </div>
 
@@ -480,6 +599,8 @@ export default function SubKegiatanMutabaahPage() {
           setSortDirection(direction)
           setPage(1)
         }}
+        selectedRows={selectedRows}
+        onSelectRows={setSelectedRows}
         isLoading={isLoading}
       />
 
@@ -634,6 +755,526 @@ export default function SubKegiatanMutabaahPage() {
           }
         }}
       />
+
+      {/* Dialog Bulk Input Sub Kegiatan */}
+      <BulkInputSubKegiatanDialog
+        isOpen={isBulkInputOpen}
+        onClose={() => setIsBulkInputOpen(false)}
+        kegiatanList={kegiatanList}
+        semesterList={semesterList}
+        filterKegiatanId={filterKegiatanId}
+        onSave={(items) => createBulkMutation.mutate(items)}
+        isPending={createBulkMutation.isPending}
+      />
+
+      {/* Dialog Bulk Edit Sub Kegiatan */}
+      <BulkEditSubKegiatanDialog
+        isOpen={isBulkEditOpen}
+        onClose={() => setIsBulkEditOpen(false)}
+        selectedItems={selectedItems}
+        kegiatanList={kegiatanList}
+        semesterList={semesterList}
+        onSave={(updates) => updateBulkMutation.mutate(updates)}
+        isPending={updateBulkMutation.isPending}
+      />
     </div>
+  )
+}
+
+// ─── Komponen Dialog Bulk Input Sub Kegiatan ──────────────────────────────────
+
+interface BulkInputSubKegiatanDialogProps {
+  isOpen: boolean
+  onClose: () => void
+  kegiatanList: KegiatanItem[]
+  semesterList: Semester[]
+  filterKegiatanId: string
+  onSave: (items: { kegiatan_id: string; nama_sub: string; poin_target: number; semester_id: string }[]) => void
+  isPending: boolean
+}
+
+function BulkInputSubKegiatanDialog({
+  isOpen,
+  onClose,
+  kegiatanList,
+  semesterList,
+  filterKegiatanId,
+  onSave,
+  isPending,
+}: BulkInputSubKegiatanDialogProps) {
+  const [rows, setRows] = useState<{ kegiatan_id: string; nama_sub: string; poin_target: number; semester_id: string }[]>([])
+
+  useEffect(() => {
+    if (isOpen) {
+      const initialKegiatanId = filterKegiatanId === 'all' ? '' : filterKegiatanId
+      const parent = kegiatanList.find((k) => k.id === initialKegiatanId)
+      const initialSemesterId = parent?.semester_id || ''
+      setRows([
+        {
+          kegiatan_id: initialKegiatanId,
+          nama_sub: '',
+          poin_target: 1,
+          semester_id: initialSemesterId,
+        },
+      ])
+    }
+  }, [isOpen, filterKegiatanId, kegiatanList])
+
+  const addRow = () => {
+    const initialKegiatanId = filterKegiatanId === 'all' ? '' : filterKegiatanId
+    const parent = kegiatanList.find((k) => k.id === initialKegiatanId)
+    const initialSemesterId = parent?.semester_id || ''
+    setRows((prev) => [
+      ...prev,
+      { kegiatan_id: initialKegiatanId, nama_sub: '', poin_target: 1, semester_id: initialSemesterId },
+    ])
+  }
+
+  const removeRow = (index: number) => {
+    setRows((prev) => prev.filter((_, i) => i !== index))
+  }
+
+  const updateRow = (index: number, field: string, value: any) => {
+    setRows((prev) =>
+      prev.map((row, i) => (i === index ? { ...row, [field]: value } : row))
+    )
+  }
+
+  const handleKegiatanChange = (index: number, val: string) => {
+    const parent = kegiatanList.find((k) => k.id === val)
+    const semesterId = parent?.semester_id || ''
+    setRows((prev) =>
+      prev.map((row, i) =>
+        i === index ? { ...row, kegiatan_id: val, semester_id: semesterId } : row
+      )
+    )
+  }
+
+  const handleSave = () => {
+    const invalid = rows.some((r) => !r.kegiatan_id || !r.nama_sub.trim() || !r.semester_id || r.poin_target < 1)
+    if (invalid) {
+      toast({
+        title: 'Validasi Gagal',
+        description: 'Mohon isi semua field kegiatan utama, nama sub, semester, dan poin target minimal 1.',
+        variant: 'destructive',
+      })
+      return
+    }
+    onSave(rows)
+  }
+
+  return (
+    <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose() }}>
+      <DialogContent className="max-w-4xl w-full max-h-[85vh] flex flex-col p-0 overflow-hidden">
+        <DialogHeader className="px-6 pt-5 pb-3 border-b border-[var(--border)]">
+          <DialogTitle>Bulk Input Sub Kegiatan</DialogTitle>
+        </DialogHeader>
+
+        <div className="flex-1 overflow-y-auto p-6 space-y-4">
+          <table className="w-full border-collapse text-sm">
+            <thead>
+              <tr className="border-b border-[var(--border)] text-left bg-[var(--surface-2)]">
+                <th className="px-3 py-2 text-xs font-semibold text-[var(--text-secondary)] w-10 text-center">No</th>
+                <th className="px-3 py-2 text-xs font-semibold text-[var(--text-secondary)] w-52">Kegiatan Utama <span className="text-status-red">*</span></th>
+                <th className="px-3 py-2 text-xs font-semibold text-[var(--text-secondary)]">Nama Sub Kegiatan <span className="text-status-red">*</span></th>
+                <th className="px-3 py-2 text-xs font-semibold text-[var(--text-secondary)] w-40">Semester <span className="text-status-red">*</span></th>
+                <th className="px-3 py-2 text-xs font-semibold text-[var(--text-secondary)] w-24">Poin Target <span className="text-status-red">*</span></th>
+                <th className="px-3 py-2 text-xs font-semibold text-[var(--text-secondary)] w-12 text-center">Aksi</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row, idx) => (
+                <tr key={idx} className="border-b border-[var(--border)]">
+                  <td className="px-3 py-2 text-center font-mono text-xs text-[var(--text-secondary)]">{idx + 1}</td>
+                  <td className="px-3 py-2">
+                    <Select
+                      value={row.kegiatan_id}
+                      onValueChange={(val) => handleKegiatanChange(idx, val)}
+                      disabled={filterKegiatanId !== 'all'}
+                    >
+                      <SelectTrigger className="h-8">
+                        <SelectValue placeholder="Pilih kegiatan..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {kegiatanList.map((k) => (
+                          <SelectItem key={k.id} value={k.id}>
+                            {k.nama_kegiatan}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </td>
+                  <td className="px-3 py-2">
+                    <Input
+                      placeholder="Nama sub kegiatan..."
+                      value={row.nama_sub}
+                      onChange={(e) => updateRow(idx, 'nama_sub', e.target.value)}
+                      className="h-8"
+                    />
+                  </td>
+                  <td className="px-3 py-2">
+                    <Select
+                      value={row.semester_id}
+                      onValueChange={(val) => updateRow(idx, 'semester_id', val)}
+                    >
+                      <SelectTrigger className="h-8">
+                        <SelectValue placeholder="Pilih semester..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {semesterList.map((s) => {
+                          const tp = s.tahun_pelajaran as { nama: string } | undefined
+                          return (
+                            <SelectItem key={s.id} value={s.id}>
+                              Semester {s.nomor_semester} — {tp?.nama ?? ''}
+                            </SelectItem>
+                          )
+                        })}
+                      </SelectContent>
+                    </Select>
+                  </td>
+                  <td className="px-3 py-2">
+                    <Input
+                      type="number"
+                      min={1}
+                      value={row.poin_target}
+                      onChange={(e) => updateRow(idx, 'poin_target', Number(e.target.value))}
+                      className="h-8 font-mono text-sm"
+                    />
+                  </td>
+                  <td className="px-3 py-2 text-center">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 text-status-red hover:bg-status-red/10"
+                      onClick={() => removeRow(idx)}
+                      disabled={rows.length <= 1}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={addRow}
+            className="w-full mt-2"
+          >
+            <Plus className="h-3.5 w-3.5 mr-1" /> Tambah Baris
+          </Button>
+        </div>
+
+        <DialogFooter className="px-6 py-4 border-t border-[var(--border)] bg-[var(--surface-2)]">
+          <Button type="button" variant="outline" onClick={onClose} disabled={isPending}>
+            Batal
+          </Button>
+          <Button type="button" onClick={handleSave} isLoading={isPending}>
+            Simpan Massal ({rows.length} Baris)
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// ─── Komponen Dialog Bulk Edit Sub Kegiatan ────────────────────────────────────
+
+interface BulkEditSubKegiatanDialogProps {
+  isOpen: boolean
+  onClose: () => void
+  selectedItems: SubKegiatanItem[]
+  kegiatanList: KegiatanItem[]
+  semesterList: Semester[]
+  onSave: (updates: { id: string; kegiatan_id: string; nama_sub: string; poin_target: number; semester_id: string }[]) => void
+  isPending: boolean
+}
+
+function BulkEditSubKegiatanDialog({
+  isOpen,
+  onClose,
+  selectedItems,
+  kegiatanList,
+  semesterList,
+  onSave,
+  isPending,
+}: BulkEditSubKegiatanDialogProps) {
+  const [activeTab, setActiveTab] = useState<'serentak' | 'detail'>('serentak')
+
+  // State untuk Ubah Serentak
+  const [bulkKegiatanId, setBulkKegiatanId] = useState<string>('all')
+  const [bulkSemesterId, setBulkSemesterId] = useState<string>('all')
+  const [bulkPoinTarget, setBulkPoinTarget] = useState<string>('')
+
+  // State untuk Edit Detail Baris
+  const [rows, setRows] = useState<{ id: string; kegiatan_id: string; nama_sub: string; poin_target: number; semester_id: string }[]>([])
+
+  useEffect(() => {
+    if (isOpen) {
+      setActiveTab('serentak')
+      setBulkKegiatanId('all')
+      setBulkSemesterId('all')
+      setBulkPoinTarget('')
+      
+      setRows(
+        selectedItems.map((item) => ({
+          id: item.id,
+          kegiatan_id: item.kegiatan_id,
+          nama_sub: item.nama_sub,
+          poin_target: item.poin_target,
+          semester_id: item.semester_id || '',
+        }))
+      )
+    }
+  }, [isOpen, selectedItems])
+
+  const handleBulkKegiatanChange = (val: string) => {
+    setBulkKegiatanId(val)
+    if (val !== 'all') {
+      const parent = kegiatanList.find((k) => k.id === val)
+      if (parent?.semester_id) {
+        setBulkSemesterId(parent.semester_id)
+      }
+    }
+  }
+
+  const updateRow = (index: number, field: string, value: any) => {
+    setRows((prev) =>
+      prev.map((row, i) => (i === index ? { ...row, [field]: value } : row))
+    )
+  }
+
+  const handleRowKegiatanChange = (index: number, val: string) => {
+    const parent = kegiatanList.find((k) => k.id === val)
+    const semesterId = parent?.semester_id || ''
+    setRows((prev) =>
+      prev.map((row, i) =>
+        i === index ? { ...row, kegiatan_id: val, semester_id: semesterId } : row
+      )
+    )
+  }
+
+  const handleSave = () => {
+    if (activeTab === 'serentak') {
+      if (bulkKegiatanId === 'all' && bulkSemesterId === 'all' && !bulkPoinTarget.trim()) {
+        toast({
+          title: 'Tidak Ada Perubahan',
+          description: 'Pilih Kegiatan Utama, Semester baru, atau ketik Poin Target baru untuk diubah.',
+          variant: 'destructive',
+        })
+        return
+      }
+
+      const updates = selectedItems.map((item) => {
+        const finalKegiatanId = bulkKegiatanId !== 'all' ? bulkKegiatanId : item.kegiatan_id
+        const finalSemesterId = bulkSemesterId !== 'all' ? bulkSemesterId : (item.semester_id || '')
+        const finalPoin = bulkPoinTarget.trim() ? Number(bulkPoinTarget) : item.poin_target
+
+        return {
+          id: item.id,
+          kegiatan_id: finalKegiatanId,
+          nama_sub: item.nama_sub,
+          poin_target: finalPoin,
+          semester_id: finalSemesterId,
+        }
+      })
+      onSave(updates)
+    } else {
+      const invalid = rows.some((r) => !r.kegiatan_id || !r.nama_sub.trim() || !r.semester_id || r.poin_target < 1)
+      if (invalid) {
+        toast({
+          title: 'Validasi Gagal',
+          description: 'Mohon isi semua field kegiatan utama, nama sub, semester, dan poin target minimal 1.',
+          variant: 'destructive',
+        })
+        return
+      }
+      onSave(rows)
+    }
+  }
+
+  return (
+    <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose() }}>
+      <DialogContent className="max-w-4xl w-full max-h-[85vh] flex flex-col p-0 overflow-hidden">
+        <DialogHeader className="px-6 pt-5 pb-3 border-b border-[var(--border)]">
+          <DialogTitle>Bulk Edit Sub Kegiatan ({selectedItems.length} Terpilih)</DialogTitle>
+        </DialogHeader>
+
+        {/* Tab Selector */}
+        <div className="flex border-b border-[var(--border)] bg-[var(--surface-2)]">
+          <button
+            type="button"
+            className={cn(
+              "flex-1 py-3 text-center text-xs font-semibold border-r border-[var(--border)] transition-colors",
+              activeTab === 'serentak' 
+                ? "bg-[var(--surface)] text-primary border-b-2 border-b-primary" 
+                : "text-[var(--text-secondary)] hover:bg-[var(--surface-2)]/80"
+            )}
+            onClick={() => setActiveTab('serentak')}
+          >
+            Ubah Serentak
+          </button>
+          <button
+            type="button"
+            className={cn(
+              "flex-1 py-3 text-center text-xs font-semibold transition-colors",
+              activeTab === 'detail' 
+                ? "bg-[var(--surface)] text-primary border-b-2 border-b-primary" 
+                : "text-[var(--text-secondary)] hover:bg-[var(--surface-2)]/80"
+            )}
+            onClick={() => setActiveTab('detail')}
+          >
+            Edit Detail Baris
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-6 space-y-4">
+          {activeTab === 'serentak' ? (
+            <div className="space-y-4 max-w-md mx-auto py-4">
+              <p className="text-xs text-[var(--text-secondary)] bg-primary/10 p-3 rounded-lg leading-relaxed">
+                Pilih field di bawah ini untuk diperbarui secara massal pada <strong>{selectedItems.length} sub kegiatan</strong> yang Anda pilih. Field yang dibiarkan kosong tidak akan diubah.
+              </p>
+
+              {/* Kegiatan Utama */}
+              <div className="space-y-2">
+                <Label htmlFor="bulk-kegiatan">Pindah ke Kegiatan Utama</Label>
+                <Select value={bulkKegiatanId} onValueChange={handleBulkKegiatanChange}>
+                  <SelectTrigger id="bulk-kegiatan">
+                    <SelectValue placeholder="Pilih kegiatan utama..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Jangan Ubah Kegiatan Utama</SelectItem>
+                    {kegiatanList.map((k) => (
+                      <SelectItem key={k.id} value={k.id}>
+                        {k.nama_kegiatan}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Semester */}
+              <div className="space-y-2">
+                <Label htmlFor="bulk-semester">Ubah Semester Menjadi</Label>
+                <Select value={bulkSemesterId} onValueChange={setBulkSemesterId}>
+                  <SelectTrigger id="bulk-semester">
+                    <SelectValue placeholder="Pilih semester..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Jangan Ubah Semester</SelectItem>
+                    {semesterList.map((s) => {
+                      const tp = s.tahun_pelajaran as { nama: string } | undefined
+                      return (
+                        <SelectItem key={s.id} value={s.id}>
+                          Semester {s.nomor_semester} — {tp?.nama ?? ''}
+                        </SelectItem>
+                      )
+                    })}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Poin Target */}
+              <div className="space-y-2">
+                <Label htmlFor="bulk-poin">Ubah Poin Target Menjadi</Label>
+                <Input
+                  id="bulk-poin"
+                  type="number"
+                  min={1}
+                  placeholder="Contoh: 10 (Kosongkan jika tidak ingin diubah)"
+                  value={bulkPoinTarget}
+                  onChange={(e) => setBulkPoinTarget(e.target.value)}
+                />
+              </div>
+            </div>
+          ) : (
+            <table className="w-full border-collapse text-sm">
+              <thead>
+                <tr className="border-b border-[var(--border)] text-left bg-[var(--surface-2)]">
+                  <th className="px-3 py-2 text-xs font-semibold text-[var(--text-secondary)] w-10 text-center">No</th>
+                  <th className="px-3 py-2 text-xs font-semibold text-[var(--text-secondary)] w-48">Kegiatan Utama <span className="text-status-red">*</span></th>
+                  <th className="px-3 py-2 text-xs font-semibold text-[var(--text-secondary)]">Nama Sub Kegiatan <span className="text-status-red">*</span></th>
+                  <th className="px-3 py-2 text-xs font-semibold text-[var(--text-secondary)] w-44">Semester <span className="text-status-red">*</span></th>
+                  <th className="px-3 py-2 text-xs font-semibold text-[var(--text-secondary)] w-24">Poin Target <span className="text-status-red">*</span></th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((row, idx) => (
+                  <tr key={row.id} className="border-b border-[var(--border)]">
+                    <td className="px-3 py-2 text-center font-mono text-xs text-[var(--text-secondary)]">{idx + 1}</td>
+                    <td className="px-3 py-2">
+                      <Select
+                        value={row.kegiatan_id}
+                        onValueChange={(val) => handleRowKegiatanChange(idx, val)}
+                      >
+                        <SelectTrigger className="h-8">
+                          <SelectValue placeholder="Pilih kegiatan..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {kegiatanList.map((k) => (
+                            <SelectItem key={k.id} value={k.id}>
+                              {k.nama_kegiatan}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </td>
+                    <td className="px-3 py-2">
+                      <Input
+                        value={row.nama_sub}
+                        onChange={(e) => updateRow(idx, 'nama_sub', e.target.value)}
+                        className="h-8"
+                      />
+                    </td>
+                    <td className="px-3 py-2">
+                      <Select
+                        value={row.semester_id}
+                        onValueChange={(val) => updateRow(idx, 'semester_id', val)}
+                      >
+                        <SelectTrigger className="h-8">
+                          <SelectValue placeholder="Pilih semester..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {semesterList.map((s) => {
+                            const tp = s.tahun_pelajaran as { nama: string } | undefined
+                            return (
+                              <SelectItem key={s.id} value={s.id}>
+                                Semester {s.nomor_semester} — {tp?.nama ?? ''}
+                              </SelectItem>
+                            )
+                          })}
+                        </SelectContent>
+                      </Select>
+                    </td>
+                    <td className="px-3 py-2">
+                      <Input
+                        type="number"
+                        min={1}
+                        value={row.poin_target}
+                        onChange={(e) => updateRow(idx, 'poin_target', Number(e.target.value))}
+                        className="h-8 font-mono text-sm"
+                      />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+        <DialogFooter className="px-6 py-4 border-t border-[var(--border)] bg-[var(--surface-2)]">
+          <Button type="button" variant="outline" onClick={onClose} disabled={isPending}>
+            Batal
+          </Button>
+          <Button type="button" onClick={handleSave} isLoading={isPending}>
+            Simpan Perubahan
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }

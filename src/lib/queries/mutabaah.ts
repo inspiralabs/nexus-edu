@@ -228,6 +228,24 @@ export async function createKegiatan(input: {
   return data as KegiatanItem
 }
 
+/** Tambah kegiatan massal */
+export async function createKegiatanBulk(input: {
+  nama_kegiatan: string
+  poin_target: number
+  semester_id: string
+}[]): Promise<KegiatanItem[]> {
+  const supabase = createClient()
+
+  const { data, error } = await supabase
+    .from('kegiatan')
+    .insert(input)
+    .select()
+
+  if (error) throw new Error(error.message)
+
+  return data as KegiatanItem[]
+}
+
 /** Update kegiatan */
 export async function updateKegiatan(
   id: string,
@@ -245,6 +263,25 @@ export async function updateKegiatan(
   if (error) throw new Error(error.message)
 
   return data as KegiatanItem
+}
+
+/** Update kegiatan massal (upsert) */
+export async function updateKegiatanBulk(updates: {
+  id: string
+  nama_kegiatan: string
+  poin_target: number
+  semester_id: string
+}[]): Promise<KegiatanItem[]> {
+  const supabase = createClient()
+
+  const { data, error } = await supabase
+    .from('kegiatan')
+    .upsert(updates)
+    .select()
+
+  if (error) throw new Error(error.message)
+
+  return data as KegiatanItem[]
 }
 
 /** Hapus kegiatan */
@@ -281,6 +318,31 @@ export async function createSubKegiatan(input: {
   return data as SubKegiatanItem
 }
 
+/** Tambah sub kegiatan massal */
+export async function createSubKegiatanBulk(input: {
+  kegiatan_id: string
+  nama_sub: string
+  poin_target: number
+  semester_id: string
+}[]): Promise<SubKegiatanItem[]> {
+  const supabase = createClient()
+
+  const { data, error } = await supabase
+    .from('sub_kegiatan')
+    .insert(input)
+    .select()
+
+  if (error) throw new Error(error.message)
+
+  // Sinkronisasi poin target kegiatan induk untuk semua kegiatan yang terpengaruh
+  const uniqueKegiatanIds = Array.from(new Set(input.map((i) => i.kegiatan_id)))
+  for (const kegiatanId of uniqueKegiatanIds) {
+    await syncParentKegiatanPoin(kegiatanId, supabase)
+  }
+
+  return data as SubKegiatanItem[]
+}
+
 /** Update sub kegiatan */
 export async function updateSubKegiatan(
   id: string,
@@ -315,6 +377,44 @@ export async function updateSubKegiatan(
   }
 
   return data as SubKegiatanItem
+}
+
+/** Update sub kegiatan massal (upsert) */
+export async function updateSubKegiatanBulk(updates: {
+  id: string
+  kegiatan_id: string
+  nama_sub: string
+  poin_target: number
+  semester_id: string
+}[]): Promise<SubKegiatanItem[]> {
+  const supabase = createClient()
+
+  // Ambil kegiatan_id lama untuk sinkronisasi
+  const ids = updates.map(u => u.id)
+  const { data: originalData, error: fetchErr } = await supabase
+    .from('sub_kegiatan')
+    .select('id, kegiatan_id')
+    .in('id', ids)
+
+  if (fetchErr) throw new Error(fetchErr.message)
+
+  const { data, error } = await supabase
+    .from('sub_kegiatan')
+    .upsert(updates)
+    .select()
+
+  if (error) throw new Error(error.message)
+
+  // Sinkronisasi poin target kegiatan induk asal dan baru
+  const affectedKegiatanIds = new Set<string>()
+  originalData?.forEach(o => affectedKegiatanIds.add(o.kegiatan_id))
+  updates.forEach(u => affectedKegiatanIds.add(u.kegiatan_id))
+
+  for (const kegiatanId of affectedKegiatanIds) {
+    await syncParentKegiatanPoin(kegiatanId, supabase)
+  }
+
+  return data as SubKegiatanItem[]
 }
 
 /** Hapus sub kegiatan */
@@ -991,7 +1091,8 @@ export interface TrendHarianItem {
  */
 export async function getMutabaahDashboardStats(
   kamarNama?: string,
-  bulan?: string
+  bulan?: string,
+  unit?: string
 ): Promise<DashboardMutabaahStats> {
   const supabase = createClient()
 
@@ -1012,6 +1113,24 @@ export async function getMutabaahDashboardStats(
 
     if (siswaErr) throw new Error(siswaErr.message)
     siswaIds = (siswaData ?? []).map((s: { id: string }) => s.id)
+  } else if (unit && unit !== 'all') {
+    const { data: kamarData, error: kamarErr } = await supabase
+      .from('kamar')
+      .select('nama_kamar')
+      .eq('unit', unit)
+    if (kamarErr) throw new Error(kamarErr.message)
+    const kamarNames = (kamarData ?? []).map((k) => k.nama_kamar)
+    if (kamarNames.length > 0) {
+      const { data: siswaData, error: siswaErr } = await supabase
+        .from('students')
+        .select('id')
+        .in('kamar', kamarNames)
+        .eq('is_alumni', false)
+      if (siswaErr) throw new Error(siswaErr.message)
+      siswaIds = (siswaData ?? []).map((s) => s.id)
+    } else {
+      siswaIds = []
+    }
   } else {
     const { data: allSiswa, error: allErr } = await supabase
       .from('students')
@@ -1066,7 +1185,8 @@ export async function getMutabaahDashboardStats(
 export async function getKehadiranPerKegiatan(
   kamarNama?: string,
   bulan?: string,
-  topN = 5
+  topN = 5,
+  unit?: string
 ): Promise<KehadiranPerKegiatanItem[]> {
   const supabase = createClient()
 
@@ -1087,6 +1207,25 @@ export async function getKehadiranPerKegiatan(
 
     if (siswaErr) throw new Error(siswaErr.message)
     siswaIds = (siswaData ?? []).map((s: { id: string }) => s.id)
+    if (siswaIds.length === 0) return []
+  } else if (unit && unit !== 'all') {
+    const { data: kamarData, error: kamarErr } = await supabase
+      .from('kamar')
+      .select('nama_kamar')
+      .eq('unit', unit)
+    if (kamarErr) throw new Error(kamarErr.message)
+    const kamarNames = (kamarData ?? []).map((k) => k.nama_kamar)
+    if (kamarNames.length > 0) {
+      const { data: siswaData, error: siswaErr } = await supabase
+        .from('students')
+        .select('id')
+        .in('kamar', kamarNames)
+        .eq('is_alumni', false)
+      if (siswaErr) throw new Error(siswaErr.message)
+      siswaIds = (siswaData ?? []).map((s) => s.id)
+    } else {
+      siswaIds = []
+    }
     if (siswaIds.length === 0) return []
   }
 
@@ -1138,7 +1277,8 @@ export async function getKehadiranPerKegiatan(
  */
 export async function getTrendKehadiranHarian(
   kamarNama?: string,
-  bulan?: string
+  bulan?: string,
+  unit?: string
 ): Promise<TrendHarianItem[]> {
   const supabase = createClient()
 
@@ -1159,6 +1299,25 @@ export async function getTrendKehadiranHarian(
 
     if (siswaErr) throw new Error(siswaErr.message)
     siswaIds = (siswaData ?? []).map((s: { id: string }) => s.id)
+    if (siswaIds.length === 0) return []
+  } else if (unit && unit !== 'all') {
+    const { data: kamarData, error: kamarErr } = await supabase
+      .from('kamar')
+      .select('nama_kamar')
+      .eq('unit', unit)
+    if (kamarErr) throw new Error(kamarErr.message)
+    const kamarNames = (kamarData ?? []).map((k) => k.nama_kamar)
+    if (kamarNames.length > 0) {
+      const { data: siswaData, error: siswaErr } = await supabase
+        .from('students')
+        .select('id')
+        .in('kamar', kamarNames)
+        .eq('is_alumni', false)
+      if (siswaErr) throw new Error(siswaErr.message)
+      siswaIds = (siswaData ?? []).map((s) => s.id)
+    } else {
+      siswaIds = []
+    }
     if (siswaIds.length === 0) return []
   }
 
