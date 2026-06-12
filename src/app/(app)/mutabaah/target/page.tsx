@@ -444,10 +444,12 @@ export default function TargetMutabaahPage() {
   // ── Query Kamar ──
   const { data: kamarList = [], isLoading: loadingKamar } = useQuery({
     queryKey: ['kamar-target', profile?.id, isAdmin],
-    queryFn: () => {
+    queryFn: async () => {
       if (!profile) return []
       if (isAdmin) return getKamar()
-      return getKamarByMusyrif(profile.id)
+      const musyrifKamar = await getKamarByMusyrif(profile.id)
+      if (musyrifKamar.length > 0) return musyrifKamar
+      return getKamar()
     },
     enabled: !!profile,
   })
@@ -470,9 +472,13 @@ export default function TargetMutabaahPage() {
   useEffect(() => {
     if (filteredKamarList.length > 0) {
       const exists = filteredKamarList.some((k) => k.nama_kamar === selectedKamar)
-      if (!exists) setSelectedKamar(filteredKamarList[0].nama_kamar)
+      if (!exists) {
+        setSelectedKamar(filteredKamarList[0].nama_kamar)
+        setPage(1)
+      }
     } else {
       setSelectedKamar('')
+      setPage(1)
     }
   }, [filteredKamarList, selectedKamar])
 

@@ -90,10 +90,12 @@ export default function CetakMutabaahPage() {
   // ── Query Kamar ──
   const { data: kamarList = [], isLoading: loadingKamar } = useQuery({
     queryKey: ['kamar-cetak', profile?.id, isAdmin],
-    queryFn: () => {
+    queryFn: async () => {
       if (!profile) return []
       if (isAdmin) return getKamar()
-      return getKamarByMusyrif(profile.id)
+      const musyrifKamar = await getKamarByMusyrif(profile.id)
+      if (musyrifKamar.length > 0) return musyrifKamar
+      return getKamar()
     },
     enabled: !!profile,
   })

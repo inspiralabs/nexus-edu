@@ -124,7 +124,7 @@ const menuItems: MenuItemConfig[] = [
         label: 'Target & Nilai',
         href: '/mutabaah/target',
         icon: Target,
-        minRole: 'admin',
+        minRole: 'user',
       },
       {
         id: 'mutabaah-kegiatan',
