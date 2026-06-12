@@ -1581,3 +1581,156 @@ export async function getMutabaahProgressWithNames(
   return result
 }
 
+export interface MutabaahRankingSiswa {
+  siswa_id: string
+  nama: string
+  kelas: string
+  kamar: string | null
+  total_hadir: number
+  total_target: number
+  persentase: number
+  nilai: NilaiMutabaah
+}
+
+export async function getMutabaahRankings(
+  semesterId: string,
+  unit: 'SD' | 'SMP' | 'SMA'
+): Promise<{
+  topRajin: MutabaahRankingSiswa[]
+  topPerluMotivasi: MutabaahRankingSiswa[]
+}> {
+  const supabase = createClient()
+
+  // 1. Ambil semester
+  const { data: semesterData, error: semesterError } = await supabase
+    .from('semester')
+    .select('tanggal_mulai, tanggal_selesai')
+    .eq('id', semesterId)
+    .single()
+
+  if (semesterError) throw new Error(semesterError.message)
+  const semester = semesterData as { tanggal_mulai: string; tanggal_selesai: string }
+
+  // 2. Ambil target kegiatan & sub_kegiatan untuk semester ini
+  const { data: kegiatanData, error: kegiatanError } = await supabase
+    .from('kegiatan')
+    .select('id, poin_target, sub_kegiatan(id, poin_target, semester_id)')
+    .eq('semester_id', semesterId)
+
+  if (kegiatanError) throw new Error(kegiatanError.message)
+
+  const targets: Array<{
+    kegiatan_id: string
+    sub_kegiatan_id: string | null
+    target_jumlah: number
+  }> = []
+
+  let totalTargetPoin = 0
+
+  for (const k of kegiatanData ?? []) {
+    const subs = (k.sub_kegiatan ?? []).filter((s: any) => s.semester_id === semesterId)
+    if (subs.length === 0) {
+      const targetVal = k.poin_target || 30
+      targets.push({
+        kegiatan_id: k.id,
+        sub_kegiatan_id: null,
+        target_jumlah: targetVal,
+      })
+      totalTargetPoin += targetVal
+    } else {
+      for (const sub of subs) {
+        const targetVal = sub.poin_target || 30
+        targets.push({
+          kegiatan_id: k.id,
+          sub_kegiatan_id: sub.id,
+          target_jumlah: targetVal,
+        })
+        totalTargetPoin += targetVal
+      }
+    }
+  }
+
+  // Jika totalTargetPoin = 0, beri default 1 agar tidak division by zero
+  if (totalTargetPoin === 0) {
+    totalTargetPoin = 1
+  }
+
+  // 3. Ambil siswa aktif di unit terpilih
+  const { data: siswaData, error: siswaError } = await supabase
+    .from('students')
+    .select('id, nama, kelas, kamar')
+    .eq('unit', unit)
+    .eq('is_alumni', false)
+
+  if (siswaError) throw new Error(siswaError.message)
+  const students = (siswaData ?? []) as { id: string; nama: string; kelas: string; kamar: string | null }[]
+
+  if (students.length === 0) {
+    return { topRajin: [], topPerluMotivasi: [] }
+  }
+
+  const siswaIds = students.map(s => s.id)
+
+  // 4. Ambil mutabaah siswa dalam semester ini
+  const { data: mutabaahData, error: mutabaahError } = await supabase
+    .from('mutabaah')
+    .select('siswa_id, kegiatan_id, sub_kegiatan_id, status, is_libur')
+    .in('siswa_id', siswaIds)
+    .gte('tanggal', semester.tanggal_mulai)
+    .lte('tanggal', semester.tanggal_selesai)
+
+  if (mutabaahError) throw new Error(mutabaahError.message)
+
+  // Group total hadir per siswa × kegiatan × sub_kegiatan
+  const hadirMap = new Map<string, number>()
+
+  for (const row of mutabaahData ?? []) {
+    const r = row as {
+      siswa_id: string
+      kegiatan_id: string
+      sub_kegiatan_id: string | null
+      status: string
+      is_libur: boolean
+    }
+    if (!r.is_libur && r.status === 'Hadir') {
+      const key = `${r.siswa_id}__${r.kegiatan_id}__${r.sub_kegiatan_id ?? 'null'}`
+      hadirMap.set(key, (hadirMap.get(key) ?? 0) + 1)
+    }
+  }
+
+  // Hitung persentase per siswa
+  const rankingList: MutabaahRankingSiswa[] = students.map((s) => {
+    let totalHadirSiswa = 0
+    for (const target of targets) {
+      const key = `${s.id}__${target.kegiatan_id}__${target.sub_kegiatan_id ?? 'null'}`
+      const rawHadir = hadirMap.get(key) ?? 0
+      totalHadirSiswa += Math.min(rawHadir, target.target_jumlah)
+    }
+
+    const persentase = Math.min(100, Math.round((totalHadirSiswa / totalTargetPoin) * 100))
+    return {
+      siswa_id: s.id,
+      nama: s.nama,
+      kelas: s.kelas,
+      kamar: s.kamar,
+      total_hadir: totalHadirSiswa,
+      total_target: totalTargetPoin,
+      persentase,
+      nilai: hitungNilai(persentase),
+    }
+  })
+
+  // Urutkan untuk mendapatkan top 10 rajin (persentase tertinggi)
+  const topRajin = [...rankingList]
+    .sort((a, b) => b.persentase - a.persentase || a.nama.localeCompare(b.nama))
+    .slice(0, 10)
+
+  // Urutkan untuk mendapatkan top 10 perlu motivasi (persentase terendah)
+  const topPerluMotivasi = [...rankingList]
+    .sort((a, b) => a.persentase - b.persentase || a.nama.localeCompare(b.nama))
+    .slice(0, 10)
+
+  return { topRajin, topPerluMotivasi }
+}
+
+

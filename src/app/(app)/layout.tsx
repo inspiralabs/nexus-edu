@@ -26,6 +26,13 @@ const PATH_TITLES: Record<string, string> = {
   '/prestasi/bidang': 'Bidang',
   '/prestasi/kategori': 'Kategori Prestasi',
   '/prestasi/cetak': 'Cetak Laporan Prestasi',
+  '/diknas': 'Dashboard Akademik',
+  '/diknas/presensi': 'Presensi',
+  '/diknas/nilai-harian': 'Nilai Harian',
+  '/diknas/nilai-uas': 'Nilai UAS',
+  '/diknas/rekap-nilai': 'Rekap Nilai Rapor',
+  '/diknas/bank-soal': 'Bank Soal',
+  '/diknas/catatan': 'Catatan Kelakuan',
   '/admin/overview': 'Admin Overview',
   '/admin/users': 'Kelola User',
   '/admin/guru': 'Data Guru',
@@ -42,6 +49,7 @@ const PATH_TITLES: Record<string, string> = {
   '/account': 'Akun Saya',
   '/about': 'Tentang AMANAH',
 }
+
 
 function getPageTitle(pathname: string): string {
   return PATH_TITLES[pathname] ?? 'Halaman'
