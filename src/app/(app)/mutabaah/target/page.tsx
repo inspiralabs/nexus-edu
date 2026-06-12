@@ -278,7 +278,7 @@ function TargetDetailDialog({
 
                           {/* Nama Kegiatan */}
                           <td className="px-4 py-3 font-semibold text-[var(--text-primary)]">
-                            <div 
+                            <div
                               className={cn(
                                 "flex items-center gap-1.5",
                                 hasSubs && "cursor-pointer select-none"
@@ -628,7 +628,7 @@ export default function TargetMutabaahPage() {
             value={effectiveSemesterId}
             onValueChange={(v) => { setSelectedSemesterId(v); setPage(1) }}
           >
-            <SelectTrigger id="select-semester-target" className="w-56">
+            <SelectTrigger id="select-semester-target" className="w-58 text-left">
               <SelectValue placeholder="Pilih semester..." />
             </SelectTrigger>
             <SelectContent>
@@ -680,7 +680,7 @@ export default function TargetMutabaahPage() {
         <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-900/30 dark:bg-amber-950/20 text-amber-800 dark:text-amber-300">
           <p className="text-sm font-semibold mb-1">⚠️ Master Data Target Belum Terisi</p>
           <p className="text-xs leading-relaxed">
-            Belum ada data target mutabaah yang terkonfigurasi untuk semester ini di database. 
+            Belum ada data target mutabaah yang terkonfigurasi untuk semester ini di database.
             Sistem saat ini menampilkan <strong>target default (30 hari)</strong> sebagai fallback agar tidak terjadi error.
             Untuk mengisi data target yang valid di database, silakan hubungi Administrator atau jalankan SQL query inisialisasi default target.
           </p>
@@ -749,7 +749,7 @@ export default function TargetMutabaahPage() {
                 const parentNo = String((page - 1) * pageSize + idx + 1)
                 const hasSubs = kegiatan.sub_kegiatan && kegiatan.sub_kegiatan.length > 0
                 const isExpanded = !!expandedKegiatan[kegiatan.id]
-                
+
                 const isEven = idx % 2 === 0
                 const parentBg = isEven ? 'bg-[var(--surface)]' : 'bg-[var(--surface-2)]/60'
 
@@ -765,7 +765,7 @@ export default function TargetMutabaahPage() {
                       </td>
                       {/* Nama Kegiatan */}
                       <td className={`sticky left-10 z-10 border-r border-[var(--border)] px-3 py-2 ${parentBg}`}>
-                        <div 
+                        <div
                           className={cn(
                             "flex items-center gap-1.5",
                             hasSubs && "cursor-pointer select-none"

@@ -8,14 +8,13 @@ import { useQuery } from '@tanstack/react-query'
 import { PageHeader } from '@/components/layout/page-header'
 import { DatePicker } from '@/components/shared/date-picker'
 import { EmptyState } from '@/components/shared/empty-state'
+import { Combobox } from '@/components/shared/combobox'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useAuth } from '@/hooks/use-auth'
-import { useDebounce } from '@/hooks/use-debounce'
 import {
   getKamar,
   getKamarByMusyrif,
@@ -78,7 +77,6 @@ export default function CetakMutabaahPage() {
   })
   const [tanggalSampai, setTanggalSampai] = useState<Date>(new Date())
   const [searchSiswa, setSearchSiswa] = useState('')
-  const debouncedSearch = useDebounce(searchSiswa, 300)
 
   const tanggalDariStr = format(tanggalDari, 'yyyy-MM-dd')
   const tanggalSampaiStr = format(tanggalSampai, 'yyyy-MM-dd')
@@ -124,6 +122,7 @@ export default function CetakMutabaahPage() {
       if (!exists) {
         setSelectedKamar('')
         setSelectedSiswaId('')
+        setSearchSiswa('')
       }
     }
   }, [filteredKamarList, selectedKamar])
@@ -147,11 +146,11 @@ export default function CetakMutabaahPage() {
   })
 
   const filteredSiswaList = useMemo(() => {
-    if (!debouncedSearch) return siswaKamarList
+    if (!searchSiswa) return siswaKamarList
     return siswaKamarList.filter((s) =>
-      s.nama.toLowerCase().includes(debouncedSearch.toLowerCase())
+      s.nama.toLowerCase().includes(searchSiswa.toLowerCase())
     )
-  }, [siswaKamarList, debouncedSearch])
+  }, [siswaKamarList, searchSiswa])
 
   // Siswa terpilih (individual)
   const selectedSiswa = useMemo(
@@ -289,6 +288,7 @@ export default function CetakMutabaahPage() {
               onValueChange={(v) => {
                 setSelectedKamar(v)
                 setSelectedSiswaId('')
+                setSearchSiswa('')
               }}
             >
               <SelectTrigger id="select-kamar-cetak" className="w-48">
@@ -304,32 +304,23 @@ export default function CetakMutabaahPage() {
           {selectedKamar && (
             <div className="flex flex-col gap-1.5">
               <label className="text-xs font-medium text-[var(--text-secondary)]">Siswa</label>
-              <div className="flex flex-col gap-1">
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-tertiary)]" />
-                  <Input
-                    id="search-siswa-cetak"
-                    placeholder="Cari nama siswa..."
-                    value={searchSiswa}
-                    onChange={(e) => setSearchSiswa(e.target.value)}
-                    className="w-56 pl-9"
-                  />
-                </div>
-                <Select
+              <div className="w-56">
+                <Combobox
+                  options={filteredSiswaList.map((s) => ({
+                    value: s.id,
+                    label: `${s.nama} (${s.kelas})`,
+                  }))}
                   value={selectedSiswaId}
-                  onValueChange={setSelectedSiswaId}
-                >
-                  <SelectTrigger id="select-siswa-cetak" className="w-56">
-                    <SelectValue placeholder="Pilih siswa..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {filteredSiswaList.map((s) => (
-                      <SelectItem key={s.id} value={s.id}>
-                        {s.nama} ({s.kelas})
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  onSelect={(val) => {
+                    setSelectedSiswaId(val)
+                    // Reset pencarian setelah siswa dipilih agar saat popover dibuka lagi, list menampilkan semua siswa
+                    setSearchSiswa('')
+                  }}
+                  onSearch={setSearchSiswa}
+                  placeholder="Cari nama santri..."
+                  emptyMessage="Nama santri tidak ditemukan."
+                  isLoading={loadingSiswa}
+                />
               </div>
             </div>
           )}
