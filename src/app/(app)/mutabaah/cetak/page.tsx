@@ -3,7 +3,7 @@
 import { format } from 'date-fns'
 import { id as idLocale } from 'date-fns/locale'
 import { Printer, Search } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { PageHeader } from '@/components/layout/page-header'
 import { DatePicker } from '@/components/shared/date-picker'
@@ -22,6 +22,7 @@ import {
   getMutabaahCetakSiswa,
   getKegiatanWithSub,
   type MutabaahStatus,
+  type KegiatanItem,
 } from '@/lib/queries/mutabaah'
 import { getActiveTahunPelajaran } from '@/lib/queries/semester'
 
@@ -175,36 +176,22 @@ export default function CetakMutabaahPage() {
   })
 
   // ── Susun tabel cetak ──
-  // Baris = tanggal, kolom = kegiatan/sub
-  const tanggalList = useMemo(() => {
-    const dates = new Set(cetakData.map((r) => r.tanggal))
-    return Array.from(dates).sort()
-  }, [cetakData])
-
-  interface CetakCol {
-    kegiatanId: string
-    namaKegiatan: string
-    subId: string | null
-    namaSub: string | null
-  }
-
-  const cetakCols = useMemo<CetakCol[]>(() => {
-    const cols: CetakCol[] = []
-    for (const kegiatan of kegiatanList) {
-      const subs = kegiatan.sub_kegiatan ?? []
-      if (subs.length === 0) {
-        cols.push({ kegiatanId: kegiatan.id, namaKegiatan: kegiatan.nama_kegiatan, subId: null, namaSub: null })
-      } else {
-        for (const sub of subs) {
-          cols.push({ kegiatanId: kegiatan.id, namaKegiatan: kegiatan.nama_kegiatan, subId: sub.id, namaSub: sub.nama_sub })
-        }
-      }
+  // Sumbu Horizontal = Tanggal (berdasarkan range filter dari tanggalDari ke tanggalSampai)
+  const tanggalList = useMemo<string[]>(() => {
+    const list: string[] = []
+    const start = new Date(tanggalDariStr)
+    const end = new Date(tanggalSampaiStr)
+    const current = new Date(start)
+    
+    while (current <= end) {
+      list.push(format(current, 'yyyy-MM-dd'))
+      current.setDate(current.getDate() + 1)
     }
-    return cols
-  }, [kegiatanList])
+    return list
+  }, [tanggalDariStr, tanggalSampaiStr])
 
   // Map lookup: tanggal → (kegiatan__sub → status)
-  const cetakMap = useMemo(() => {
+  const cetakMap = useMemo<Map<string, Map<string, MutabaahStatus>>>(() => {
     const m = new Map<string, Map<string, MutabaahStatus>>()
     for (const row of cetakData) {
       const colKey = `${row.kegiatan_id}__${row.sub_kegiatan_id ?? 'null'}`
@@ -214,6 +201,44 @@ export default function CetakMutabaahPage() {
     }
     return m
   }, [cetakData])
+
+  // Hitung status kehadiran untuk baris kegiatan utama (parent) pada tanggal tertentu
+  const getParentStatusOnDate = (kegiatan: KegiatanItem, date: string): string => {
+    const subs = kegiatan.sub_kegiatan ?? []
+    if (subs.length === 0) {
+      const colKey = `${kegiatan.id}__null`
+      const status = cetakMap.get(date)?.get(colKey)
+      return status ? STATUS_ABBR[status] : '—'
+    }
+
+    let hadirCount = 0
+    let statusCount = 0
+    const statuses = new Set<MutabaahStatus>()
+    
+    for (const sub of subs) {
+      const colKey = `${kegiatan.id}__${sub.id}`
+      const status = cetakMap.get(date)?.get(colKey)
+      if (status) {
+        statusCount++
+        statuses.add(status)
+        if (status === 'Hadir') {
+          hadirCount++
+        }
+      }
+    }
+
+    if (statusCount === 0) return '—'
+    
+    // Jika semua sub-kegiatan terisi dengan status non-Hadir yang sama, tampilkan status itu langsung
+    if (statusCount === subs.length && statuses.size === 1) {
+      const singleStatus = Array.from(statuses)[0]
+      if (singleStatus !== 'Hadir') {
+        return STATUS_ABBR[singleStatus] ?? '—'
+      }
+    }
+    
+    return `${hadirCount}/${subs.length}`
+  }
 
   const handleCetak = () => {
     window.print()
@@ -320,28 +345,14 @@ export default function CetakMutabaahPage() {
       </div>
 
       {/* ── Header Formal (hanya muncul saat cetak) ── */}
-      <div className="print-only hidden">
+      <div className="hidden print:block mb-6">
         <div className="text-center">
-          <h1 className="text-lg font-bold uppercase">MUTABAAH PESERTA DIDIK SEKOLAH QURAN ASY SYAHID</h1>
-          <p className="text-sm font-semibold">
+          <h1 className="text-lg font-bold uppercase text-black">MUTABAAH PESERTA DIDIK SEKOLAH QURAN ASY SYAHID</h1>
+          <p className="text-sm font-semibold text-black">
             TAHUN PELAJARAN {activeTahunPelajaran?.nama ?? '——'}
           </p>
-          <div className="mt-2 text-sm">
-            <p>
-              <strong>Nama:</strong> {selectedSiswa?.nama ?? '——'}
-              {' '}
-              <strong className="ml-4">Kamar:</strong> {(selectedSiswa?.kamar ?? selectedKamar) || '——'}
-            </p>
-            <p>
-              <strong>Kelas:</strong> {selectedSiswa?.kelas ?? '——'}
-              {' '}
-              <strong className="ml-4">Periode:</strong>{' '}
-              {format(tanggalDari, 'dd MMMM yyyy', { locale: idLocale })} —{' '}
-              {format(tanggalSampai, 'dd MMMM yyyy', { locale: idLocale })}
-            </p>
-          </div>
         </div>
-        <hr className="my-3" />
+        <hr className="my-3 border-gray-400" />
       </div>
 
       {/* ── Konten Preview ── */}
@@ -363,84 +374,122 @@ export default function CetakMutabaahPage() {
 
       {selectedSiswaId && !loadingCetak && cetakData.length > 0 && (
         <>
-          {/* Info siswa (screen only) */}
-          <div className="no-print flex flex-wrap items-center gap-3 rounded-lg bg-primary-light px-4 py-3">
-            <div>
-              <p className="text-sm font-semibold text-[var(--text-primary)]">{selectedSiswa?.nama}</p>
-              <p className="text-xs text-[var(--text-secondary)]">
-                {selectedSiswa?.kelas} · Kamar: {selectedKamar}
-              </p>
+          {/* Blok Informasi Profil Siswa & Rentang Tanggal Filter */}
+          <div className="rounded-lg border border-[var(--border)] bg-[var(--surface-2)] p-4 print:bg-transparent print:border-0 print:p-0 print:mb-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 text-sm print:grid-cols-4 print:gap-2">
+              <div className="space-y-1">
+                <span className="text-xs font-medium text-[var(--text-tertiary)] print:text-gray-500 block">Nama Siswa</span>
+                <span className="font-semibold text-[var(--text-primary)] print:text-black block">{selectedSiswa?.nama ?? '——'}</span>
+              </div>
+              <div className="space-y-1">
+                <span className="text-xs font-medium text-[var(--text-tertiary)] print:text-gray-500 block">Kelas</span>
+                <span className="font-semibold text-[var(--text-primary)] print:text-black block">{selectedSiswa?.kelas ?? '——'}</span>
+              </div>
+              <div className="space-y-1">
+                <span className="text-xs font-medium text-[var(--text-tertiary)] print:text-gray-500 block">Nama Kamar</span>
+                <span className="font-semibold text-[var(--text-primary)] print:text-black block">{(selectedSiswa?.kamar ?? selectedKamar) || '——'}</span>
+              </div>
+              <div className="space-y-1">
+                <span className="text-xs font-medium text-[var(--text-tertiary)] print:text-gray-500 block">Periode Laporan</span>
+                <span className="font-semibold text-[var(--text-primary)] print:text-black block">
+                  {format(tanggalDari, 'dd MMMM yyyy', { locale: idLocale })} s.d {format(tanggalSampai, 'dd MMMM yyyy', { locale: idLocale })}
+                </span>
+              </div>
             </div>
-            <Badge variant="secondary" className="ml-auto">
-              {cetakData.length} entri
-            </Badge>
           </div>
 
-          {/* Tabel cetak */}
+          {/* Tabel cetak - Transpose layout */}
           <div className="overflow-x-auto rounded-lg border border-[var(--border)] bg-[var(--surface)] print:overflow-visible print:border-0">
-            <table className="min-w-max border-collapse text-sm print:w-full print:text-xs">
+            <table className="w-full border-collapse text-sm print:w-full print:text-[10px] print:leading-tight">
               <thead>
                 <tr className="border-b border-[var(--border)] bg-[var(--surface-2)] print:bg-transparent">
-                  <th className="px-3 py-2.5 text-left text-xs font-semibold text-[var(--text-secondary)] print:border print:border-gray-400 print:text-black">
+                  <th className="w-12 px-3 py-2.5 text-center text-xs font-semibold text-[var(--text-secondary)] print:border print:border-gray-400 print:text-black">
                     No
                   </th>
-                  <th className="min-w-[120px] border-r border-[var(--border)] px-3 py-2.5 text-left text-xs font-semibold text-[var(--text-secondary)] print:border print:border-gray-400 print:text-black">
-                    Tanggal
+                  <th className="min-w-[180px] border-r border-[var(--border)] px-3 py-2.5 text-left text-xs font-semibold text-[var(--text-secondary)] print:border print:border-gray-400 print:text-black print:w-[150px] print:min-w-[150px]">
+                    Kegiatan & Sub-Kegiatan
                   </th>
-                  {cetakCols.map((col) => (
-                    <th
-                      key={`${col.kegiatanId}-${col.subId ?? 'main'}`}
-                      className="border-r border-[var(--border)] px-3 py-2.5 text-center text-xs font-semibold text-[var(--text-primary)] print:border print:border-gray-400 print:text-black"
-                    >
-                      {col.namaSub ? (
-                        <div>
-                          <div className="text-[var(--text-secondary)] print:text-black">{col.namaKegiatan}</div>
-                          <div className="font-normal">{col.namaSub}</div>
-                        </div>
-                      ) : (
-                        col.namaKegiatan
-                      )}
-                    </th>
-                  ))}
+                  {tanggalList.map((tgl) => {
+                    const dateObj = new Date(tgl)
+                    const formattedDay = format(dateObj, 'dd/MM')
+                    return (
+                      <th
+                        key={`header-date-${tgl}`}
+                        className="border-r border-[var(--border)] px-2 py-2 text-center text-xs font-semibold text-[var(--text-primary)] print:border print:border-gray-400 print:text-black min-w-[35px]"
+                      >
+                        {formattedDay}
+                      </th>
+                    )
+                  })}
                 </tr>
               </thead>
               <tbody>
-                {tanggalList.map((tgl, rowIdx) => {
-                  const dayData = cetakMap.get(tgl)
-                  const formattedTgl = format(new Date(tgl), 'EEE, dd MMM yyyy', { locale: idLocale })
+                {kegiatanList.map((kegiatan, parentIdx) => {
+                  const parentNo = `${parentIdx + 1}`
+                  const hasSub = (kegiatan.sub_kegiatan ?? []).length > 0
+                  
                   return (
-                    <tr
-                      key={tgl}
-                      className={`border-b border-[var(--border)] print:border-gray-400 ${rowIdx % 2 === 0 ? '' : 'bg-[var(--surface-2)]'} print:bg-transparent`}
-                    >
-                      <td className="px-3 py-2 text-xs text-[var(--text-tertiary)] print:border print:border-gray-400 print:text-black">
-                        {rowIdx + 1}
-                      </td>
-                      <td className="border-r border-[var(--border)] px-3 py-2 text-xs text-[var(--text-primary)] print:border print:border-gray-400 print:text-black">
-                        {formattedTgl}
-                      </td>
-                      {cetakCols.map((col) => {
-                        const colKey = `${col.kegiatanId}__${col.subId ?? 'null'}`
-                        const status = dayData?.get(colKey)
+                    <Fragment key={`kegiatan-${kegiatan.id}`}>
+                      {/* Baris Kegiatan Utama */}
+                      <tr className="border-b border-[var(--border)] font-semibold bg-[var(--surface-2)]/45 print:border-gray-400 print:bg-gray-50">
+                        <td className="px-3 py-2 text-xs font-medium text-center text-[var(--text-primary)] print:border print:border-gray-400 print:text-black">
+                          {parentNo}
+                        </td>
+                        <td className="border-r border-[var(--border)] px-3 py-2 text-xs text-[var(--text-primary)] font-bold print:border print:border-gray-400 print:text-black">
+                          {kegiatan.nama_kegiatan}
+                        </td>
+                        {tanggalList.map((tgl) => {
+                          const val = getParentStatusOnDate(kegiatan, tgl)
+                          return (
+                            <td 
+                              key={`parent-cell-${kegiatan.id}-${tgl}`} 
+                              className="border-r border-[var(--border)] px-2 py-1.5 text-center text-xs font-bold print:border print:border-gray-400 print:text-black"
+                            >
+                              {val}
+                            </td>
+                          )
+                        })}
+                      </tr>
+
+                      {/* Baris Sub-Kegiatan */}
+                      {hasSub && kegiatan.sub_kegiatan?.map((sub, subIdx) => {
+                        const childNo = `${parentNo}.${subIdx + 1}`
                         return (
-                          <td
-                            key={colKey}
-                            className="border-r border-[var(--border)] px-2 py-1.5 text-center print:border print:border-gray-400"
+                          <tr 
+                            key={`sub-row-${kegiatan.id}-${sub.id}`} 
+                            className="border-b border-[var(--border)] print:border-gray-400 hover:bg-[var(--surface-2)]/20 print:bg-transparent"
                           >
-                            {status ? (
-                              <span
-                                className={`inline-flex items-center rounded px-1.5 py-0.5 text-xs font-semibold ${STATUS_BADGE_CLASS[status]}`}
-                                title={status}
-                              >
-                                {STATUS_ABBR[status]}
-                              </span>
-                            ) : (
-                              <span className="text-[var(--text-tertiary)] print:text-gray-400">—</span>
-                            )}
-                          </td>
+                            <td className="px-3 py-2 text-xs text-center text-[var(--text-tertiary)] print:border print:border-gray-400 print:text-black">
+                              {childNo}
+                            </td>
+                            <td className="border-r border-[var(--border)] px-3 py-2 pl-6 text-xs text-[var(--text-secondary)] font-normal print:border print:border-gray-400 print:text-black print:pl-4">
+                              <span className="text-[var(--text-tertiary)] mr-1">↳</span> {sub.nama_sub}
+                            </td>
+                            {tanggalList.map((tgl) => {
+                              const colKey = `${kegiatan.id}__${sub.id}`
+                              const status = cetakMap.get(tgl)?.get(colKey)
+                              return (
+                                <td 
+                                  key={`sub-cell-${kegiatan.id}-${sub.id}-${tgl}`} 
+                                  className="border-r border-[var(--border)] px-2 py-1.5 text-center print:border print:border-gray-400"
+                                >
+                                  {status ? (
+                                    <span
+                                      className={`inline-flex items-center rounded px-1.5 py-0.5 text-xs font-semibold ${STATUS_BADGE_CLASS[status]}`}
+                                      title={status}
+                                    >
+                                      {STATUS_ABBR[status]}
+                                    </span>
+                                  ) : (
+                                    <span className="text-[var(--text-tertiary)] print:text-gray-400">—</span>
+                                  )}
+                                </td>
+                              )
+                            })}
+                          </tr>
                         )
                       })}
-                    </tr>
+                    </Fragment>
                   )
                 })}
               </tbody>
@@ -452,7 +501,7 @@ export default function CetakMutabaahPage() {
             <p className="mb-2 text-xs font-semibold text-[var(--text-secondary)] print:text-black">Keterangan:</p>
             <div className="flex flex-wrap gap-x-4 gap-y-1">
               {(Object.entries(STATUS_ABBR) as [MutabaahStatus, string][]).map(([status, abbr]) => (
-                <span key={status} className="text-xs text-[var(--text-secondary)] print:text-black">
+                <span key={`abbr-${status}`} className="text-xs text-[var(--text-secondary)] print:text-black">
                   <strong>{abbr}</strong> = {status}
                 </span>
               ))}
@@ -460,7 +509,7 @@ export default function CetakMutabaahPage() {
           </div>
 
           {/* Footer cetak */}
-          <div className="print-only hidden mt-6 text-xs text-gray-500">
+          <div className="hidden print:block mt-6 text-xs text-gray-700">
             <p>Dicetak oleh: {profile?.nama_lengkap ?? '——'}</p>
             <p>Tanggal cetak: {format(new Date(), 'dd MMMM yyyy', { locale: idLocale })}</p>
           </div>
