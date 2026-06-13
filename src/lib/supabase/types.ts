@@ -36,6 +36,8 @@ export interface Profile {
   kamar_ids: string[] | null
   is_multi_mapel: boolean | null
   is_musyrif: boolean | null
+  pekerjaan: string | null
+  siswa_id: string | null
   created_at: string
   updated_at: string
 }

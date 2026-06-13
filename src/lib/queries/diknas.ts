@@ -10,6 +10,7 @@ import type {
   NilaiUAS,
   Presensi,
   PresensiStatus,
+  Role,
   Semester,
   TipeBankSoal,
   TipeCatatanKelakuan,
@@ -251,21 +252,110 @@ function mapCatatanKelakuan(row: CatatanKelakuanRow): CatatanKelakuanEntry {
 
 // ─── Helper Security: mapel access check ──────────────────────────────────────
 
-async function getGuruMapelAccess(): Promise<{ isGuru: boolean; mapelIds: string[] | null }> {
-  const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return { isGuru: false, mapelIds: null }
+export interface GuruMapelAccessStatus {
+  role: Role | null
+  isGuru: boolean
+  isAdmin: boolean
+  mapelIds: string[]
+  /** true jika guru punya minimal 1 mapel valid di tabel mata_pelajaran */
+  hasMapelConfigured: boolean
+}
 
-  const { data: profile } = await supabase
+async function resolveMapelAccess(): Promise<GuruMapelAccessStatus> {
+  const supabase = createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  const empty: GuruMapelAccessStatus = {
+    role: null,
+    isGuru: false,
+    isAdmin: false,
+    mapelIds: [],
+    hasMapelConfigured: false,
+  }
+
+  if (!user) return empty
+
+  const { data: profile, error } = await supabase
     .from('profiles')
     .select('role, mapel_ids')
     .eq('user_id', user.id)
     .single()
 
-  if (profile && profile.role === 'user') {
-    return { isGuru: true, mapelIds: (profile.mapel_ids as string[]) ?? [] }
+  if (error || !profile) return empty
+
+  const role = profile.role as Role
+
+  if (role === 'admin' || role === 'superadmin') {
+    const { data: allMapel, error: mapelError } = await supabase
+      .from('mata_pelajaran')
+      .select('id')
+
+    if (mapelError) throw new Error(mapelError.message)
+
+    const mapelIds = (allMapel ?? []).map((m: { id: string }) => m.id)
+    return {
+      role,
+      isGuru: false,
+      isAdmin: true,
+      mapelIds,
+      hasMapelConfigured: true,
+    }
   }
-  return { isGuru: false, mapelIds: null }
+
+  if (role !== 'user') {
+    return { role, isGuru: false, isAdmin: false, mapelIds: [], hasMapelConfigured: false }
+  }
+
+  const rawIds = (profile.mapel_ids as string[] | null) ?? []
+  if (rawIds.length === 0) {
+    return {
+      role,
+      isGuru: true,
+      isAdmin: false,
+      mapelIds: [],
+      hasMapelConfigured: false,
+    }
+  }
+
+  const { data: validMapel, error: validError } = await supabase
+    .from('mata_pelajaran')
+    .select('id')
+    .in('id', rawIds)
+
+  if (validError) throw new Error(validError.message)
+
+  const mapelIds = (validMapel ?? []).map((m: { id: string }) => m.id)
+  return {
+    role,
+    isGuru: true,
+    isAdmin: false,
+    mapelIds,
+    hasMapelConfigured: mapelIds.length > 0,
+  }
+}
+
+/** Dipakai halaman DIKNAS untuk empty state guru tanpa mapel. */
+export async function getGuruMapelAccessStatus(): Promise<GuruMapelAccessStatus> {
+  return resolveMapelAccess()
+}
+
+function assertGuruMapelWriteAccess(
+  access: GuruMapelAccessStatus,
+  mataPelajaranId: string
+): void {
+  if (!access.isGuru) return
+
+  if (!access.hasMapelConfigured) {
+    throw new Error(
+      'Mata pelajaran belum dikonfigurasi. Hubungi Admin untuk mengatur mata pelajaran Anda.'
+    )
+  }
+
+  if (!access.mapelIds.includes(mataPelajaranId)) {
+    throw new Error('Akses ditolak: Anda tidak memiliki akses ke mata pelajaran ini')
+  }
 }
 
 // ─── Helper: ambil siswa sesuai filter ────────────────────────────────────────
@@ -295,7 +385,10 @@ async function getSiswaIds(
 
 export async function getMataKuliah(unit?: string): Promise<MataKuliah[]> {
   const supabase = createClient()
-  const { isGuru, mapelIds } = await getGuruMapelAccess()
+  const access = await resolveMapelAccess()
+  if (access.isGuru && !access.hasMapelConfigured) {
+    return []
+  }
 
   let query = supabase
     .from('mata_pelajaran')
@@ -306,8 +399,8 @@ export async function getMataKuliah(unit?: string): Promise<MataKuliah[]> {
     query = query.eq('unit', unit)
   }
 
-  if (isGuru && mapelIds) {
-    query = query.in('id', mapelIds)
+  if (access.isGuru && access.mapelIds.length > 0) {
+    query = query.in('id', access.mapelIds)
   }
 
   const { data, error } = await query
@@ -358,8 +451,8 @@ export async function getPresensi(
   const from = (page - 1) * pageSize
   const to = from + pageSize - 1
 
-  const { isGuru, mapelIds } = await getGuruMapelAccess()
-  if (isGuru && (!mapelIds || mapelIds.length === 0)) {
+  const access = await resolveMapelAccess()
+  if (access.isGuru && !access.hasMapelConfigured) {
     return { data: [], total: 0 }
   }
 
@@ -379,8 +472,8 @@ export async function getPresensi(
   if (filters.semesterId) countQ = countQ.eq('semester_id', filters.semesterId)
   if (filters.mapelId) countQ = countQ.eq('mata_pelajaran_id', filters.mapelId)
   
-  if (isGuru && mapelIds) {
-    countQ = countQ.in('mata_pelajaran_id', mapelIds)
+  if (access.isGuru && access.mapelIds.length > 0) {
+    countQ = countQ.in('mata_pelajaran_id', access.mapelIds)
   }
 
   const { count, error: countError } = await countQ
@@ -396,8 +489,8 @@ export async function getPresensi(
   if (filters.semesterId) dataQ = dataQ.eq('semester_id', filters.semesterId)
   if (filters.mapelId) dataQ = dataQ.eq('mata_pelajaran_id', filters.mapelId)
 
-  if (isGuru && mapelIds) {
-    dataQ = dataQ.in('mata_pelajaran_id', mapelIds)
+  if (access.isGuru && access.mapelIds.length > 0) {
+    dataQ = dataQ.in('mata_pelajaran_id', access.mapelIds)
   }
 
   const { data, error } = await dataQ
@@ -416,10 +509,8 @@ export async function createPresensi(data: {
   dicatat_oleh?: string | null
 }): Promise<PresensiEntry> {
   const supabase = createClient()
-  const { isGuru, mapelIds } = await getGuruMapelAccess()
-  if (isGuru && (!mapelIds || !mapelIds.includes(data.mata_pelajaran_id))) {
-    throw new Error('Akses ditolak: Anda tidak memiliki akses ke mata pelajaran ini')
-  }
+  const access = await resolveMapelAccess()
+  assertGuruMapelWriteAccess(access, data.mata_pelajaran_id)
 
   const { data: result, error } = await supabase
     .from('presensi')
@@ -443,17 +534,17 @@ export async function updatePresensi(
   }>
 ): Promise<PresensiEntry> {
   const supabase = createClient()
-  const { isGuru, mapelIds } = await getGuruMapelAccess()
-  if (isGuru && mapelIds) {
+  const access = await resolveMapelAccess()
+  if (access.isGuru && access.hasMapelConfigured) {
     const { data: existing } = await supabase
       .from('presensi')
       .select('mata_pelajaran_id')
       .eq('id', id)
       .single()
-    if (existing && !mapelIds.includes(existing.mata_pelajaran_id)) {
+    if (existing && !access.mapelIds.includes(existing.mata_pelajaran_id)) {
       throw new Error('Akses ditolak: Anda tidak memiliki akses ke data presensi ini')
     }
-    if (data.mata_pelajaran_id && !mapelIds.includes(data.mata_pelajaran_id)) {
+    if (data.mata_pelajaran_id && !access.mapelIds.includes(data.mata_pelajaran_id)) {
       throw new Error('Akses ditolak: Anda tidak memiliki akses ke mata pelajaran baru ini')
     }
   }
@@ -472,15 +563,15 @@ export async function updatePresensi(
 
 export async function deletePresensi(ids: string[]): Promise<void> {
   const supabase = createClient()
-  const { isGuru, mapelIds } = await getGuruMapelAccess()
-  if (isGuru && mapelIds) {
+  const access = await resolveMapelAccess()
+  if (access.isGuru && access.hasMapelConfigured) {
     const { data: existing } = await supabase
       .from('presensi')
       .select('mata_pelajaran_id')
       .in('id', ids)
     if (existing) {
       for (const row of existing) {
-        if (!mapelIds.includes(row.mata_pelajaran_id)) {
+        if (!access.mapelIds.includes(row.mata_pelajaran_id)) {
           throw new Error('Akses ditolak: Anda tidak memiliki akses untuk menghapus data presensi ini')
         }
       }
@@ -506,13 +597,17 @@ export async function bulkCreatePresensi(
   if (data.length === 0) return []
 
   const supabase = createClient()
-  const { isGuru, mapelIds } = await getGuruMapelAccess()
-  if (isGuru && mapelIds) {
+  const access = await resolveMapelAccess()
+  if (access.isGuru && access.hasMapelConfigured) {
     for (const item of data) {
-      if (!mapelIds.includes(item.mata_pelajaran_id)) {
+      if (!access.mapelIds.includes(item.mata_pelajaran_id)) {
         throw new Error('Akses ditolak: Anda tidak memiliki akses ke mata pelajaran ini')
       }
     }
+  } else if (access.isGuru && !access.hasMapelConfigured) {
+    throw new Error(
+      'Mata pelajaran belum dikonfigurasi. Hubungi Admin untuk mengatur mata pelajaran Anda.'
+    )
   }
 
   const siswaIds = data.map((d) => d.siswa_id)
@@ -633,8 +728,8 @@ export async function getNilaiHarian(
   const from = (page - 1) * pageSize
   const to = from + pageSize - 1
 
-  const { isGuru, mapelIds } = await getGuruMapelAccess()
-  if (isGuru && (!mapelIds || mapelIds.length === 0)) {
+  const access = await resolveMapelAccess()
+  if (access.isGuru && !access.hasMapelConfigured) {
     return { data: [], total: 0 }
   }
 
@@ -657,8 +752,8 @@ export async function getNilaiHarian(
     countQ = countQ.eq('is_approved', filters.isApproved)
   }
 
-  if (isGuru && mapelIds) {
-    countQ = countQ.in('mata_pelajaran_id', mapelIds)
+  if (access.isGuru && access.mapelIds.length > 0) {
+    countQ = countQ.in('mata_pelajaran_id', access.mapelIds)
   }
 
   const { count, error: countError } = await countQ
@@ -677,8 +772,8 @@ export async function getNilaiHarian(
     dataQ = dataQ.eq('is_approved', filters.isApproved)
   }
 
-  if (isGuru && mapelIds) {
-    dataQ = dataQ.in('mata_pelajaran_id', mapelIds)
+  if (access.isGuru && access.mapelIds.length > 0) {
+    dataQ = dataQ.in('mata_pelajaran_id', access.mapelIds)
   }
 
   const { data, error } = await dataQ
@@ -703,10 +798,8 @@ export async function createNilaiHarian(data: {
   tanggal?: string | null
 }): Promise<NilaiHarianEntry> {
   const supabase = createClient()
-  const { isGuru, mapelIds } = await getGuruMapelAccess()
-  if (isGuru && (!mapelIds || !mapelIds.includes(data.mata_pelajaran_id))) {
-    throw new Error('Akses ditolak: Anda tidak memiliki akses ke mata pelajaran ini')
-  }
+  const access = await resolveMapelAccess()
+  assertGuruMapelWriteAccess(access, data.mata_pelajaran_id)
 
   const { data: result, error } = await supabase
     .from('nilai_harian')
@@ -738,17 +831,17 @@ export async function updateNilaiHarian(
   }>
 ): Promise<NilaiHarianEntry> {
   const supabase = createClient()
-  const { isGuru, mapelIds } = await getGuruMapelAccess()
-  if (isGuru && mapelIds) {
+  const access = await resolveMapelAccess()
+  if (access.isGuru && access.hasMapelConfigured) {
     const { data: existing } = await supabase
       .from('nilai_harian')
       .select('mata_pelajaran_id')
       .eq('id', id)
       .single()
-    if (existing && !mapelIds.includes(existing.mata_pelajaran_id)) {
+    if (existing && !access.mapelIds.includes(existing.mata_pelajaran_id)) {
       throw new Error('Akses ditolak: Anda tidak memiliki akses ke data nilai ini')
     }
-    if (data.mata_pelajaran_id && !mapelIds.includes(data.mata_pelajaran_id)) {
+    if (data.mata_pelajaran_id && !access.mapelIds.includes(data.mata_pelajaran_id)) {
       throw new Error('Akses ditolak: Anda tidak memiliki akses ke mata pelajaran baru ini')
     }
   }
@@ -767,15 +860,15 @@ export async function updateNilaiHarian(
 
 export async function deleteNilaiHarian(ids: string[]): Promise<void> {
   const supabase = createClient()
-  const { isGuru, mapelIds } = await getGuruMapelAccess()
-  if (isGuru && mapelIds) {
+  const access = await resolveMapelAccess()
+  if (access.isGuru && access.hasMapelConfigured) {
     const { data: existing } = await supabase
       .from('nilai_harian')
       .select('mata_pelajaran_id')
       .in('id', ids)
     if (existing) {
       for (const row of existing) {
-        if (!mapelIds.includes(row.mata_pelajaran_id)) {
+        if (!access.mapelIds.includes(row.mata_pelajaran_id)) {
           throw new Error('Akses ditolak: Anda tidak memiliki akses untuk menghapus data nilai ini')
         }
       }
@@ -792,15 +885,15 @@ export async function approveNilaiHarian(
   approvedBy: string
 ): Promise<void> {
   const supabase = createClient()
-  const { isGuru, mapelIds } = await getGuruMapelAccess()
-  if (isGuru && mapelIds) {
+  const access = await resolveMapelAccess()
+  if (access.isGuru && access.hasMapelConfigured) {
     const { data: existing } = await supabase
       .from('nilai_harian')
       .select('mata_pelajaran_id')
       .in('id', ids)
     if (existing) {
       for (const row of existing) {
-        if (!mapelIds.includes(row.mata_pelajaran_id)) {
+        if (!access.mapelIds.includes(row.mata_pelajaran_id)) {
           throw new Error('Akses ditolak: Anda tidak memiliki akses untuk menyetujui data nilai ini')
         }
       }
@@ -838,13 +931,17 @@ export async function bulkCreateNilaiHarian(
 ): Promise<NilaiHarianEntry[]> {
   if (data.length === 0) return []
   const supabase = createClient()
-  const { isGuru, mapelIds } = await getGuruMapelAccess()
-  if (isGuru && mapelIds) {
+  const access = await resolveMapelAccess()
+  if (access.isGuru && access.hasMapelConfigured) {
     for (const item of data) {
-      if (!mapelIds.includes(item.mata_pelajaran_id)) {
+      if (!access.mapelIds.includes(item.mata_pelajaran_id)) {
         throw new Error('Akses ditolak: Anda tidak memiliki akses ke mata pelajaran ini')
       }
     }
+  } else if (access.isGuru && !access.hasMapelConfigured) {
+    throw new Error(
+      'Mata pelajaran belum dikonfigurasi. Hubungi Admin untuk mengatur mata pelajaran Anda.'
+    )
   }
 
   const { data: results, error } = await supabase
@@ -867,8 +964,8 @@ export async function getNilaiUAS(
   const from = (page - 1) * pageSize
   const to = from + pageSize - 1
 
-  const { isGuru, mapelIds } = await getGuruMapelAccess()
-  if (isGuru && (!mapelIds || mapelIds.length === 0)) {
+  const access = await resolveMapelAccess()
+  if (access.isGuru && !access.hasMapelConfigured) {
     return { data: [], total: 0 }
   }
 
@@ -891,8 +988,8 @@ export async function getNilaiUAS(
     countQ = countQ.eq('is_approved', filters.isApproved)
   }
 
-  if (isGuru && mapelIds) {
-    countQ = countQ.in('mata_pelajaran_id', mapelIds)
+  if (access.isGuru && access.mapelIds.length > 0) {
+    countQ = countQ.in('mata_pelajaran_id', access.mapelIds)
   }
 
   const { count, error: countError } = await countQ
@@ -911,8 +1008,8 @@ export async function getNilaiUAS(
     dataQ = dataQ.eq('is_approved', filters.isApproved)
   }
 
-  if (isGuru && mapelIds) {
-    dataQ = dataQ.in('mata_pelajaran_id', mapelIds)
+  if (access.isGuru && access.mapelIds.length > 0) {
+    dataQ = dataQ.in('mata_pelajaran_id', access.mapelIds)
   }
 
   const { data, error } = await dataQ
@@ -932,10 +1029,8 @@ export async function createNilaiUAS(data: {
   dicatat_oleh?: string | null
 }): Promise<NilaiUASEntry> {
   const supabase = createClient()
-  const { isGuru, mapelIds } = await getGuruMapelAccess()
-  if (isGuru && (!mapelIds || !mapelIds.includes(data.mata_pelajaran_id))) {
-    throw new Error('Akses ditolak: Anda tidak memiliki akses ke mata pelajaran ini')
-  }
+  const access = await resolveMapelAccess()
+  assertGuruMapelWriteAccess(access, data.mata_pelajaran_id)
 
   const { data: result, error } = await supabase
     .from('nilai_uas')
@@ -962,17 +1057,17 @@ export async function updateNilaiUAS(
   }>
 ): Promise<NilaiUASEntry> {
   const supabase = createClient()
-  const { isGuru, mapelIds } = await getGuruMapelAccess()
-  if (isGuru && mapelIds) {
+  const access = await resolveMapelAccess()
+  if (access.isGuru && access.hasMapelConfigured) {
     const { data: existing } = await supabase
       .from('nilai_uas')
       .select('mata_pelajaran_id')
       .eq('id', id)
       .single()
-    if (existing && !mapelIds.includes(existing.mata_pelajaran_id)) {
+    if (existing && !access.mapelIds.includes(existing.mata_pelajaran_id)) {
       throw new Error('Akses ditolak: Anda tidak memiliki akses ke data nilai UAS ini')
     }
-    if (data.mata_pelajaran_id && !mapelIds.includes(data.mata_pelajaran_id)) {
+    if (data.mata_pelajaran_id && !access.mapelIds.includes(data.mata_pelajaran_id)) {
       throw new Error('Akses ditolak: Anda tidak memiliki akses ke mata pelajaran baru ini')
     }
   }
@@ -991,15 +1086,15 @@ export async function updateNilaiUAS(
 
 export async function deleteNilaiUAS(ids: string[]): Promise<void> {
   const supabase = createClient()
-  const { isGuru, mapelIds } = await getGuruMapelAccess()
-  if (isGuru && mapelIds) {
+  const access = await resolveMapelAccess()
+  if (access.isGuru && access.hasMapelConfigured) {
     const { data: existing } = await supabase
       .from('nilai_uas')
       .select('mata_pelajaran_id')
       .in('id', ids)
     if (existing) {
       for (const row of existing) {
-        if (!mapelIds.includes(row.mata_pelajaran_id)) {
+        if (!access.mapelIds.includes(row.mata_pelajaran_id)) {
           throw new Error('Akses ditolak: Anda tidak memiliki akses untuk menghapus data nilai UAS ini')
         }
       }
@@ -1016,15 +1111,15 @@ export async function approveNilaiUAS(
   approvedBy: string
 ): Promise<void> {
   const supabase = createClient()
-  const { isGuru, mapelIds } = await getGuruMapelAccess()
-  if (isGuru && mapelIds) {
+  const access = await resolveMapelAccess()
+  if (access.isGuru && access.hasMapelConfigured) {
     const { data: existing } = await supabase
       .from('nilai_uas')
       .select('mata_pelajaran_id')
       .in('id', ids)
     if (existing) {
       for (const row of existing) {
-        if (!mapelIds.includes(row.mata_pelajaran_id)) {
+        if (!access.mapelIds.includes(row.mata_pelajaran_id)) {
           throw new Error('Akses ditolak: Anda tidak memiliki akses untuk menyetujui data nilai UAS ini')
         }
       }
@@ -1057,13 +1152,17 @@ export async function bulkCreateNilaiUAS(
 ): Promise<NilaiUASEntry[]> {
   if (data.length === 0) return []
   const supabase = createClient()
-  const { isGuru, mapelIds } = await getGuruMapelAccess()
-  if (isGuru && mapelIds) {
+  const access = await resolveMapelAccess()
+  if (access.isGuru && access.hasMapelConfigured) {
     for (const item of data) {
-      if (!mapelIds.includes(item.mata_pelajaran_id)) {
+      if (!access.mapelIds.includes(item.mata_pelajaran_id)) {
         throw new Error('Akses ditolak: Anda tidak memiliki akses ke mata pelajaran ini')
       }
     }
+  } else if (access.isGuru && !access.hasMapelConfigured) {
+    throw new Error(
+      'Mata pelajaran belum dikonfigurasi. Hubungi Admin untuk mengatur mata pelajaran Anda.'
+    )
   }
 
   const siswaIds = data.map((d) => d.siswa_id)
@@ -1173,8 +1272,8 @@ export async function getBankSoal(
   const from = (page - 1) * pageSize
   const to = from + pageSize - 1
 
-  const { isGuru, mapelIds } = await getGuruMapelAccess()
-  if (isGuru && (!mapelIds || mapelIds.length === 0)) {
+  const access = await resolveMapelAccess()
+  if (access.isGuru && !access.hasMapelConfigured) {
     return { data: [], total: 0 }
   }
 
@@ -1186,8 +1285,8 @@ export async function getBankSoal(
   if (filters.semesterId) countQ = countQ.eq('semester_id', filters.semesterId)
   if (filters.tipe) countQ = countQ.eq('tipe', filters.tipe)
 
-  if (isGuru && mapelIds) {
-    countQ = countQ.in('mata_pelajaran_id', mapelIds)
+  if (access.isGuru && access.mapelIds.length > 0) {
+    countQ = countQ.in('mata_pelajaran_id', access.mapelIds)
   }
 
   const { count, error: countError } = await countQ
@@ -1203,8 +1302,8 @@ export async function getBankSoal(
   if (filters.semesterId) dataQ = dataQ.eq('semester_id', filters.semesterId)
   if (filters.tipe) dataQ = dataQ.eq('tipe', filters.tipe)
 
-  if (isGuru && mapelIds) {
-    dataQ = dataQ.in('mata_pelajaran_id', mapelIds)
+  if (access.isGuru && access.mapelIds.length > 0) {
+    dataQ = dataQ.in('mata_pelajaran_id', access.mapelIds)
   }
 
   const { data, error } = await dataQ
@@ -1222,9 +1321,13 @@ export async function createBankSoal(data: {
   dibuat_oleh?: string | null
 }): Promise<BankSoalEntry> {
   const supabase = createClient()
-  const { isGuru, mapelIds } = await getGuruMapelAccess()
-  if (isGuru && mapelIds && data.mata_pelajaran_id && !mapelIds.includes(data.mata_pelajaran_id)) {
-    throw new Error('Akses ditolak: Anda tidak memiliki akses ke mata pelajaran ini')
+  const access = await resolveMapelAccess()
+  if (data.mata_pelajaran_id) {
+    assertGuruMapelWriteAccess(access, data.mata_pelajaran_id)
+  } else if (access.isGuru && !access.hasMapelConfigured) {
+    throw new Error(
+      'Mata pelajaran belum dikonfigurasi. Hubungi Admin untuk mengatur mata pelajaran Anda.'
+    )
   }
 
   const { data: result, error } = await supabase
@@ -1249,17 +1352,17 @@ export async function updateBankSoal(
   }>
 ): Promise<BankSoalEntry> {
   const supabase = createClient()
-  const { isGuru, mapelIds } = await getGuruMapelAccess()
-  if (isGuru && mapelIds) {
+  const access = await resolveMapelAccess()
+  if (access.isGuru && access.hasMapelConfigured) {
     const { data: existing } = await supabase
       .from('bank_soal')
       .select('mata_pelajaran_id')
       .eq('id', id)
       .single()
-    if (existing && existing.mata_pelajaran_id && !mapelIds.includes(existing.mata_pelajaran_id)) {
+    if (existing && existing.mata_pelajaran_id && !access.mapelIds.includes(existing.mata_pelajaran_id)) {
       throw new Error('Akses ditolak: Anda tidak memiliki akses ke bank soal ini')
     }
-    if (data.mata_pelajaran_id && !mapelIds.includes(data.mata_pelajaran_id)) {
+    if (data.mata_pelajaran_id && !access.mapelIds.includes(data.mata_pelajaran_id)) {
       throw new Error('Akses ditolak: Anda tidak memiliki akses ke mata pelajaran baru ini')
     }
   }
@@ -1278,15 +1381,15 @@ export async function updateBankSoal(
 
 export async function deleteBankSoal(ids: string[]): Promise<void> {
   const supabase = createClient()
-  const { isGuru, mapelIds } = await getGuruMapelAccess()
-  if (isGuru && mapelIds) {
+  const access = await resolveMapelAccess()
+  if (access.isGuru && access.hasMapelConfigured) {
     const { data: existing } = await supabase
       .from('bank_soal')
       .select('mata_pelajaran_id')
       .in('id', ids)
     if (existing) {
       for (const row of existing) {
-        if (row.mata_pelajaran_id && !mapelIds.includes(row.mata_pelajaran_id)) {
+        if (row.mata_pelajaran_id && !access.mapelIds.includes(row.mata_pelajaran_id)) {
           throw new Error('Akses ditolak: Anda tidak memiliki akses untuk menghapus bank soal ini')
         }
       }

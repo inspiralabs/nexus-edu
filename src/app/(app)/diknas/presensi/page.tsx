@@ -58,6 +58,7 @@ import {
   type PresensiEntry,
 } from '@/lib/queries/diknas'
 import type { Unit } from '@/lib/supabase/types'
+import { GuruMapelGate } from '../_components/guru-mapel-gate'
 
 // ─── Konstanta ────────────────────────────────────────────────────────────────
 
@@ -124,14 +125,19 @@ export default function PresensiPage() {
   const debouncedSearch = useDebounce(search, 300)
   const debouncedSiswaSearch = useDebounce(siswaSearch, 300)
 
-  // ─── Guru Mapel Lock ────────────────────────────────────────────────────────
+  const { data: mapelList = [] } = useQuery({
+    queryKey: ['mapel-list', activeUnit],
+    queryFn: () => getMataKuliah(activeUnit),
+  })
+
+  // ─── Guru Mapel Lock (pakai mapel valid dari server, bukan raw profile.mapel_ids) ─
   const isSingleMapel = useMemo(() => {
-    return profile?.role === 'user' && profile?.mapel_ids?.length === 1
-  }, [profile])
+    return profile?.role === 'user' && mapelList.length === 1
+  }, [profile, mapelList])
 
   const singleMapelId = useMemo(() => {
-    return isSingleMapel ? profile?.mapel_ids?.[0] : null
-  }, [isSingleMapel, profile])
+    return isSingleMapel ? mapelList[0]?.id ?? null : null
+  }, [isSingleMapel, mapelList])
 
   // Form
   const form = useForm<PresensiFormValues>({
@@ -205,11 +211,6 @@ export default function PresensiPage() {
   const { data: semesterList = [] } = useQuery({
     queryKey: ['semester-options'],
     queryFn: getSemesterOptions,
-  })
-
-  const { data: mapelList = [] } = useQuery({
-    queryKey: ['mapel-list', activeUnit],
-    queryFn: () => getMataKuliah(activeUnit),
   })
 
   const resolvedSemesterId = useMemo(() => {
@@ -566,6 +567,7 @@ export default function PresensiPage() {
   // ─── Render ─────────────────────────────────────────────────────────────────
 
   return (
+    <GuruMapelGate>
     <div className="space-y-4">
       {/* Unit Tabs */}
       <Tabs
@@ -933,5 +935,6 @@ export default function PresensiPage() {
         isLoading={deleteMutation.isPending}
       />
     </div>
+    </GuruMapelGate>
   )
 }
