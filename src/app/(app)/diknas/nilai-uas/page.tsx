@@ -304,6 +304,7 @@ export default function NilaiUASPage() {
         nilai_asli: values.nilai_asli,
         is_approved: false,
         approved_at: null,
+        approved_by: null,
       }),
     onSuccess: async (result) => {
       const userId = getUserId()
@@ -362,6 +363,7 @@ export default function NilaiUASPage() {
       updateNilaiUAS(id, {
         is_approved: false,
         approved_at: null,
+        approved_by: null,
       }),
     onSuccess: async (_, id) => {
       const userId = getUserId()

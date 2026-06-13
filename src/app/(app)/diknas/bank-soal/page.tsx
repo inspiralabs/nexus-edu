@@ -50,27 +50,13 @@ import {
 // ─── Konstanta ────────────────────────────────────────────────────────────────
 
 const PAGE_SIZE_OPTIONS = [10, 20, 30, 50] as const
-const TIPE_SOAL_OPTIONS = [
-  'Pilihan Ganda',
-  'Essai',
-  'Praktik Mandiri',
-  'Proyek Kelompok',
-  'Tes Lisan',
-  'Setoran/Hafalan',
-] as const
+const TIPE_SOAL_OPTIONS = ['Pilihan Ganda', 'Essai'] as const
 
 // ─── Schema ───────────────────────────────────────────────────────────────────
 
 const bankSoalSchema = z.object({
   judul: z.string().min(1, 'Judul wajib diisi'),
-  tipe: z.enum([
-    'Pilihan Ganda',
-    'Essai',
-    'Praktik Mandiri',
-    'Proyek Kelompok',
-    'Tes Lisan',
-    'Setoran/Hafalan',
-  ]),
+  tipe: z.enum(TIPE_SOAL_OPTIONS),
   mata_pelajaran_id: z.string().nullable(),
   semester_id: z.string().nullable(),
 })
@@ -238,7 +224,7 @@ export default function BankSoalPage() {
     setSelectedFile(null)
     form.reset({
       judul: item.judul,
-      tipe: item.tipe as any,
+      tipe: item.tipe,
       mata_pelajaran_id: item.mata_pelajaran_id,
       semester_id: item.semester_id,
     })

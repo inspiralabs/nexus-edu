@@ -2,117 +2,55 @@
 // Query functions untuk modul Akademik (DIKNAS) — Fase F
 
 import { createClient } from '@/lib/supabase/client'
-import type { Unit } from '@/lib/supabase/types'
+import type {
+  BankSoal,
+  CatatanKelakuan,
+  MataPelajaran,
+  NilaiHarian,
+  NilaiUAS,
+  Presensi,
+  PresensiStatus,
+  Semester,
+  TipeBankSoal,
+  TipeCatatanKelakuan,
+  TipeNilai,
+  Unit,
+} from '@/lib/supabase/types'
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
-export interface MataKuliah {
-  id: string
-  nama_mapel: string
-  kategori: string
-  unit: Unit
-  created_at: string
-}
+/** @deprecated Gunakan MataPelajaran dari @/lib/supabase/types */
+export type MataKuliah = MataPelajaran
 
-export interface SemesterOption {
-  id: string
-  tahun_pelajaran_id: string
-  nomor_semester: number
-  tanggal_mulai: string
-  tanggal_selesai: string
-  is_aktif: boolean
-  created_at: string
-  tahun_pelajaran: {
-    id: string
-    nama: string
-    tahun_mulai: number
-    tahun_selesai: number
-    is_aktif: boolean
-    created_at: string
-  }
-}
+export type SemesterOption = Semester
 
-export interface PresensiEntry {
-  id: string
-  siswa_id: string
-  mata_pelajaran_id: string
-  semester_id: string | null
-  tanggal: string
-  status: string
-  keterangan: string | null
-  dicatat_oleh: string | null
-  students?: { nama: string; kelas: string; unit: string }
-  mata_pelajaran?: { nama_mapel: string; unit: string }
+export interface PresensiEntry extends Presensi {
+  students?: { nama: string; kelas: string; unit: string } | null
+  mata_pelajaran?: { nama_mapel: string; unit: string } | null
   profiles?: { nama_lengkap: string } | null
 }
 
-export interface NilaiHarianEntry {
-  id: string
-  siswa_id: string
-  mata_pelajaran_id: string
-  semester_id: string | null
-  tipe_nilai: 'Formatif' | 'Sumatif'
-  nama_tugas: string
-  materi: string | null
-  bab: string | null
-  nilai_asli: number | null
-  nilai_remedial: number | null
-  nilai_final: number | null
-  tipe_remedial: string | null
-  bank_soal_id: string | null
-  is_approved: boolean
-  approved_at: string | null
-  approved_by: string | null
-  dicatat_oleh: string | null
-  tanggal: string | null
-  students?: { nama: string; kelas: string; unit: string }
-  mata_pelajaran?: { nama_mapel: string }
-  bank_soal?: { judul: string; tipe: string }
+export interface NilaiHarianEntry extends NilaiHarian {
+  students?: { nama: string; kelas: string; unit: string } | null
+  mata_pelajaran?: { nama_mapel: string } | null
+  bank_soal?: { judul: string; tipe: string } | null
   profiles?: { nama_lengkap: string } | null
 }
 
-export interface NilaiUASEntry {
-  id: string
-  siswa_id: string
-  mata_pelajaran_id: string
-  semester_id: string | null
-  nilai_asli: number | null
-  nilai_remedial: number | null
-  nilai_final: number | null
-  tipe_remedial: string | null
-  bank_soal_id: string | null
-  is_approved: boolean
-  approved_at: string | null
-  dicatat_oleh: string | null
-  students?: { nama: string; kelas: string; unit: string }
-  mata_pelajaran?: { nama_mapel: string }
+export interface NilaiUASEntry extends NilaiUAS {
+  students?: { nama: string; kelas: string; unit: string } | null
+  mata_pelajaran?: { nama_mapel: string } | null
   profiles?: { nama_lengkap: string } | null
 }
 
-export interface BankSoalEntry {
-  id: string
-  judul: string
-  tipe: string
-  mata_pelajaran_id: string | null
-  semester_id: string | null
-  konten: Record<string, unknown> | null
-  dibuat_oleh: string | null
-  created_at: string
-  mata_pelajaran?: { nama_mapel: string; unit: string }
-  semester?: { nomor_semester: number; tahun_pelajaran?: { nama: string } }
+export interface BankSoalEntry extends BankSoal {
+  mata_pelajaran?: { nama_mapel: string; unit: string } | null
+  semester?: { nomor_semester: number; tahun_pelajaran?: { nama: string } } | null
   profiles?: { nama_lengkap: string } | null
 }
 
-export interface CatatanKelakuanEntry {
-  id: string
-  siswa_id: string
-  semester_id: string | null
-  tipe: 'Baik' | 'Kurang Baik'
-  catatan: string
-  tanggal: string | null
-  dicatat_oleh: string | null
-  created_at: string
-  students?: { nama: string; kelas: string; unit: string }
+export interface CatatanKelakuanEntry extends CatatanKelakuan {
+  students?: { nama: string; kelas: string; unit: string } | null
   profiles?: { nama_lengkap: string } | null
 }
 
@@ -133,6 +71,7 @@ export type DiknasDashboardFilters = {
   kelas?: string
   search?: string
   mapelId?: string
+  siswaId?: string
   page?: number
   pageSize?: number
   isApproved?: boolean
@@ -150,9 +89,26 @@ export const PRESENSI_STATUS_OPTIONS = [
   'Istihadhah',
   'Haid',
   'Alpha',
-] as const
+] as const satisfies readonly PresensiStatus[]
 
-export type PresensiStatus = (typeof PRESENSI_STATUS_OPTIONS)[number]
+export type { PresensiStatus }
+
+// ─── SELECT fragments (LEFT JOIN agar data orphan UUID tetap muncul) ───────────
+
+const PRESENSI_SELECT =
+  'id, siswa_id, mata_pelajaran_id, semester_id, tanggal, status, keterangan, dicatat_oleh, created_at, students!left(nama, kelas, unit), mata_pelajaran!left(nama_mapel, unit), profiles:dicatat_oleh!left(nama_lengkap)'
+
+const NILAI_HARIAN_SELECT =
+  'id, siswa_id, mata_pelajaran_id, semester_id, tipe_nilai, nama_tugas, materi, bab, nilai_asli, nilai_remedial, nilai_final, tipe_remedial, bank_soal_id, is_approved, approved_at, approved_by, dicatat_oleh, tanggal, created_at, students!left(nama, kelas, unit), mata_pelajaran!left(nama_mapel), bank_soal!left(judul, tipe), profiles:dicatat_oleh!left(nama_lengkap)'
+
+const NILAI_UAS_SELECT =
+  'id, siswa_id, mata_pelajaran_id, semester_id, nilai_asli, nilai_remedial, nilai_final, tipe_remedial, bank_soal_id, is_approved, approved_at, approved_by, dicatat_oleh, created_at, students!left(nama, kelas, unit), mata_pelajaran!left(nama_mapel), profiles:dicatat_oleh!left(nama_lengkap)'
+
+const BANK_SOAL_SELECT =
+  'id, judul, tipe, mata_pelajaran_id, semester_id, konten, dibuat_oleh, created_at, mata_pelajaran!left(nama_mapel, unit), semester!left(nomor_semester, tahun_pelajaran(nama)), profiles:dibuat_oleh!left(nama_lengkap)'
+
+const CATATAN_KELAKUAN_SELECT =
+  'id, siswa_id, semester_id, tipe, catatan, tanggal, dicatat_oleh, created_at, students!left(nama, kelas, unit), profiles:dicatat_oleh!left(nama_lengkap)'
 
 // ─── Helpers: Relation unwrapping ─────────────────────────────────────────────
 
@@ -164,7 +120,37 @@ function unwrapRelation<T>(relation: Relation<T>): T | null {
   return relation
 }
 
-function mapPresensi(row: any): PresensiEntry {
+type PresensiRow = Presensi & {
+  students?: Relation<{ nama: string; kelas: string; unit: string }>
+  mata_pelajaran?: Relation<{ nama_mapel: string; unit: string }>
+  profiles?: Relation<{ nama_lengkap: string }>
+}
+
+type NilaiHarianRow = NilaiHarian & {
+  students?: Relation<{ nama: string; kelas: string; unit: string }>
+  mata_pelajaran?: Relation<{ nama_mapel: string }>
+  bank_soal?: Relation<{ judul: string; tipe: string }>
+  profiles?: Relation<{ nama_lengkap: string }>
+}
+
+type NilaiUASRow = NilaiUAS & {
+  students?: Relation<{ nama: string; kelas: string; unit: string }>
+  mata_pelajaran?: Relation<{ nama_mapel: string }>
+  profiles?: Relation<{ nama_lengkap: string }>
+}
+
+type BankSoalRow = BankSoal & {
+  mata_pelajaran?: Relation<{ nama_mapel: string; unit: string }>
+  semester?: Relation<{ nomor_semester: number; tahun_pelajaran?: { nama: string } }>
+  profiles?: Relation<{ nama_lengkap: string }>
+}
+
+type CatatanKelakuanRow = CatatanKelakuan & {
+  students?: Relation<{ nama: string; kelas: string; unit: string }>
+  profiles?: Relation<{ nama_lengkap: string }>
+}
+
+function mapPresensi(row: PresensiRow): PresensiEntry {
   return {
     id: row.id,
     siswa_id: row.siswa_id,
@@ -174,13 +160,14 @@ function mapPresensi(row: any): PresensiEntry {
     status: row.status,
     keterangan: row.keterangan,
     dicatat_oleh: row.dicatat_oleh,
+    created_at: row.created_at,
     students: unwrapRelation(row.students) ?? undefined,
     mata_pelajaran: unwrapRelation(row.mata_pelajaran) ?? undefined,
     profiles: unwrapRelation(row.profiles) ?? undefined,
   }
 }
 
-function mapNilaiHarian(row: any): NilaiHarianEntry {
+function mapNilaiHarian(row: NilaiHarianRow): NilaiHarianEntry {
   return {
     id: row.id,
     siswa_id: row.siswa_id,
@@ -200,6 +187,7 @@ function mapNilaiHarian(row: any): NilaiHarianEntry {
     approved_by: row.approved_by,
     dicatat_oleh: row.dicatat_oleh,
     tanggal: row.tanggal,
+    created_at: row.created_at,
     students: unwrapRelation(row.students) ?? undefined,
     mata_pelajaran: unwrapRelation(row.mata_pelajaran) ?? undefined,
     bank_soal: unwrapRelation(row.bank_soal) ?? undefined,
@@ -207,7 +195,7 @@ function mapNilaiHarian(row: any): NilaiHarianEntry {
   }
 }
 
-function mapNilaiUAS(row: any): NilaiUASEntry {
+function mapNilaiUAS(row: NilaiUASRow): NilaiUASEntry {
   return {
     id: row.id,
     siswa_id: row.siswa_id,
@@ -220,30 +208,33 @@ function mapNilaiUAS(row: any): NilaiUASEntry {
     bank_soal_id: row.bank_soal_id,
     is_approved: row.is_approved,
     approved_at: row.approved_at,
+    approved_by: row.approved_by,
     dicatat_oleh: row.dicatat_oleh,
+    created_at: row.created_at,
     students: unwrapRelation(row.students) ?? undefined,
     mata_pelajaran: unwrapRelation(row.mata_pelajaran) ?? undefined,
     profiles: unwrapRelation(row.profiles) ?? undefined,
   }
 }
 
-function mapBankSoal(row: any): BankSoalEntry {
+function mapBankSoal(row: unknown): BankSoalEntry {
+  const r = row as BankSoalRow
   return {
-    id: row.id,
-    judul: row.judul,
-    tipe: row.tipe,
-    mata_pelajaran_id: row.mata_pelajaran_id,
-    semester_id: row.semester_id,
-    konten: row.konten,
-    dibuat_oleh: row.dibuat_oleh,
-    created_at: row.created_at,
-    mata_pelajaran: unwrapRelation(row.mata_pelajaran) ?? undefined,
-    semester: unwrapRelation(row.semester) ?? undefined,
-    profiles: unwrapRelation(row.profiles) ?? undefined,
+    id: r.id,
+    judul: r.judul,
+    tipe: r.tipe,
+    mata_pelajaran_id: r.mata_pelajaran_id,
+    semester_id: r.semester_id,
+    konten: r.konten,
+    dibuat_oleh: r.dibuat_oleh,
+    created_at: r.created_at,
+    mata_pelajaran: unwrapRelation(r.mata_pelajaran) ?? undefined,
+    semester: unwrapRelation(r.semester) ?? undefined,
+    profiles: unwrapRelation(r.profiles) ?? undefined,
   }
 }
 
-function mapCatatanKelakuan(row: any): CatatanKelakuanEntry {
+function mapCatatanKelakuan(row: CatatanKelakuanRow): CatatanKelakuanEntry {
   return {
     id: row.id,
     siswa_id: row.siswa_id,
@@ -268,7 +259,7 @@ async function getGuruMapelAccess(): Promise<{ isGuru: boolean; mapelIds: string
   const { data: profile } = await supabase
     .from('profiles')
     .select('role, mapel_ids')
-    .eq('id', user.id)
+    .eq('user_id', user.id)
     .single()
 
   if (profile && profile.role === 'user') {
@@ -372,7 +363,9 @@ export async function getPresensi(
     return { data: [], total: 0 }
   }
 
-  const siswaIds = await getSiswaIds(filters.unit, filters.kelas, filters.search)
+  const siswaIds = filters.siswaId
+    ? [filters.siswaId]
+    : await getSiswaIds(filters.unit, filters.kelas, filters.search)
 
   if (siswaIds && siswaIds.length === 0) {
     return { data: [], total: 0 }
@@ -395,9 +388,7 @@ export async function getPresensi(
 
   let dataQ = supabase
     .from('presensi')
-    .select(
-      'id, siswa_id, mata_pelajaran_id, semester_id, tanggal, status, keterangan, dicatat_oleh, students(nama, kelas, unit), mata_pelajaran(nama_mapel, unit), profiles:dicatat_oleh(nama_lengkap)'
-    )
+    .select(PRESENSI_SELECT)
     .order('tanggal', { ascending: false })
     .range(from, to)
 
@@ -433,9 +424,7 @@ export async function createPresensi(data: {
   const { data: result, error } = await supabase
     .from('presensi')
     .insert(data)
-    .select(
-      'id, siswa_id, mata_pelajaran_id, semester_id, tanggal, status, keterangan, dicatat_oleh, students(nama, kelas, unit), mata_pelajaran(nama_mapel, unit), profiles:dicatat_oleh(nama_lengkap)'
-    )
+    .select(PRESENSI_SELECT)
     .single()
 
   if (error) throw new Error(error.message)
@@ -473,9 +462,7 @@ export async function updatePresensi(
     .from('presensi')
     .update(data)
     .eq('id', id)
-    .select(
-      'id, siswa_id, mata_pelajaran_id, semester_id, tanggal, status, keterangan, dicatat_oleh, students(nama, kelas, unit), mata_pelajaran(nama_mapel, unit), profiles:dicatat_oleh(nama_lengkap)'
-    )
+    .select(PRESENSI_SELECT)
     .single()
 
   if (error) throw new Error(error.message)
@@ -550,7 +537,7 @@ export async function bulkCreatePresensi(
     mata_pelajaran_id: string
     semester_id: string | null
     tanggal: string
-    status: string
+    status: PresensiStatus
     keterangan: string | null
     dicatat_oleh: string | null
   }
@@ -565,7 +552,7 @@ export async function bulkCreatePresensi(
       mata_pelajaran_id: item.mata_pelajaran_id,
       semester_id: item.semester_id,
       tanggal: item.tanggal,
-      status: item.status,
+      status: item.status as PresensiStatus,
       keterangan: item.keterangan || null,
       dicatat_oleh: item.dicatat_oleh || null,
     }
@@ -577,7 +564,9 @@ export async function bulkCreatePresensi(
     }
   }
 
-  const promises: Promise<any>[] = []
+  type PresensiBatchResult = { data: PresensiRow | PresensiRow[] | null; error: Error | null }
+
+  const promises: Promise<PresensiBatchResult>[] = []
 
   let insertPromiseIdx = -1
   if (toInsert.length > 0) {
@@ -587,9 +576,7 @@ export async function bulkCreatePresensi(
         supabase
           .from('presensi')
           .insert(toInsert)
-          .select(
-            'id, siswa_id, mata_pelajaran_id, semester_id, tanggal, status, keterangan, dicatat_oleh, students(nama, kelas, unit), mata_pelajaran(nama_mapel, unit), profiles:dicatat_oleh(nama_lengkap)'
-          )
+          .select(PRESENSI_SELECT)
       )
     )
   }
@@ -602,9 +589,7 @@ export async function bulkCreatePresensi(
           .from('presensi')
           .update(item.payload)
           .eq('id', item.id)
-          .select(
-            'id, siswa_id, mata_pelajaran_id, semester_id, tanggal, status, keterangan, dicatat_oleh, students(nama, kelas, unit), mata_pelajaran(nama_mapel, unit), profiles:dicatat_oleh(nama_lengkap)'
-          )
+          .select(PRESENSI_SELECT)
           .single()
       )
     )
@@ -616,19 +601,21 @@ export async function bulkCreatePresensi(
     if (res.error) throw new Error(res.error.message)
   }
 
-  const finalRecords: any[] = []
+  const finalRecords: PresensiRow[] = []
 
   if (insertPromiseIdx !== -1) {
     const insertRes = results[insertPromiseIdx]
     if (insertRes.data) {
-      finalRecords.push(...insertRes.data)
+      const rows = Array.isArray(insertRes.data) ? insertRes.data : [insertRes.data]
+      finalRecords.push(...rows)
     }
   }
 
   for (let i = updatePromiseStartIdx; i < results.length; i++) {
     const updateRes = results[i]
     if (updateRes.data) {
-      finalRecords.push(updateRes.data)
+      const row = Array.isArray(updateRes.data) ? updateRes.data[0] : updateRes.data
+      if (row) finalRecords.push(row)
     }
   }
 
@@ -636,9 +623,6 @@ export async function bulkCreatePresensi(
 }
 
 // ─── Nilai Harian ─────────────────────────────────────────────────────────────
-
-const NILAI_HARIAN_SELECT =
-  'id, siswa_id, mata_pelajaran_id, semester_id, tipe_nilai, nama_tugas, materi, bab, nilai_asli, nilai_remedial, nilai_final, tipe_remedial, bank_soal_id, is_approved, approved_at, approved_by, dicatat_oleh, tanggal, students(nama, kelas, unit), mata_pelajaran(nama_mapel), bank_soal(judul, tipe), profiles:dicatat_oleh(nama_lengkap)'
 
 export async function getNilaiHarian(
   filters: DiknasDashboardFilters & { isApproved?: boolean }
@@ -654,7 +638,9 @@ export async function getNilaiHarian(
     return { data: [], total: 0 }
   }
 
-  const siswaIds = await getSiswaIds(filters.unit, filters.kelas, filters.search)
+  const siswaIds = filters.siswaId
+    ? [filters.siswaId]
+    : await getSiswaIds(filters.unit, filters.kelas, filters.search)
 
   if (siswaIds && siswaIds.length === 0) {
     return { data: [], total: 0 }
@@ -872,9 +858,6 @@ export async function bulkCreateNilaiHarian(
 
 // ─── Nilai UAS ────────────────────────────────────────────────────────────────
 
-const NILAI_UAS_SELECT =
-  'id, siswa_id, mata_pelajaran_id, semester_id, nilai_asli, nilai_remedial, nilai_final, tipe_remedial, bank_soal_id, is_approved, approved_at, dicatat_oleh, students(nama, kelas, unit), mata_pelajaran(nama_mapel), profiles:dicatat_oleh(nama_lengkap)'
-
 export async function getNilaiUAS(
   filters: DiknasDashboardFilters & { isApproved?: boolean }
 ): Promise<{ data: NilaiUASEntry[]; total: number }> {
@@ -889,7 +872,9 @@ export async function getNilaiUAS(
     return { data: [], total: 0 }
   }
 
-  const siswaIds = await getSiswaIds(filters.unit, filters.kelas, filters.search)
+  const siswaIds = filters.siswaId
+    ? [filters.siswaId]
+    : await getSiswaIds(filters.unit, filters.kelas, filters.search)
 
   if (siswaIds && siswaIds.length === 0) {
     return { data: [], total: 0 }
@@ -972,6 +957,7 @@ export async function updateNilaiUAS(
     bank_soal_id: string | null
     is_approved: boolean
     approved_at: string | null
+    approved_by: string | null
     mata_pelajaran_id?: string | null
   }>
 ): Promise<NilaiUASEntry> {
@@ -1096,8 +1082,19 @@ export async function bulkCreateNilaiUAS(
   const existingMap = new Map<string, string>()
   existing?.forEach((r) => existingMap.set(r.siswa_id, r.id))
 
-  const toInsert: any[] = []
-  const toUpdate: { id: string; payload: any }[] = []
+  interface NilaiUASPayload {
+    siswa_id: string
+    mata_pelajaran_id: string
+    semester_id: string | null
+    nilai_asli: number | null | undefined
+    nilai_remedial: number | null
+    tipe_remedial: string | null
+    bank_soal_id: string | null
+    dicatat_oleh: string | null | undefined
+  }
+
+  const toInsert: NilaiUASPayload[] = []
+  const toUpdate: { id: string; payload: NilaiUASPayload }[] = []
 
   for (const item of data) {
     const existingId = existingMap.get(item.siswa_id)
@@ -1119,7 +1116,9 @@ export async function bulkCreateNilaiUAS(
     }
   }
 
-  const promises: Promise<any>[] = []
+  type NilaiUASBatchResult = { data: NilaiUASRow | NilaiUASRow[] | null; error: Error | null }
+
+  const promises: Promise<NilaiUASBatchResult>[] = []
   let insertPromiseIdx = -1
   if (toInsert.length > 0) {
     insertPromiseIdx = promises.length
@@ -1144,23 +1143,26 @@ export async function bulkCreateNilaiUAS(
     if (res.error) throw new Error(res.error.message)
   }
 
-  const finalRecords: any[] = []
+  const finalRecords: NilaiUASRow[] = []
   if (insertPromiseIdx !== -1) {
     const insertRes = results[insertPromiseIdx]
-    if (insertRes.data) finalRecords.push(...insertRes.data)
+    if (insertRes.data) {
+      const rows = Array.isArray(insertRes.data) ? insertRes.data : [insertRes.data]
+      finalRecords.push(...rows)
+    }
   }
   for (let i = updatePromiseStartIdx; i < results.length; i++) {
     const updateRes = results[i]
-    if (updateRes.data) finalRecords.push(updateRes.data)
+    if (updateRes.data) {
+      const row = Array.isArray(updateRes.data) ? updateRes.data[0] : updateRes.data
+      if (row) finalRecords.push(row)
+    }
   }
 
   return finalRecords.map(mapNilaiUAS)
 }
 
 // ─── Bank Soal ────────────────────────────────────────────────────────────────
-
-const BANK_SOAL_SELECT =
-  'id, judul, tipe, mata_pelajaran_id, semester_id, konten, dibuat_oleh, created_at, mata_pelajaran(nama_mapel, unit), semester(nomor_semester, tahun_pelajaran(nama)), profiles:dibuat_oleh(nama_lengkap)'
 
 export async function getBankSoal(
   filters: DiknasDashboardFilters
@@ -1298,9 +1300,6 @@ export async function deleteBankSoal(ids: string[]): Promise<void> {
 
 // ─── Catatan Kelakuan ─────────────────────────────────────────────────────────
 
-const CATATAN_KELAKUAN_SELECT =
-  'id, siswa_id, semester_id, tipe, catatan, tanggal, dicatat_oleh, created_at, students(nama, kelas, unit), profiles:dicatat_oleh(nama_lengkap)'
-
 export async function getCatatanKelakuan(
   filters: DiknasDashboardFilters
 ): Promise<{ data: CatatanKelakuanEntry[]; total: number }> {
@@ -1310,7 +1309,9 @@ export async function getCatatanKelakuan(
   const from = (page - 1) * pageSize
   const to = from + pageSize - 1
 
-  const siswaIds = await getSiswaIds(filters.unit, filters.kelas, filters.search)
+  const siswaIds = filters.siswaId
+    ? [filters.siswaId]
+    : await getSiswaIds(filters.unit, filters.kelas, filters.search)
 
   if (siswaIds && siswaIds.length === 0) {
     return { data: [], total: 0 }
@@ -1431,13 +1432,13 @@ interface SiswaRow {
   kelas: string
 }
 
-interface NilaiHarianRow {
+interface RaportNilaiHarianRow {
   siswa_id: string
   tipe_nilai: string
   nilai_final: number | null
 }
 
-interface NilaiUASRow {
+interface RaportNilaiUASRow {
   siswa_id: string
   nilai_final: number | null
 }
@@ -1484,7 +1485,7 @@ export async function getRaportSiswa(filters: {
   const { data: nilaiHarianData, error: nilaiHarianError } = await nilaiHarianQ
   if (nilaiHarianError) throw new Error(nilaiHarianError.message)
 
-  const nilaiHarianList = (nilaiHarianData ?? []) as NilaiHarianRow[]
+  const nilaiHarianList = (nilaiHarianData ?? []) as RaportNilaiHarianRow[]
 
   // 3. Ambil nilai UAS semua siswa
   let nilaiUASQ = supabase
@@ -1500,7 +1501,7 @@ export async function getRaportSiswa(filters: {
   const { data: nilaiUASData, error: nilaiUASError } = await nilaiUASQ
   if (nilaiUASError) throw new Error(nilaiUASError.message)
 
-  const nilaiUASList = (nilaiUASData ?? []) as NilaiUASRow[]
+  const nilaiUASList = (nilaiUASData ?? []) as RaportNilaiUASRow[]
 
   // 4. Hitung rapor per siswa (client-side)
   return siswaList.map((siswa) => {
@@ -1508,9 +1509,11 @@ export async function getRaportSiswa(filters: {
     const formatifValues = harianSiswa
       .filter((n) => n.tipe_nilai === 'Formatif')
       .map((n) => n.nilai_final)
+      .filter((v): v is number => v !== null && v !== undefined)
     const sumatifValues = harianSiswa
       .filter((n) => n.tipe_nilai === 'Sumatif')
       .map((n) => n.nilai_final)
+      .filter((v): v is number => v !== null && v !== undefined)
 
     const uasEntry = nilaiUASList.find((n) => n.siswa_id === siswa.id)
     const nilai_uas = uasEntry?.nilai_final ?? null
@@ -1643,15 +1646,15 @@ export async function getKehadiranPerKelas(
 
   const { data, error } = await supabase
     .from('presensi')
-    .select('status, students(kelas)')
+    .select('status, students!left(kelas)')
     .gte('tanggal', `${bulan}-01`)
     .lte('tanggal', `${bulan}-31`)
 
   if (error) throw new Error(error.message)
 
-  const rows = (data ?? []).map((row: any) => ({
+  const rows = (data ?? []).map((row: { status: string; students?: Relation<{ kelas: string }> }) => ({
     status: row.status,
-    students: unwrapRelation(row.students)
+    students: unwrapRelation(row.students),
   }))
 
   const kelasMap = new Map<string, { hadir: number; total: number }>()
@@ -1712,5 +1715,28 @@ export async function uploadBankSoalPDF(file: File): Promise<string> {
 
   const { data: urlData } = supabase.storage.from('documents').getPublicUrl(path)
   return urlData.publicUrl
+}
+
+// ─── Orang Tua (read-only — WAJIB is_approved=true) ───────────────────────────
+
+/** Nilai harian yang sudah disetujui guru — untuk dashboard orang tua (Fase G). */
+export async function getNilaiHarianForOrangTua(
+  filters: DiknasDashboardFilters & { siswaId: string }
+): Promise<{ data: NilaiHarianEntry[]; total: number }> {
+  return getNilaiHarian({ ...filters, isApproved: true })
+}
+
+/** Nilai UAS yang sudah disetujui guru — untuk dashboard orang tua (Fase G). */
+export async function getNilaiUASForOrangTua(
+  filters: DiknasDashboardFilters & { siswaId: string }
+): Promise<{ data: NilaiUASEntry[]; total: number }> {
+  return getNilaiUAS({ ...filters, isApproved: true })
+}
+
+/** Presensi anak — orang tua boleh melihat semua status kehadiran. */
+export async function getPresensiForOrangTua(
+  filters: DiknasDashboardFilters & { siswaId: string }
+): Promise<{ data: PresensiEntry[]; total: number }> {
+  return getPresensi(filters)
 }
 

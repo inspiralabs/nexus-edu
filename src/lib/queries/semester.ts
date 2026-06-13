@@ -2,28 +2,9 @@
 // Query functions untuk Tahun Pelajaran dan Semester
 
 import { createClient } from '@/lib/supabase/client'
+import type { Semester, TahunPelajaran } from '@/lib/supabase/types'
 
-// ─── Tipe ─────────────────────────────────────────────────────────────────────
-
-export interface TahunPelajaran {
-  id: string
-  nama: string
-  tahun_mulai: number
-  tahun_selesai: number
-  is_aktif: boolean
-  created_at: string
-}
-
-export interface Semester {
-  id: string
-  tahun_pelajaran_id: string
-  nomor_semester: 1 | 2
-  tanggal_mulai: string
-  tanggal_selesai: string
-  is_aktif: boolean
-  created_at: string
-  tahun_pelajaran?: TahunPelajaran
-}
+export type { Semester, TahunPelajaran }
 
 export interface CreateTahunPelajaranInput {
   nama: string

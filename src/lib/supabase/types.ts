@@ -18,6 +18,8 @@ export type TingkatKejuaraan =
   | 'Tingkat Nasional'
   | 'Tingkat Internasional'
 
+export type TipeRole = 'guru' | 'musyrif' | 'guru_musyrif' | 'orangtua'
+
 export interface Profile {
   id: string
   user_id: string | null
@@ -28,7 +30,12 @@ export interface Profile {
   is_approved: boolean
   avatar_url: string | null
   email: string | null
+  tipe_role: TipeRole | null
+  unit_mengajar: Unit[] | null
   mapel_ids: string[] | null
+  kamar_ids: string[] | null
+  is_multi_mapel: boolean | null
+  is_musyrif: boolean | null
   created_at: string
   updated_at: string
 }
@@ -214,4 +221,115 @@ export interface Kamar {
   unit: Unit
   created_at: string
   profiles?: Profile
+}
+
+// ─── DIKNAS (Fase F) ───────────────────────────────────────────────────────────
+
+export type PresensiStatus =
+  | 'Hadir'
+  | 'Izin'
+  | 'Sakit'
+  | 'Terlambat'
+  | 'Terlambat Sekali'
+  | 'Istihadhah'
+  | 'Haid'
+  | 'Alpha'
+
+export type TipeNilai = 'Formatif' | 'Sumatif'
+
+export type TipeBankSoal = 'Pilihan Ganda' | 'Essai'
+
+export type TipeCatatanKelakuan = 'Baik' | 'Kurang Baik'
+
+export interface TahunPelajaran {
+  id: string
+  nama: string
+  tahun_mulai: number
+  tahun_selesai: number
+  is_aktif: boolean
+  created_at: string
+}
+
+export interface Semester {
+  id: string
+  tahun_pelajaran_id: string
+  nomor_semester: 1 | 2
+  tanggal_mulai: string
+  tanggal_selesai: string
+  is_aktif: boolean
+  created_at: string
+  tahun_pelajaran?: TahunPelajaran
+}
+
+export interface Presensi {
+  id: string
+  siswa_id: string
+  mata_pelajaran_id: string
+  semester_id: string | null
+  tanggal: string
+  status: PresensiStatus
+  keterangan: string | null
+  dicatat_oleh: string | null
+  created_at: string
+}
+
+export interface NilaiHarian {
+  id: string
+  siswa_id: string
+  mata_pelajaran_id: string
+  semester_id: string | null
+  tipe_nilai: TipeNilai
+  nama_tugas: string
+  materi: string | null
+  bab: string | null
+  nilai_asli: number | null
+  nilai_remedial: number | null
+  nilai_final: number | null
+  tipe_remedial: string | null
+  bank_soal_id: string | null
+  is_approved: boolean
+  approved_at: string | null
+  approved_by: string | null
+  dicatat_oleh: string | null
+  tanggal: string | null
+  created_at: string
+}
+
+export interface NilaiUAS {
+  id: string
+  siswa_id: string
+  mata_pelajaran_id: string
+  semester_id: string | null
+  nilai_asli: number | null
+  nilai_remedial: number | null
+  nilai_final: number | null
+  tipe_remedial: string | null
+  bank_soal_id: string | null
+  is_approved: boolean
+  approved_at: string | null
+  approved_by: string | null
+  dicatat_oleh: string | null
+  created_at: string
+}
+
+export interface BankSoal {
+  id: string
+  judul: string
+  tipe: TipeBankSoal
+  mata_pelajaran_id: string | null
+  semester_id: string | null
+  konten: Record<string, unknown> | null
+  dibuat_oleh: string | null
+  created_at: string
+}
+
+export interface CatatanKelakuan {
+  id: string
+  siswa_id: string
+  semester_id: string | null
+  tipe: TipeCatatanKelakuan
+  catatan: string
+  tanggal: string | null
+  dicatat_oleh: string | null
+  created_at: string
 }
