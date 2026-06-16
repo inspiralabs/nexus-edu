@@ -25,6 +25,11 @@ const signupGuruSchema = z.object({
   unit_mengajar: z.array(z.enum(['SD', 'SMP', 'SMA'])).min(1, 'Pilih minimal 1 unit mengajar'),
   mapel_ids: z.array(z.string().uuid()).optional(),
   kamar_ids: z.array(z.string().uuid()).optional(),
+  no_hp: z
+    .string()
+    .min(8, 'Nomor handphone minimal 8 karakter')
+    .regex(/^\d+$/, 'Nomor handphone hanya boleh berisi angka'),
+  nip: z.string().optional(),
   email: z.string().email('Format email tidak valid'),
   username: z
     .string()
@@ -65,6 +70,8 @@ export default function SignupGuruPage() {
       unit_mengajar: [],
       mapel_ids: [],
       kamar_ids: [],
+      no_hp: '',
+      nip: '',
       email: '',
       username: '',
       password: '',
@@ -177,6 +184,8 @@ export default function SignupGuruPage() {
         email: values.email,
         username: values.username,
         password: values.password,
+        no_hp: values.no_hp,
+        nip: values.nip,
       })
 
       if (result.error) {
@@ -454,6 +463,36 @@ export default function SignupGuruPage() {
               <p className="text-xs text-status-red">{errors.email.message}</p>
             )}
           </div>
+
+          {/* Nomor Handphone */}
+          <div className="space-y-2">
+            <Label htmlFor="no_hp">Nomor Handphone</Label>
+            <Input
+              id="no_hp"
+              type="text"
+              placeholder="Masukkan nomor handphone aktif (contoh: 08123456789)"
+              {...register('no_hp')}
+            />
+            {errors.no_hp && (
+              <p className="text-xs text-status-red">{errors.no_hp.message}</p>
+            )}
+          </div>
+
+          {/* NIP (Nomor Induk Pegawai) */}
+          {(tipeRole === 'guru' || tipeRole === 'musyrif' || tipeRole === 'guru_musyrif') && (
+            <div className="space-y-2">
+              <Label htmlFor="nip">NIP (Nomor Induk Pegawai)</Label>
+              <Input
+                id="nip"
+                type="text"
+                placeholder="Masukkan NIP (opsional)"
+                {...register('nip')}
+              />
+              {errors.nip && (
+                <p className="text-xs text-status-red">{errors.nip.message}</p>
+              )}
+            </div>
+          )}
 
           {/* Username */}
           <div className="space-y-2">

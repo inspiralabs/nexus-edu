@@ -24,6 +24,10 @@ const signupOrangTuaSchema = z.object({
   nama_lengkap: z.string().min(2, 'Nama lengkap minimal 2 karakter'),
   pekerjaan: z.string().optional(),
   siswa_ids: z.array(z.string().uuid()).min(1, 'Pilih minimal 1 anak'),
+  no_hp: z
+    .string()
+    .min(8, 'Nomor handphone minimal 8 karakter')
+    .regex(/^\d+$/, 'Nomor handphone hanya boleh berisi angka'),
   email: z.string().email('Format email tidak valid'),
   username: z
     .string()
@@ -62,6 +66,7 @@ export default function SignupOrangTuaPage() {
       nama_lengkap: '',
       pekerjaan: '',
       siswa_ids: [],
+      no_hp: '',
       email: '',
       username: '',
       password: '',
@@ -127,6 +132,7 @@ export default function SignupOrangTuaPage() {
         email: values.email,
         username: values.username,
         password: values.password,
+        no_hp: values.no_hp,
       })
 
       if (result.error) {
@@ -309,6 +315,20 @@ export default function SignupOrangTuaPage() {
             />
             {errors.email && (
               <p className="text-xs text-status-red">{errors.email.message}</p>
+            )}
+          </div>
+
+          {/* Nomor Handphone */}
+          <div className="space-y-2">
+            <Label htmlFor="no_hp">Nomor Handphone</Label>
+            <Input
+              id="no_hp"
+              type="text"
+              placeholder="Masukkan nomor handphone aktif (contoh: 08123456789)"
+              {...register('no_hp')}
+            />
+            {errors.no_hp && (
+              <p className="text-xs text-status-red">{errors.no_hp.message}</p>
             )}
           </div>
 

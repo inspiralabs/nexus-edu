@@ -67,7 +67,7 @@ const PAGE_SIZE_OPTIONS = [10, 20, 30, 40, 50] as const
 
 type RoleFilter = 'all' | ManageableRole
 type StatusFilter = 'all' | 'active' | 'pending'
-type UserTypeTab = 'semua' | 'guru' | 'orangtua' | 'admin'
+type UserTypeTab = 'guru' | 'orangtua' | 'admin'
 
 const editProfileSchema = z.object({
   nama_lengkap: z.string().min(2, 'Nama minimal 2 karakter'),
@@ -121,7 +121,7 @@ export default function AdminUsersPage() {
 
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
-  const [activeTab, setActiveTab] = useState<UserTypeTab>('semua')
+  const [activeTab, setActiveTab] = useState<UserTypeTab>('guru')
   const [roleFilter, setRoleFilter] = useState<RoleFilter>('all')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const [search, setSearch] = useState('')
@@ -538,7 +538,6 @@ export default function AdminUsersPage() {
           }}
         >
           <TabsList>
-            <TabsTrigger value="semua">Semua</TabsTrigger>
             <TabsTrigger value="guru">Guru / Musyrif</TabsTrigger>
             <TabsTrigger value="orangtua">Orang Tua</TabsTrigger>
             <TabsTrigger value="admin">Admin</TabsTrigger>
@@ -747,7 +746,7 @@ export default function AdminUsersPage() {
               className="space-y-4"
             >
               {/* Pre-fill dari data guru yang belum punya akun */}
-              {(activeTab === 'guru' || (activeTab === 'semua' && createUserForm.watch('role') === 'user')) && guruTanpaAkun.length > 0 && (
+              {(activeTab === 'guru' && createUserForm.watch('role') === 'user') && guruTanpaAkun.length > 0 && (
                 <div className="space-y-2 rounded-lg border border-dashed border-border bg-surface-2 p-3">
                   <Label>Ambil Data dari Guru (opsional)</Label>
                   <Select
@@ -782,7 +781,7 @@ export default function AdminUsersPage() {
               )}
 
               {/* Pre-fill dari data orang tua yang belum punya akun */}
-              {(activeTab === 'orangtua' || (activeTab === 'semua' && createUserForm.watch('role') === 'orangtua')) && orangTuaTanpaAkun.length > 0 && (
+              {(activeTab === 'orangtua' && createUserForm.watch('role') === 'orangtua') && orangTuaTanpaAkun.length > 0 && (
                 <div className="space-y-2 rounded-lg border border-dashed border-border bg-surface-2 p-3">
                   <Label>Ambil Data dari Orang Tua (opsional)</Label>
                   <Select

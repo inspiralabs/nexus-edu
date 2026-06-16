@@ -217,7 +217,10 @@ export default function GuruPage() {
 
   const updateMutation = useMutation({
     mutationFn: ({ id, values, oldItem }: { id: string; values: GuruFormValues; oldItem: Guru }) =>
-      updateGuru(id, buildPayload(values)).then((result) => ({ result, oldItem })),
+      updateGuru(id, {
+        ...buildPayload(values),
+        profile_id: oldItem.profile_id,
+      }).then((result) => ({ result, oldItem })),
     onSuccess: async ({ result, oldItem }) => {
       const userId = getUserId()
       if (userId) {
@@ -306,19 +309,24 @@ export default function GuruPage() {
         id: 'unit',
         header: 'Unit',
         enableSorting: false,
-        cell: ({ row }) => (row.original.unit ?? []).join(', ') || '-',
+        cell: ({ row }) => {
+          const unit = row.original.unit
+          if (!unit || unit.length === 0) return '-'
+          return unit.join(', ')
+        },
       },
       {
         id: 'mata_pelajaran',
         header: 'Mata Pelajaran',
         enableSorting: false,
         cell: ({ row }) => {
-          const mapelIds = row.original.mapel_ids ?? []
-          if (mapelIds.length === 0) return '-'
+          const mapelIds = row.original.mapel_ids
+          if (!mapelIds || mapelIds.length === 0) return '-'
           const names = mapelIds
             .map((id) => allMapel.find((m) => m.id === id)?.nama_mapel)
-            .filter(Boolean)
-          return names.join(', ') || '-'
+            .filter((name): name is string => typeof name === 'string' && name.length > 0)
+          if (names.length === 0) return '-'
+          return names.join(', ')
         },
       },
       {

@@ -16,6 +16,8 @@ interface SignupFormData {
   email: string
   username: string
   password: string
+  no_hp?: string
+  nip?: string
 }
 
 interface SignupOrangTuaFormData {
@@ -25,6 +27,7 @@ interface SignupOrangTuaFormData {
   email: string
   username: string
   password: string
+  no_hp?: string
 }
 
 export async function login(
@@ -201,6 +204,8 @@ export async function signup(
     kamar_ids: formData.kamar_ids || null,
     is_musyrif: formData.tipe_role === 'musyrif' || formData.tipe_role === 'guru_musyrif',
     is_multi_mapel: formData.mapel_ids && formData.mapel_ids.length > 1 ? true : false,
+    nip: formData.nip || null,
+    no_hp: formData.no_hp || null,
   })
 
   if (insertError) {
@@ -333,6 +338,7 @@ export async function signupOrangTua(
       is_approved: false,
       pekerjaan,
       siswa_id: siswa_ids[0] || null,
+      no_hp: formData.no_hp || null,
     })
     .select('id')
     .single()
@@ -341,7 +347,7 @@ export async function signupOrangTua(
     return { error: `Gagal membuat profil akun: ${insertError.message}` }
   }
 
-  // 4. INSERT orangtua: nama_lengkap, pekerjaan, email, profile_id
+  // 4. INSERT orangtua: nama_lengkap, pekerjaan, email, profile_id, no_hp
   const { data: insertedOrangTua, error: ortuError } = await admin
     .from('orangtua')
     .insert({
@@ -349,6 +355,7 @@ export async function signupOrangTua(
       pekerjaan,
       email,
       profile_id: insertedProfile.id,
+      no_hp: formData.no_hp || null,
     })
     .select('id')
     .single()

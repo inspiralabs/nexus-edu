@@ -48,6 +48,8 @@ function AuthProvider({ children }: { children: React.ReactNode }) {
           is_approved,
           avatar_url,
           email,
+          nip,
+          no_hp,
           updated_at,
           created_at,
           tipe_role,

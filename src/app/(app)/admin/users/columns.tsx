@@ -77,7 +77,7 @@ export function createAdminUsersColumns(
     },
     {
       id: 'guru_mapel',
-      header: 'Guru Mapel / Jabatan',
+      header: 'Guru Mapel',
       enableSorting: false,
       cell: ({ row }) => {
         const item = row.original

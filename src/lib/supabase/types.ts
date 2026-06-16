@@ -29,6 +29,8 @@ export interface Profile {
   is_approved: boolean
   avatar_url: string | null
   email: string | null
+  nip: string | null
+  no_hp: string | null
   tipe_role: TipeRole | null
   unit_mengajar: Unit[] | null
   mapel_ids: string[] | null

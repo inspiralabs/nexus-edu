@@ -53,6 +53,7 @@ export interface UpdateGuruInput {
   tipe?: TipeGuru
   email?: string
   no_hp?: string
+  profile_id?: string | null
 }
 
 export interface GetGuruOptions {
@@ -171,7 +172,7 @@ export async function getGuru(
 
   let query = supabase
     .from('guru')
-    .select('*, profiles(id, nama_lengkap, username, email)', { count: 'exact' })
+    .select('*, profiles(id, nama_lengkap, username, email, role)', { count: 'exact' })
     .order('nama_lengkap', { ascending: true })
 
   if (search) query = query.ilike('nama_lengkap', `%${search}%`)
@@ -184,9 +185,17 @@ export async function getGuru(
 
   if (error) throw new Error(error.message)
 
+  const filteredData = (data ?? []).filter((item) => {
+    const guruItem = item as Guru & { profiles?: { role?: string } | null }
+    return guruItem.profiles?.role !== 'superadmin'
+  }) as Guru[]
+
+  const excludedCount = (data ?? []).length - filteredData.length
+  const total = (count ?? 0) - excludedCount
+
   return {
-    data: (data ?? []) as Guru[],
-    total: count ?? 0,
+    data: filteredData,
+    total,
   }
 }
 
@@ -217,7 +226,17 @@ export async function updateGuru(
   input: UpdateGuruInput
 ): Promise<Guru> {
   const supabase = createClient()
-  const payload: any = {}
+  const payload: {
+    nama_lengkap?: string
+    nip?: string | null
+    jenis_kelamin?: JenisKelamin | null
+    mapel_ids?: string[]
+    unit?: string[]
+    tipe?: TipeGuru
+    email?: string | null
+    no_hp?: string | null
+  } = {}
+
   if (input.nama_lengkap !== undefined) payload.nama_lengkap = input.nama_lengkap
   if (input.nip !== undefined) payload.nip = input.nip || null
   if (input.jenis_kelamin !== undefined) payload.jenis_kelamin = input.jenis_kelamin || null
@@ -227,33 +246,59 @@ export async function updateGuru(
   if (input.email !== undefined) payload.email = input.email || null
   if (input.no_hp !== undefined) payload.no_hp = input.no_hp || null
 
-  const { data, error } = await supabase
+  let profileId = input.profile_id
+  if (profileId === undefined) {
+    const { data: current } = await supabase
+      .from('guru')
+      .select('profile_id')
+      .eq('id', id)
+      .single()
+    profileId = current?.profile_id
+  }
+
+  const updateGuruPromise = supabase
     .from('guru')
     .update(payload)
     .eq('id', id)
     .select()
     .single()
 
-  if (error) throw new Error(error.message)
+  if (profileId) {
+    const mapelIds = input.mapel_ids || []
+    const isMusyrif = input.tipe ? input.tipe.includes('musyrif') : false
+    const isMultiMapel = mapelIds.length > 1
 
-  if (data && data.profile_id) {
-    const isMusyrif = data.tipe === 'musyrif' || data.tipe === 'guru_musyrif'
-    const isMultiMapel = data.mapel_ids && data.mapel_ids.length > 1
-    await supabase
+    const profilePayload: {
+      nama_lengkap?: string
+      email?: string | null
+      tipe_role?: TipeRole
+      unit_mengajar?: Unit[]
+      mapel_ids?: string[]
+      is_musyrif?: boolean
+      is_multi_mapel?: boolean
+    } = {}
+
+    if (input.nama_lengkap !== undefined) profilePayload.nama_lengkap = input.nama_lengkap
+    if (input.email !== undefined) profilePayload.email = input.email || null
+    if (input.tipe !== undefined) profilePayload.tipe_role = input.tipe as TipeRole
+    if (input.unit !== undefined) profilePayload.unit_mengajar = input.unit as Unit[]
+    if (input.mapel_ids !== undefined) profilePayload.mapel_ids = mapelIds
+    if (input.tipe !== undefined) profilePayload.is_musyrif = isMusyrif
+    if (input.mapel_ids !== undefined) profilePayload.is_multi_mapel = isMultiMapel
+
+    const updateProfilePromise = supabase
       .from('profiles')
-      .update({
-        nama_lengkap: data.nama_lengkap,
-        email: data.email,
-        tipe_role: data.tipe as any,
-        unit_mengajar: data.unit as any,
-        mapel_ids: data.mapel_ids,
-        is_musyrif: isMusyrif,
-        is_multi_mapel: isMultiMapel,
-      })
-      .eq('id', data.profile_id)
-  }
+      .update(profilePayload)
+      .eq('id', profileId)
 
-  return data as Guru
+    const [guruResult] = await Promise.all([updateGuruPromise, updateProfilePromise])
+    if (guruResult.error) throw new Error(guruResult.error.message)
+    return guruResult.data as Guru
+  } else {
+    const guruResult = await updateGuruPromise
+    if (guruResult.error) throw new Error(guruResult.error.message)
+    return guruResult.data as Guru
+  }
 }
 
 export async function deleteGuru(id: string): Promise<void> {
