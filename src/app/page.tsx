@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect } from 'react'
+import { AboutSection } from '@/components/landing/about-section'
 import { CtaSection } from '@/components/landing/cta-section'
 import { FeaturesSection } from '@/components/landing/features-section'
 import { Footer } from '@/components/landing/footer'
@@ -18,6 +19,7 @@ export default function Home() {
       <Navbar />
       <main>
         <HeroSection />
+        <AboutSection />
         <FeaturesSection />
         <HowItWorksSection />
         <CtaSection />

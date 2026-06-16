@@ -93,17 +93,17 @@ function LeaderboardList({
       {items.map((item, index) => (
         <li
           key={item.siswa_id}
-          className="flex items-center justify-between gap-3 rounded-lg border border-border bg-surface px-3 py-2"
+          className="flex items-center justify-between gap-3 rounded-lg border border-border bg-surface dark:bg-zinc-900/50 px-3 py-2"
         >
           <div className="flex min-w-0 items-center gap-3">
-            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-surface-2 text-xs font-bold text-text-secondary">
+            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-surface-2 dark:bg-zinc-800 text-xs font-bold text-text-secondary dark:text-zinc-200">
               {index + 1}
             </span>
             <div className="min-w-0">
-              <p className="truncate text-sm font-medium text-text-primary">
+              <p className="truncate text-sm font-medium text-text-primary dark:text-zinc-100">
                 {item.nama}
               </p>
-              <p className="text-xs text-text-secondary">{item.kelas}</p>
+              <p className="text-xs text-text-secondary dark:text-zinc-400">{item.kelas}</p>
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-2">
@@ -192,6 +192,19 @@ export default function RekapPoinPage() {
     queryFn: () => getDetailSiswa(selectedSiswaId!, tahunFilter),
     enabled: selectedSiswaId !== null,
   })
+
+  const filteredDetailData = useMemo(() => {
+    if (!detailData) return null
+    return {
+      ...detailData,
+      riwayat_pelanggaran: detailData.riwayat_pelanggaran.filter(
+        (item) => item.status === 'Sudah Diproses'
+      ),
+      riwayat_prestasi: detailData.riwayat_prestasi.filter(
+        (item) => item.status === 'Sudah Diproses'
+      ),
+    }
+  }, [detailData])
 
   const tableData = useMemo<RekapTableRow[]>(
     () =>
@@ -433,7 +446,7 @@ export default function RekapPoinPage() {
               setPageSize(size)
               setPage(1)
             }}
-            onSortChange={() => {}}
+            onSortChange={() => { }}
             isLoading={rekapLoading}
           />
         </CardContent>
@@ -445,30 +458,30 @@ export default function RekapPoinPage() {
           if (!open) setSelectedSiswaId(null)
         }}
       >
-        <SheetContent className="overflow-y-auto">
+        <SheetContent className="overflow-y-auto dark:bg-zinc-900 dark:border-zinc-800">
           <SheetHeader>
             <SheetTitle asChild>
-              <div className="text-lg font-semibold text-text-primary">
+              <div className="text-lg font-semibold text-text-primary dark:text-zinc-200">
                 {detailLoading ? (
                   <Skeleton className="h-6 w-48" />
                 ) : (
-                  (detailData?.siswa.nama ?? 'Detail Siswa')
+                  (filteredDetailData?.siswa.nama ?? 'Detail Siswa')
                 )}
               </div>
             </SheetTitle>
             <SheetDescription asChild>
-              <span className="block mt-1 text-sm text-text-secondary">
+              <span className="block mt-1 text-sm text-text-secondary dark:text-zinc-400">
                 {detailLoading ? (
                   <Skeleton className="mt-1 h-4 w-32" />
                 ) : (
-                  `${detailData?.siswa.kelas} · Unit ${detailData?.siswa.unit}`
+                  `${filteredDetailData?.siswa.kelas} · Unit ${filteredDetailData?.siswa.unit}`
                 )}
               </span>
             </SheetDescription>
           </SheetHeader>
 
           <SheetBody>
-            {detailLoading || !detailData ? (
+            {detailLoading || !filteredDetailData ? (
               <div className="space-y-4">
                 <Skeleton className="h-20 w-full" />
                 <Skeleton className="h-32 w-full" />
@@ -476,16 +489,16 @@ export default function RekapPoinPage() {
             ) : (
               <>
                 <div className="mb-4 grid grid-cols-2 gap-3">
-                  <div className="rounded-lg border border-border bg-surface-2 p-3 text-center">
-                    <p className="text-xs text-text-secondary">Pelanggaran</p>
+                  <div className="rounded-lg border border-border dark:bg-zinc-900/40 p-3 text-center">
+                    <p className="text-xs text-text-secondary dark:text-zinc-300">Pelanggaran</p>
                     <p className="text-lg font-bold text-status-red">
-                      {detailData.total_poin_pelanggaran}
+                      {filteredDetailData.total_poin_pelanggaran}
                     </p>
                   </div>
-                  <div className="rounded-lg border border-border bg-surface-2 p-3 text-center">
-                    <p className="text-xs text-text-secondary">Prestasi</p>
+                  <div className="rounded-lg border border-border dark:bg-zinc-900/40 p-3 text-center">
+                    <p className="text-xs text-text-secondary dark:text-zinc-300">Prestasi</p>
                     <p className="text-lg font-bold text-status-green">
-                      +{detailData.total_poin_prestasi}
+                      +{filteredDetailData.total_poin_prestasi}
                     </p>
                   </div>
                 </div>
@@ -497,32 +510,32 @@ export default function RekapPoinPage() {
                   }
                 >
                   <TabsList className="w-full">
-                    <TabsTrigger value="pelanggaran" className="flex-1">
-                      Pelanggaran ({detailData.riwayat_pelanggaran.length})
+                    <TabsTrigger value="pelanggaran" className="flex-1 dark:text-zinc-300">
+                      Pelanggaran ({filteredDetailData.riwayat_pelanggaran.length})
                     </TabsTrigger>
-                    <TabsTrigger value="prestasi" className="flex-1">
-                      Prestasi ({detailData.riwayat_prestasi.length})
+                    <TabsTrigger value="prestasi" className="flex-1 dark:text-zinc-300">
+                      Prestasi ({filteredDetailData.riwayat_prestasi.length})
                     </TabsTrigger>
                   </TabsList>
 
                   <TabsContent value="pelanggaran" className="mt-4">
-                    {detailData.riwayat_pelanggaran.length === 0 ? (
+                    {filteredDetailData.riwayat_pelanggaran.length === 0 ? (
                       <EmptyState
                         title="Tidak ada riwayat pelanggaran"
                         description="Siswa ini belum memiliki catatan pelanggaran"
                       />
                     ) : (
-                      <div className="space-y-2">
-                        {detailData.riwayat_pelanggaran.map((item) => (
+                      <div className="space-y-2 ">
+                        {filteredDetailData.riwayat_pelanggaran.map((item) => (
                           <div
                             key={item.id}
-                            className="flex items-start justify-between gap-3 rounded-lg border border-border bg-surface p-3"
+                            className="flex items-start justify-between gap-3 rounded-lg border border-border bg-surface p-3 dark:bg-zinc-900/20"
                           >
                             <div className="min-w-0 flex-1">
-                              <p className="text-sm font-medium leading-tight text-text-primary">
+                              <p className="text-sm font-medium leading-tight text-text-primary dark:text-zinc-200">
                                 {item.nama_pasal}
                               </p>
-                              <p className="mt-0.5 text-xs text-text-secondary">
+                              <p className="mt-0.5 text-xs text-text-secondary dark:text-zinc-400">
                                 {item.nama_kategori}
                               </p>
                               <p className="mt-1 text-xs text-text-tertiary">
@@ -545,11 +558,11 @@ export default function RekapPoinPage() {
 
                         <Separator className="my-2" />
                         <div className="flex items-center justify-between px-1 py-2">
-                          <span className="text-sm font-semibold text-text-primary">
+                          <span className="text-sm font-semibold text-text-primary dark:text-zinc-200">
                             Total Poin Pelanggaran
                           </span>
                           <span className="text-base font-bold text-status-red">
-                            {detailData.total_poin_pelanggaran} poin
+                            {filteredDetailData.total_poin_pelanggaran} poin
                           </span>
                         </div>
                       </div>
@@ -557,23 +570,23 @@ export default function RekapPoinPage() {
                   </TabsContent>
 
                   <TabsContent value="prestasi" className="mt-4">
-                    {detailData.riwayat_prestasi.length === 0 ? (
+                    {filteredDetailData.riwayat_prestasi.length === 0 ? (
                       <EmptyState
                         title="Tidak ada riwayat prestasi"
                         description="Siswa ini belum memiliki catatan prestasi"
                       />
                     ) : (
                       <div className="space-y-2">
-                        {detailData.riwayat_prestasi.map((item) => (
+                        {filteredDetailData.riwayat_prestasi.map((item) => (
                           <div
                             key={item.id}
-                            className="flex items-start justify-between gap-3 rounded-lg border border-border bg-surface p-3"
+                            className="flex items-start justify-between gap-3 rounded-lg border border-border bg-surface dark:bg-zinc-900/20 p-3"
                           >
                             <div className="min-w-0 flex-1">
-                              <p className="text-sm font-medium leading-tight text-text-primary">
+                              <p className="text-sm font-medium leading-tight text-text-primary dark:text-zinc-400">
                                 {item.nama_pasal}
                               </p>
-                              <p className="mt-0.5 text-xs text-text-secondary">
+                              <p className="mt-0.5 text-xs text-text-secondary dark:text-zinc-400">
                                 {item.nama_kategori}
                               </p>
                               <p className="mt-1 text-xs text-text-tertiary">
@@ -599,11 +612,11 @@ export default function RekapPoinPage() {
 
                         <Separator className="my-2" />
                         <div className="flex items-center justify-between px-1 py-2">
-                          <span className="text-sm font-semibold text-text-primary">
+                          <span className="text-sm font-semibold text-text-primary dark:text-zinc-200">
                             Total Poin Prestasi
                           </span>
                           <span className="text-base font-bold text-status-green">
-                            {detailData.total_poin_prestasi} poin
+                            {filteredDetailData.total_poin_prestasi} poin
                           </span>
                         </div>
                       </div>

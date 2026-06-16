@@ -1,0 +1,650 @@
+# .antigravityrules — AMANAH Platform V2
+# Versi: 2.0.0 
+# Antigravity WAJIB membaca dan mengikuti SEMUA aturan ini setiap sesi
+
+## IDENTITAS PROYEK
+
+Kamu adalah senior software engineer yang membangun **AMANAH Platform** — platform ekosistem digital sekolah terpadu untuk Sekolah Quran Asy Syahid.
+- **Nama Aplikasi:** AMANAH (Aplikasi Manajemen Anak & Sekolah)
+- **Pembuat:** Unggul Sulaiman, S.Kom
+- **Footer:** ©2026 InspiraLabs · Unggul Sulaiman, S.Kom
+- **Stack:** Next.js 14 App Router + TypeScript strict + Supabase + Tailwind CSS + Radix UI
+- **Deploy:** Vercel (sudah production — V1 online, kita kerjakan V2)
+
+> ⚠️ PENTING: Nama "SQA Platform" dan "Nexus-Edu" sudah TIDAK DIPAKAI. Semua tampilan, label, dan referensi kode menggunakan nama **AMANAH Platform** HANYA UNTUK TAMPILAN.
+
+---
+
+## LANGKAH WAJIB SEBELUM MENULIS KODE APA PUN
+
+### STEP 1 — BACA MASTER_CONTEXT.md DAN PRD.md
+Baca `MASTER_CONTEXT.md` DAN `PRD.md` di root project. Ini adalah **sumber kebenaran tunggal V2**.
+
+### STEP 2 — DEKLARASIKAN FILE YANG AKAN DIUBAH
+Sebelum menulis kode, sebutkan DAFTAR LENGKAP file yang akan dibuat atau diubah:
+```
+File yang akan dibuat:
+- src/path/file1.tsx (baru)
+
+File yang akan diubah:
+- src/path/file2.ts (tambah fungsi X)
+
+File yang TIDAK akan disentuh:
+- semua file lainnya
+```
+
+### STEP 3 — KONFIRMASI JIKA RAGU
+Jika instruksi ambigu atau menyentuh logika bisnis yang sudah berjalan, **TANYA user dulu**. Jangan berasumsi. 
+Jika prompt yang diberikan user kurang tepat karena kurang sesuai dengan MASTER_CONTEXT.md dan PRD.md, **perbaiki prompt dengan menyebutkan aturan ini** dan jelaskan mengapa prompt tidak sesuai.
+
+---
+
+## LARANGAN KERAS — JANGAN PERNAH DILANGGAR
+
+```
+❌ JANGAN ubah fitur yang sudah berjalan di V1 tanpa instruksi eksplisit
+❌ JANGAN tambah npm package/dependency baru tanpa konfirmasi user
+❌ JANGAN ubah nama kolom, tipe data, atau struktur tabel yang sudah ada di V1
+❌ JANGAN hapus atau refactor komponen yang sudah ada dan berfungsi
+❌ JANGAN ubah design system (spacing, font, border-radius) yang sudah ada
+❌ JANGAN buat file di luar struktur folder yang sudah ada
+❌ JANGAN gunakan TypeScript 'any' — selalu gunakan type yang proper
+❌ JANGAN hardcode environment variables — selalu gunakan process.env.*
+❌ JANGAN gunakan 'use client' di Server Components
+❌ JANGAN fetch data di Client Component jika bisa dilakukan di Server Component
+❌ JANGAN buat komponen baru jika komponen di /components/ui/ atau /components/shared/ sudah cukup
+❌ JANGAN gunakan inline style — selalu Tailwind classes
+❌ JANGAN lupa error handling di setiap Supabase query
+❌ JANGAN lupa loading skeleton di setiap data fetch
+❌ JANGAN lupa empty state di setiap tabel/list
+❌ JANGAN gunakan warna hijau #2D7A4F atau emas #C9A84C lagi — sudah diganti (lihat Design System)
+❌ JANGAN menyebut atau menampilkan kata "SQA Platform" atau "Nexus-Edu" di UI mana pun
+❌ JANGAN tampilkan data nilai siswa ke role orang_tua sebelum status approved oleh guru
+❌ JANGAN izinkan guru input/update/delete di luar mata pelajarannya sendiri
+```
+
+---
+
+## KEWAJIBAN — SELALU LAKUKAN
+
+```
+✅ SELALU baca PRD_V2.md sebelum mulai setiap sesi
+✅ SELALU gunakan TypeScript strict — semua props dan return types harus typed
+✅ SELALU gunakan komponen dari /components/ui/ dan /components/shared/
+✅ SELALU gunakan Tailwind CSS untuk styling
+✅ SELALU gunakan CSS variables untuk warna (--primary, --secondary, dll)
+✅ SELALU handle error dari setiap Supabase query
+✅ SELALU tampilkan loading skeleton saat data fetch
+✅ SELALU tampilkan empty state saat data kosong
+✅ SELALU validasi form dengan Zod
+✅ SELALU panggil logAudit() setelah setiap operasi create/update/delete
+✅ SELALU gunakan React Query untuk data fetching di client side
+✅ SELALU gunakan React Hook Form untuk semua form
+✅ SELALU gunakan debounce 300ms untuk input search
+✅ SELALU support dark mode — tidak ada hardcoded bg-white atau text-black
+✅ SELALU gunakan Bahasa Indonesia untuk semua label, placeholder, pesan error UI
+✅ SELALU gunakan format tanggal dd/MM/yyyy untuk display, yyyy-MM-dd untuk Supabase
+✅ SELALU apply class no-print pada sidebar, header, tombol aksi untuk fitur cetak
+✅ SELALU periksa role user sebelum render menu atau aksi sensitif
+✅ SELALU sertakan searchbox nama + filter yang relevan di setiap halaman data
+✅ SELALU pastikan tampilan responsif (mobile-friendly) di setiap halaman baru
+✅ SELALU gunakan icon.png dari folder /public sebagai favicon dan logo
+✅ SELALU arahkan kata "InspiraLabs" ke https://inspiralabs.id/ (target="_blank")
+✅ SELALU arahkan kata "Unggul Sulaiman, S.Kom" ke link WhatsApp yang sama dengan CTA landing page
+```
+
+---
+
+## DESIGN SYSTEM V2 (WAJIB DIIKUTI)
+
+### Palet Warna Aksen (DIGANTI dari V1):
+```css
+/* PRIMARY — menggantikan hijau lama #2D7A4F */
+--primary: #1e5d7e
+--primary-hover: #194f6b
+--primary-light: #e8f4fb
+--primary-foreground: #FFFFFF
+
+/* SECONDARY — menggantikan emas lama #C9A84C */
+--secondary: #437793
+--secondary-hover: #3a6882
+--secondary-light: #eaf2f7
+--secondary-foreground: #FFFFFF
+```
+
+### Warna Netral & Status (TIDAK BERUBAH dari V1):
+```css
+/* Light Mode */
+--background: #F8F8F6
+--surface: #FFFFFF
+--surface-2: #F2F2EF
+--border: #E5E5E0
+--text-primary: #1C1C1A
+--text-secondary: #6B6B68
+--text-tertiary: #9A9A97
+
+/* Dark Mode */
+--background: #1A1A1A
+--surface: #242424
+--surface-2: #2C2C2C
+--border: #2E2E2E
+--text-primary: #F0F0EE
+--text-secondary: #9A9A97
+--text-tertiary: #6B6B68
+
+/* Status Colors — tidak berubah */
+--status-red: #DC2626        /* Belum Diproses */
+--status-red-bg: #FEF2F2
+--status-yellow: #D97706     /* Pending */
+--status-yellow-bg: #FFFBEB
+--status-green: #16A34A      /* Sudah Diproses */
+--status-green-bg: #F0FDF4
+```
+
+### Tailwind Custom Classes Aksen (update di tailwind.config.ts):
+```
+bg-primary      → #1e5d7e
+bg-secondary    → #437793
+```
+
+### Typography & Spacing — TIDAK BERUBAH dari V1:
+- Font: Inter
+- Sizes: Tailwind default scale
+- Border radius: rounded-lg (cards), rounded-md (inputs/buttons), rounded-full (badges)
+- Shadows: shadow-sm (card), shadow-lg (modal), shadow-md (dropdown)
+
+---
+
+## STRUKTUR ROLE V2
+
+### Hierarki (dari tertinggi ke terendah):
+```
+superadmin → admin → user (guru/musyrif) → orang_tua
+```
+
+### Hak Akses per Role:
+```
+superadmin   : semua route + /superadmin/*
+admin        : semua route kecuali /superadmin/*
+user         : /dashboard /students /kedisiplinan /prestasi /mutabaah /diknas /account /about
+orang_tua    : /orangtua/* (dashboard pantau anak — read only, nilai harus sudah diapprove)
+```
+
+### Cek Role di Server Component (pola wajib):
+```typescript
+const supabase = await createClient()
+const { data: { user } } = await supabase.auth.getUser()
+const { data: profile } = await supabase
+  .from('profiles')
+  .select('role, is_approved')
+  .eq('user_id', user?.id)
+  .single()
+
+if (!profile?.is_approved) redirect('/login')
+if (profile?.role !== 'admin' && profile?.role !== 'superadmin') redirect('/dashboard')
+```
+
+### Field Tambahan di Tabel profiles (V2):
+```sql
+-- Tambahkan ke tabel profiles yang sudah ada:
+role: text CHECK IN ('user', 'admin', 'superadmin', 'orang_tua')  -- tambah orang_tua
+divisi_asal: text  -- 'DIKNAS' | 'KEPESANTRENAN'
+unit_asal: text    -- 'SD' | 'SMP' | 'SMA'
+kamar_ids: uuid[]  -- untuk musyrif/musyrifah yang mengemban kamar
+student_ids: uuid[] -- khusus orang_tua, relasi ke students yang dipantau
+```
+
+---
+
+## SIDEBAR MENU STRUCTURE V2
+> baca MASTER_CONTEXT.md dan PRD.md untuk struktur lengkap.
+
+### Sidebar bisa di-hide/unhide:
+- Gunakan state `sidebarOpen` di layout
+- Simpan preferensi di localStorage key `amanah_sidebar_open`
+- Toggle button di header kiri
+
+---
+
+## STRUKTUR DATABASE V2 — TABEL BARU
+
+> Tabel V1 TIDAK BOLEH diubah strukturnya. Tabel baru di bawah ini BOLEH dibuat.
+
+### Tabel: teachers (data guru)
+```sql
+id: uuid PK DEFAULT uuid_generate_v4()
+nama_lengkap: text NOT NULL
+nip: text
+email: text
+nomor_hp: text
+divisi: text CHECK IN ('DIKNAS', 'KEPESANTRENAN')
+unit: text CHECK IN ('SD', 'SMP', 'SMA')
+mapel_ids: uuid[]  -- FK ke mata_pelajaran.id, bisa lebih dari satu
+created_at: timestamptz DEFAULT now()
+```
+
+### Tabel: mata_pelajaran
+```sql
+id: uuid PK DEFAULT uuid_generate_v4()
+nama_mapel: text NOT NULL
+kategori: text NOT NULL  -- 'DIKNAS SD' | 'DIKNAS SMP' | 'DIKNAS SMA' | 'KEPESANTRENAN SD' | dst
+unit: text CHECK IN ('SD', 'SMP', 'SMA')
+created_at: timestamptz DEFAULT now()
+```
+
+### Tabel: kamar
+```sql
+id: uuid PK DEFAULT uuid_generate_v4()
+nama_kamar: text NOT NULL
+unit: text CHECK IN ('SD', 'SMP', 'SMA')
+musyrif_ids: uuid[]  -- FK ke profiles.id
+created_at: timestamptz DEFAULT now()
+```
+
+### Tabel: semester
+```sql
+id: uuid PK DEFAULT uuid_generate_v4()
+nama_semester: text NOT NULL  -- cth: 'Semester 1 2025/2026'
+tahun_pelajaran: text NOT NULL  -- cth: '2025/2026'
+nomor_semester: integer NOT NULL  -- 1, 2, 3, 4, 5, 6
+tanggal_mulai: date NOT NULL
+tanggal_selesai: date NOT NULL
+is_active: boolean DEFAULT false
+unit: text CHECK IN ('SD', 'SMP', 'SMA')
+kelas: text  -- opsional, jika spesifik kelas
+created_at: timestamptz DEFAULT now()
+```
+
+### Tabel: mutabaah_kegiatan
+```sql
+id: uuid PK DEFAULT uuid_generate_v4()
+nama_kegiatan: text NOT NULL
+urutan: integer DEFAULT 0
+poin_per_hadir: integer DEFAULT 1
+target_per_periode: integer DEFAULT 30
+created_at: timestamptz DEFAULT now()
+```
+
+### Tabel: mutabaah_sub_kegiatan
+```sql
+id: uuid PK DEFAULT uuid_generate_v4()
+kegiatan_id: uuid FK → mutabaah_kegiatan(id)
+nama_sub: text NOT NULL
+urutan: integer DEFAULT 0
+poin_per_hadir: integer DEFAULT 1
+created_at: timestamptz DEFAULT now()
+```
+
+### Tabel: mutabaah_presensi
+```sql
+id: uuid PK DEFAULT uuid_generate_v4()
+tanggal: date NOT NULL
+siswa_id: uuid FK → students(id)
+kamar_id: uuid FK → kamar(id)
+kegiatan_id: uuid FK → mutabaah_kegiatan(id)
+sub_kegiatan_id: uuid FK → mutabaah_sub_kegiatan(id) NULLABLE
+status: text CHECK IN ('Hadir', 'Izin', 'Sakit', 'Terlambat', 'Terlambat Sekali', 'Istihadhah', 'Haid', 'Alpha', 'L')
+is_libur: boolean DEFAULT false
+dicatat_oleh: uuid FK → profiles.id
+created_at: timestamptz DEFAULT now()
+UNIQUE (tanggal, siswa_id, kegiatan_id, sub_kegiatan_id)
+```
+
+### Tabel: diknas_presensi
+```sql
+id: uuid PK DEFAULT uuid_generate_v4()
+tanggal: date NOT NULL
+siswa_id: uuid FK → students(id)
+mapel_id: uuid FK → mata_pelajaran(id)
+status: text CHECK IN ('Hadir', 'Izin', 'Sakit', 'Terlambat', 'Terlambat Sekali', 'Istihadhah', 'Haid', 'Alpha')
+dicatat_oleh: uuid FK → profiles.id
+created_at: timestamptz DEFAULT now()
+UNIQUE (tanggal, siswa_id, mapel_id)
+```
+
+### Tabel: diknas_nilai
+```sql
+id: uuid PK DEFAULT uuid_generate_v4()
+siswa_id: uuid FK → students(id)
+mapel_id: uuid FK → mata_pelajaran(id)
+semester_id: uuid FK → semester(id)
+jenis_nilai: text CHECK IN ('Formatif', 'Sumatif', 'UAS')
+nama_tugas: text  -- judul tugas / keterangan
+materi: text  -- bab/topik
+nilai_asli: numeric(5,2)
+nilai_remedial: numeric(5,2) NULLABLE
+keterangan_remedial: text NULLABLE
+bank_soal_id: uuid NULLABLE FK → bank_soal(id)
+is_approved: boolean DEFAULT false
+approved_at: timestamptz NULLABLE
+approved_by: uuid NULLABLE FK → profiles.id
+dicatat_oleh: uuid FK → profiles.id
+created_at: timestamptz DEFAULT now()
+updated_at: timestamptz DEFAULT now()
+```
+
+### Tabel: bank_soal
+```sql
+id: uuid PK DEFAULT uuid_generate_v4()
+mapel_id: uuid FK → mata_pelajaran(id)
+semester_id: uuid FK → semester(id)
+judul: text NOT NULL
+jenis: text CHECK IN ('Pilihan Ganda', 'Esai')
+materi: text
+unit: text CHECK IN ('SD', 'SMP', 'SMA')
+dibuat_oleh: uuid FK → profiles.id
+created_at: timestamptz DEFAULT now()
+```
+
+### Tabel: diknas_catatan_kelakuan
+```sql
+id: uuid PK DEFAULT uuid_generate_v4()
+siswa_id: uuid FK → students(id)
+tanggal: date NOT NULL
+jenis: text CHECK IN ('Baik', 'Kurang Baik')
+catatan: text NOT NULL
+dicatat_oleh: uuid FK → profiles.id
+created_at: timestamptz DEFAULT now()
+```
+
+### Tabel: orangtua (data orang tua)
+```sql
+id: uuid PK DEFAULT uuid_generate_v4()
+user_id: uuid UNIQUE FK → auth.users(id) NULLABLE
+nama_lengkap: text NOT NULL
+pekerjaan: text
+nomor_hp: text
+email: text
+student_ids: uuid[]  -- FK ke students.id
+created_at: timestamptz DEFAULT now()
+```
+
+### Update Tabel students (tambah kolom baru):
+```sql
+-- Tambahkan kolom ini ke tabel students yang sudah ada:
+ALTER TABLE students ADD COLUMN IF NOT EXISTS kamar_id uuid REFERENCES kamar(id);
+ALTER TABLE students ADD COLUMN IF NOT EXISTS status text DEFAULT 'Aktif' CHECK (status IN ('Aktif', 'Alumni'));
+ALTER TABLE students ADD COLUMN IF NOT EXISTS nis text;
+ALTER TABLE students ADD COLUMN IF NOT EXISTS nisn text;
+ALTER TABLE students ADD COLUMN IF NOT EXISTS tempat_lahir text;
+ALTER TABLE students ADD COLUMN IF NOT EXISTS tanggal_lahir date;
+ALTER TABLE students ADD COLUMN IF NOT EXISTS alamat text;
+ALTER TABLE students ADD COLUMN IF NOT EXISTS nama_ayah text;
+ALTER TABLE students ADD COLUMN IF NOT EXISTS nama_ibu text;
+ALTER TABLE students ADD COLUMN IF NOT EXISTS nomor_hp_ortu text;
+```
+
+### Update Tabel prestasi (tambah kolom status & poin):
+```sql
+-- Tambahkan kolom ini ke tabel prestasi yang sudah ada:
+ALTER TABLE prestasi ADD COLUMN IF NOT EXISTS status text DEFAULT 'Belum Diproses' CHECK (status IN ('Belum Diproses', 'Sudah Diproses'));
+ALTER TABLE prestasi ADD COLUMN IF NOT EXISTS poin integer DEFAULT 0;
+ALTER TABLE prestasi ADD COLUMN IF NOT EXISTS keterangan text;
+ALTER TABLE prestasi ADD COLUMN IF NOT EXISTS is_guru boolean DEFAULT false;
+ALTER TABLE prestasi ADD COLUMN IF NOT EXISTS guru_id uuid REFERENCES teachers(id);
+```
+
+---
+
+## LOGIKA BISNIS KRITIS — WAJIB DIPATUHI
+
+### 1. Perhitungan Poin Kedisiplinan & Prestasi:
+```
+- Poin HANYA dihitung jika status = 'Sudah Diproses'
+- Status 'Belum Diproses' atau 'Pending' = TIDAK DIHITUNG
+- Berlaku di: rekap poin, dashboard stat card, grafik tren
+- Berlaku di tabel: kedisiplinan DAN prestasi
+```
+
+### 2. Poin Prestasi Berdasarkan Tingkat & Juara:
+```
+Tingkat Internasional : Juara 1=30, Juara 2=27, Juara 3=24, Harapan=20
+Tingkat Nasional      : Juara 1=25, Juara 2=22, Juara 3=19, Harapan=16
+Tingkat Provinsi      : Juara 1=20, Juara 2=17, Juara 3=14, Harapan=11
+Tingkat Kota/Kab      : Juara 1=15, Juara 2=12, Juara 3=9,  Harapan=7
+Tingkat Kecamatan     : Juara 1=10, Juara 2=8,  Juara 3=6,  Harapan=4
+Tingkat Sekolah       : Juara 1=5,  Juara 2=4,  Juara 3=3,  Harapan=2
+```
+
+### 3. Approval Nilai oleh Guru:
+```
+- Nilai di diknas_nilai dengan is_approved = false → TIDAK tampil di dashboard orang_tua
+- Guru approve massal → update is_approved=true, approved_at=now(), approved_by=guru_id
+- Setelah diapprove, nilai masih bisa diubah, tapi is_approved kembali ke false (perlu re-approve)
+```
+
+### 4. Akses Guru Berdasarkan Mata Pelajaran:
+```
+- Guru hanya bisa CRUD di mapel_id yang ada di teachers.mapel_ids miliknya
+- Cek di setiap Server Action: ambil profile guru → cek mapel_ids → validasi mapel_id target
+- Jika guru mengajar >1 mapel: tampilkan dropdown pilih mapel sebelum input
+```
+
+### 5. Status Alumni di Data Siswa:
+```
+- students.status = 'Alumni' → data TIDAK muncul di filter SD/SMP/SMA
+- Muncul di filter khusus 'Alumni'
+- Kaitan dengan fitur lain (kedisiplinan, mutabaah, diknas) → hanya tampil data aktif by default
+```
+
+### 6. Mutabaah — Libur:
+```
+- Jika hari libur diaktifkan oleh musyrif, semua kegiatan hari itu auto status 'L'
+- Input libur dilakukan per tanggal di level kamar
+- is_libur = true di mutabaah_presensi
+```
+
+### 7. Nilai Rapot — Rumus:
+```typescript
+const nilaiRapot = average([
+  average(nilai_formatif[]),   // rata-rata semua tugas formatif
+  average(nilai_sumatif[]),    // rata-rata semua tugas sumatif
+  nilai_uas                    // nilai ujian akhir semester
+])
+```
+
+### 8. Grading Mutabaah (A–E):
+```
+≥ 90% → A (Sangat Baik)
+≥ 75% → B (Baik)
+≥ 60% → C (Cukup)
+≥ 40% → D (Kurang)
+< 40%  → E (Sangat Kurang)
+```
+
+---
+
+## POLA KODE WAJIB
+
+### Import Order (selalu ikuti urutan ini):
+```typescript
+// 1. React & Next.js
+import { useState, useEffect, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
+
+// 2. Third-party
+import { useQuery, useMutation } from '@tanstack/react-query'
+import { useForm } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { z } from 'zod'
+
+// 3. Internal — types
+import type { Student, Profile } from '@/lib/supabase/types'
+
+// 4. Internal — lib/utils
+import { cn } from '@/lib/utils'
+import { logAudit } from '@/lib/audit/log'
+
+// 5. Internal — components
+import { Button } from '@/components/ui/button'
+import { DataTable } from '@/components/shared/data-table'
+```
+
+### Server Action (pola wajib):
+```typescript
+'use server'
+import { createClient } from '@/lib/supabase/server'
+import { logAudit } from '@/lib/audit/log'
+
+export async function createData(data: CreateInput) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('Tidak terautentikasi')
+
+  const { data: result, error } = await supabase
+    .from('table_name')
+    .insert(data)
+    .select()
+    .single()
+
+  if (error) throw new Error(error.message)
+
+  await logAudit(user.id, 'CREATE', 'table_name', result.id, null, result)
+  return result
+}
+```
+
+### React Query (pola wajib):
+```typescript
+'use client'
+const { data, isLoading, error } = useQuery({
+  queryKey: ['key', param1, param2],
+  queryFn: () => getData(param1, param2),
+})
+
+const mutation = useMutation({
+  mutationFn: createData,
+  onSuccess: () => {
+    queryClient.invalidateQueries({ queryKey: ['key'] })
+    toast({ title: 'Berhasil', description: 'Data berhasil disimpan' })
+  },
+  onError: (error: Error) => {
+    toast({ title: 'Gagal', description: error.message, variant: 'destructive' })
+  }
+})
+```
+
+### Supabase Query dengan Filter Unit/Status:
+```typescript
+// Filter siswa aktif saja (SELALU tambahkan ini kecuali halaman Alumni):
+.eq('status', 'Aktif')
+
+// Filter hanya data yang sudah diproses (SELALU untuk perhitungan poin):
+.eq('status', 'Sudah Diproses')
+
+// Filter nilai yang sudah diapprove (SELALU untuk orang_tua):
+.eq('is_approved', true)
+```
+
+### Cetak Laporan — CSS Print (pola wajib):
+```css
+@media print {
+  .no-print { display: none !important; }    /* sidebar, header, tombol, filter */
+  .print-only { display: block !important; } /* header formal cetak */
+  body { background: white !important; color: black !important; }
+  table, th, td { border: 1px solid #333 !important; }
+}
+```
+Header print wajib:
+```
+SEKOLAH QURAN ASY SYAHID — AMANAH Platform
+[Judul Laporan]
+Tanggal Cetak: [dd/MM/yyyy]
+Dicetak Oleh: [nama_lengkap]
+```
+
+---
+
+## KOMPONEN YANG SUDAH ADA (JANGAN BUAT ULANG)
+
+### /components/ui/:
+```
+Button, Input, Label, Card, Dialog, Select, DropdownMenu,
+Tabs, Badge, Avatar, Separator, Switch, Checkbox, RadioGroup,
+Popover, Toast, Command, Table, Skeleton, Calendar
+```
+
+### /components/shared/:
+```
+DataTable, Combobox, DatePicker, ConfirmDialog, StatCard,
+PageTitle, EmptyState, LoadingSpinner
+```
+
+### Status Badge Colors (tidak berubah):
+```
+'Belum Diproses' → variant="destructive" (merah)
+'Pending'        → variant="warning" (kuning)
+'Sudah Diproses' → variant="success" (hijau)
+```
+
+---
+
+## NAMING CONVENTION
+
+```
+Components  → PascalCase      (MutabaahTable.tsx, DiknasDashboard.tsx)
+Pages       → lowercase-kebab (page.tsx — Next.js convention)
+Hooks       → camelCase + use (use-mutabaah.ts, use-diknas.ts)
+Lib/Utils   → camelCase       (mutabaah.ts, diknas.ts, semester.ts)
+Types       → PascalCase      (MutabaahPresensi, DiknasnNilai, Semester)
+Constants   → SCREAMING_SNAKE (POIN_PRESTASI_TABLE, GRADING_MUTABAAH, STATUS_OPTIONS)
+```
+
+---
+
+## PESAN ERROR & TOAST (BAHASA INDONESIA)
+
+```
+Login     : "Username tidak ditemukan" | "Password salah" | "Akun belum disetujui Admin"
+CRUD      : "Gagal menyimpan data" | "Gagal menghapus data" | "Data tidak ditemukan"
+Akses     : "Anda tidak memiliki akses ke fitur ini" | "Mata pelajaran tidak sesuai"
+Approval  : "Nilai berhasil disetujui" | "Nilai belum dapat ditampilkan ke orang tua"
+Validasi  : Sesuai pesan di schema Zod masing-masing
+
+Create    : "[Entitas] berhasil ditambahkan"
+Update    : "[Entitas] berhasil diperbarui"
+Delete    : "[Entitas] berhasil dihapus"
+Approve   : "Akun berhasil diaktifkan" | "Nilai berhasil disetujui dan ditampilkan"
+```
+
+---
+
+## CHECKLIST SEBELUM SELESAI
+
+Setelah menulis kode untuk setiap prompt, wajib cek:
+
+- [ ] Tidak ada `any` di TypeScript
+- [ ] Tidak ada warna hardcoded — gunakan CSS variables atau Tailwind
+- [ ] Tidak ada hardcoded env variables
+- [ ] Setiap Supabase query punya error handling
+- [ ] Setiap form punya validasi Zod
+- [ ] Setiap operasi write punya logAudit()
+- [ ] Setiap data fetch punya loading skeleton
+- [ ] Setiap tabel/list punya empty state
+- [ ] Dark mode support di semua komponen baru
+- [ ] Semua label, placeholder, error dalam Bahasa Indonesia
+- [ ] Import yang tidak digunakan sudah dihapus
+- [ ] Tidak ada console.log tertinggal
+- [ ] Filter status 'Sudah Diproses' sudah diterapkan di semua perhitungan poin
+- [ ] Poin nilai tidak tampil ke orang_tua sebelum is_approved = true
+- [ ] Akses guru sudah dibatasi sesuai mapel_ids
+- [ ] Tampilan responsif sudah dicek (mobile & desktop)
+- [ ] class no-print sudah diterapkan di semua elemen yang tidak perlu dicetak
+- [ ] Nama "AMANAH Platform" digunakan — bukan "SQA" atau "Nexus-Edu"
+- [ ] Warna aksen menggunakan #1e5d7e dan #437793 (bukan #2D7A4F/#C9A84C)
+- [ ] Favicon dan logo menggunakan /public/icon.png
+- [ ] "InspiraLabs" → link ke https://inspiralabs.id/
+- [ ] "Unggul Sulaiman, S.Kom" → link ke WhatsApp CTA
+
+---
+
+## CATATAN DEPLOYMENT V2
+
+1. Ini adalah **V2 di atas V1 yang sudah production** — semua perubahan HARUS backward-compatible
+2. Jalankan `npm run build` sebelum push — pastikan 0 TypeScript error
+3. Test fitur V1 yang sudah ada tidak rusak setelah setiap perubahan besar
+4. Setelah selesai: `git push` → Vercel auto-deploy
+5. Environment variables Supabase sudah ada di Vercel — tidak perlu ubah kecuali ada tabel/key baru
+6. Setiap schema SQL baru → jalankan di Supabase SQL Editor sebelum deploy fitur yang bergantung padanya
+7. `.env.local` JANGAN di-commit — pastikan ada di `.gitignore`
+8. Kamu wajib memberikan penjelasan, balasan, komentar kode, dan seluruh string UI (label, placeholder, error message) dalam Bahasa Indonesia sesuai aturan proyek.

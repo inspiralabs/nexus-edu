@@ -125,22 +125,22 @@ export default function CetakKedisiplinanPage() {
 
   return (
     <div className="space-y-6">
-      <div className="print:hidden">
+      <div className="print:hidden no-print">
         <PageHeader
           title="Cetak Laporan Kedisiplinan"
           actions={
-            <Button type="button" onClick={() => window.print()}>
+            <Button type="button" onClick={() => window.print()} className="no-print">
               <Printer className="mr-2 h-4 w-4" />
               Cetak
             </Button>
           }
         />
 
-        <Card>
-          <CardHeader>
+        <Card className="no-print">
+          <CardHeader className="no-print">
             <CardTitle className="text-base">Filter Laporan</CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="no-print">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
               <div className="space-y-2">
                 <Label>Tanggal Dari</Label>
@@ -257,7 +257,7 @@ export default function CetakKedisiplinanPage() {
         </Card>
       </div>
 
-      <div className="hidden text-center print:block">
+      <div className="print-header hidden text-center print:block">
         <h1 className="text-lg font-bold uppercase">
           Sekolah Quran Asy Syahid
         </h1>
@@ -273,7 +273,7 @@ export default function CetakKedisiplinanPage() {
       </div>
 
       <Card className="print:border-none print:shadow-none">
-        <CardHeader className="print:hidden">
+        <CardHeader className="print:hidden no-print">
           <CardTitle className="text-base">
             Preview Laporan ({rows.length} data)
           </CardTitle>

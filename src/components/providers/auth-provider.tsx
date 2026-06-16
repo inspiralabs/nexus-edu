@@ -39,7 +39,27 @@ function AuthProvider({ children }: { children: React.ReactNode }) {
     async (userId: string) => {
       const { data, error } = await supabase
         .from('profiles')
-        .select('*')
+        .select(`
+          id,
+          user_id,
+          nama_lengkap,
+          guru_mapel,
+          username,
+          role,
+          is_approved,
+          avatar_url,
+          email,
+          updated_at,
+          created_at,
+          tipe_role,
+          is_multi_mapel,
+          is_musyrif,
+          mapel_ids,
+          kamar_ids,
+          unit_mengajar,
+          pekerjaan,
+          siswa_id
+        `)
         .eq('user_id', userId)
         .single()
 

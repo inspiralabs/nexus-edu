@@ -129,6 +129,7 @@ export async function getRekapPoin(
       kategori_disiplin!inner(nama_kategori)
     `)
     .in('siswa_id', studentIds)
+    .eq('status', 'Sudah Diproses')
 
   if (options?.tahun) {
     kedisiplinanQuery = kedisiplinanQuery
@@ -288,14 +289,12 @@ export async function getDetailSiswa(
     }
   }
 
-  const total_poin_pelanggaran = riwayat_pelanggaran.reduce(
-    (sum, r) => sum + r.poin,
-    0
-  )
-  const total_poin_prestasi = riwayat_prestasi.reduce(
-    (sum, r) => sum + r.poin,
-    0
-  )
+  const total_poin_pelanggaran = riwayat_pelanggaran
+    .filter((r) => r.status === 'Sudah Diproses')
+    .reduce((sum, r) => sum + r.poin, 0)
+  const total_poin_prestasi = riwayat_prestasi
+    .filter((r) => r.status === 'Sudah Diproses')
+    .reduce((sum, r) => sum + r.poin, 0)
 
   return {
     siswa: {

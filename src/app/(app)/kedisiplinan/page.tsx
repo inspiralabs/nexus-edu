@@ -1,13 +1,15 @@
 'use client'
 
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   AlertCircle,
   CheckCircle2,
   Clock,
   ShieldAlert,
+  Trophy,
+  X,
 } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useEffect, useCallback } from 'react'
 import {
   Bar,
   BarChart,
@@ -24,6 +26,7 @@ import {
   YAxis,
 } from 'recharts'
 import { StatCard } from '@/components/shared/stat-card'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -41,8 +44,9 @@ import {
   type KedisiplinanDashboardFilters,
 } from '@/lib/queries/kedisiplinan'
 import { getKelasOptionsByUnits } from '@/lib/queries/students'
-import type { StatusKedisiplinan, Unit } from '@/lib/supabase/types'
+import type { Unit, StatusKedisiplinan } from '@/lib/supabase/types'
 import { cn, formatDivisiLabel } from '@/lib/utils'
+import type { LucideIcon } from 'lucide-react'
 
 const CHART_PRIMARY = '#2D7A4F'
 const CHART_SECONDARY = '#C9A84C'
@@ -51,6 +55,44 @@ const CHART_YELLOW = '#D97706'
 const CHART_GREEN = '#16A34A'
 
 const UNITS: Unit[] = ['SD', 'SMP', 'SMA']
+
+interface StatusStatCardProps {
+  title: string
+  value: number | string
+  icon: LucideIcon
+  iconColorClass: string
+  iconBgClass: string
+}
+
+function StatusStatCard({
+  title,
+  value,
+  icon: Icon,
+  iconColorClass,
+  iconBgClass,
+}: StatusStatCardProps) {
+  return (
+    <Card>
+      <CardContent className="flex items-center gap-4 p-6">
+        <div
+          className={cn(
+            'flex h-10 w-10 shrink-0 items-center justify-center rounded-lg',
+            iconBgClass,
+            iconColorClass
+          )}
+        >
+          <Icon className="h-5 w-5" />
+        </div>
+        <div className="flex flex-col gap-1">
+          <p className="text-sm text-[var(--text-secondary)]">{title}</p>
+          <p className="text-2xl font-bold text-[var(--text-primary)]">
+            {value}
+          </p>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
 
 const STATUS_COLORS: Record<string, string> = {
   'Belum Diproses': CHART_RED,
@@ -161,43 +203,6 @@ function FilterMultiSelect({
         </div>
       </PopoverContent>
     </Popover>
-  )
-}
-
-interface StatusStatCardProps {
-  title: string
-  value: number
-  icon: typeof AlertCircle
-  iconColorClass: string
-  iconBgClass: string
-}
-
-function StatusStatCard({
-  title,
-  value,
-  icon: Icon,
-  iconColorClass,
-  iconBgClass,
-}: StatusStatCardProps) {
-  return (
-    <Card>
-      <CardContent className="flex items-center gap-4 p-6">
-        <div
-          className={cn(
-            'flex h-10 w-10 shrink-0 items-center justify-center rounded-lg',
-            iconBgClass
-          )}
-        >
-          <Icon className={cn('h-5 w-5', iconColorClass)} />
-        </div>
-        <div className="flex flex-col gap-1">
-          <p className="text-sm text-[var(--text-secondary)]">{title}</p>
-          <p className="text-2xl font-bold text-[var(--text-primary)]">
-            {value}
-          </p>
-        </div>
-      </CardContent>
-    </Card>
   )
 }
 

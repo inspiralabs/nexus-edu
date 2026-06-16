@@ -17,8 +17,8 @@ type AuditProfileRow = Pick<
   | 'updated_at'
 >
 
-const VALID_ROLES: Role[] = ['user', 'admin', 'superadmin']
-const MANAGEABLE_ROLES = ['user', 'admin'] as const
+const VALID_ROLES: Role[] = ['user', 'admin', 'superadmin', 'orangtua']
+const MANAGEABLE_ROLES = ['user', 'admin', 'orangtua'] as const
 
 export type ManageableRole = (typeof MANAGEABLE_ROLES)[number]
 
@@ -37,6 +37,8 @@ export interface CreateManageableUserInput {
   password: string
   guru_mapel: string
   role: ManageableRole
+  guru_id?: string
+  orangtua_id?: string
 }
 
 export interface GetManageableProfilesOptions {
@@ -54,10 +56,10 @@ function assertValidRole(value: string): Role {
 
 function assertManageableRole(value: string): ManageableRole {
   const normalized = value.trim().toLowerCase()
-  if (normalized !== 'user' && normalized !== 'admin') {
+  if (normalized !== 'user' && normalized !== 'admin' && normalized !== 'orangtua') {
     throw new Error(`Role "${value}" tidak valid untuk kelola user`)
   }
-  return normalized
+  return normalized as ManageableRole
 }
 
 function profileToAuditData(profile: AuditProfileRow): Record<string, unknown> {

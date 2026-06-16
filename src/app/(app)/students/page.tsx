@@ -6,15 +6,18 @@ import { type ColumnDef } from '@tanstack/react-table'
 import {
   Edit,
   Plus,
+  RotateCcw,
   Search,
   Trash2,
   Upload,
+  UserX,
 } from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { PageHeader } from '@/components/layout/page-header'
 import { ConfirmDialog } from '@/components/shared/confirm-dialog'
+import { Combobox } from '@/components/shared/combobox'
 import { DataTable } from '@/components/shared/data-table'
 import { Button } from '@/components/ui/button'
 import {
@@ -34,6 +37,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Switch } from '@/components/ui/switch'
 import {
   Table,
   TableBody,
@@ -52,8 +56,12 @@ import {
   bulkUpdateStudents,
   createStudent,
   deleteStudents,
+  getAlumniStudents,
+  getKamarOptions,
+  getOrangTuaOptions,
   getStudentClasses,
   getStudents,
+  restoreStudent,
   updateStudent,
   type CreateStudentInput,
 } from '@/lib/queries/students'
@@ -61,16 +69,31 @@ import type { AuditAction, JenisKelamin, Student, Unit } from '@/lib/supabase/ty
 
 const PAGE_SIZE_OPTIONS = [10, 20, 30, 40, 50] as const
 const UNITS: Unit[] = ['SD', 'SMP', 'SMA']
+type TabValue = Unit | 'Alumni'
 
-const studentSchema = z.object({
+// Schema tambah siswa baru (tanpa is_alumni, dengan kamar_id & nomor_induk opsional)
+const studentAddSchema = z.object({
   nama: z.string().min(2, 'Nama minimal 2 karakter'),
   kelas: z.string().min(1, 'Kelas wajib diisi'),
-  jenis_kelamin: z.enum(['L', 'P'], {
-    message: 'Pilih jenis kelamin',
-  }),
+  jenis_kelamin: z.enum(['L', 'P'], { message: 'Pilih jenis kelamin' }),
+  kamar_id: z.string().uuid().optional().nullable(),
+  nomor_induk: z.string().optional(),
+  orangtua_id: z.string().uuid().optional().nullable(),
 })
 
-type StudentFormValues = z.infer<typeof studentSchema>
+// Schema edit siswa — lengkap
+const studentEditSchema = z.object({
+  nama: z.string().min(2, 'Nama minimal 2 karakter'),
+  kelas: z.string().min(1, 'Kelas wajib diisi'),
+  jenis_kelamin: z.enum(['L', 'P'], { message: 'Pilih jenis kelamin' }),
+  kamar_id: z.string().uuid().optional().nullable(),
+  nomor_induk: z.string().optional(),
+  is_alumni: z.boolean(),
+  orangtua_id: z.string().uuid().optional().nullable(),
+})
+
+type StudentAddFormValues = z.infer<typeof studentAddSchema>
+type StudentEditFormValues = z.infer<typeof studentEditSchema>
 
 interface PendingStudentQueueItem extends CreateStudentInput {
   localId: string
@@ -83,6 +106,10 @@ function studentToRecord(student: Student): Record<string, unknown> {
     kelas: student.kelas,
     jenis_kelamin: student.jenis_kelamin,
     unit: student.unit,
+    is_alumni: student.is_alumni,
+    kamar: student.kamar,
+    kamar_id: student.kamar_id,
+    nomor_induk: student.nomor_induk,
     created_at: student.created_at,
   }
 }
@@ -97,7 +124,7 @@ export default function StudentsPage() {
   const queryClient = useQueryClient()
   const { profile } = useAuth()
 
-  const [activeUnit, setActiveUnit] = useState<Unit>('SD')
+  const [activeTab, setActiveTab] = useState<TabValue>('SD')
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
   const [search, setSearch] = useState('')
@@ -109,56 +136,125 @@ export default function StudentsPage() {
   const [isAddOpen, setIsAddOpen] = useState(false)
   const [isEditOpen, setIsEditOpen] = useState(false)
   const [isDeleteOpen, setIsDeleteOpen] = useState(false)
+  const [isAlumniConfirmOpen, setIsAlumniConfirmOpen] = useState(false)
+  const [isRestoreConfirmOpen, setIsRestoreConfirmOpen] = useState(false)
   const [isBulkAddOpen, setIsBulkAddOpen] = useState(false)
   const [isBulkEditOpen, setIsBulkEditOpen] = useState(false)
 
-  const [studentsQueue, setStudentsQueue] = useState<PendingStudentQueueItem[]>(
-    []
-  )
-
+  const [studentsQueue, setStudentsQueue] = useState<PendingStudentQueueItem[]>([])
   const [editingStudent, setEditingStudent] = useState<Student | null>(null)
-  const [bulkEditData, setBulkEditData] = useState({ kelas: '' })
+  const [alumniTargetStudent, setAlumniTargetStudent] = useState<Student | null>(null)
+  const [restoreTargetStudent, setRestoreTargetStudent] = useState<Student | null>(null)
+  const [bulkEditData, setBulkEditData] = useState<{
+    kelas: string
+    jenis_kelamin: JenisKelamin | ''
+    kamar_id: string | null
+    nomor_induk: string
+    orangtua_id: string | null
+  }>({ kelas: '', jenis_kelamin: '', kamar_id: null, nomor_induk: '', orangtua_id: null })
+  const [alumniUnitFilter, setAlumniUnitFilter] = useState<Unit | 'all'>('all')
   const [deleteTargetIds, setDeleteTargetIds] = useState<string[]>([])
   const [deletingStudents, setDeletingStudents] = useState<Student[]>([])
 
+  const [kamarSearch, setKamarSearch] = useState('')
+  const [orangTuaSearch, setOrangTuaSearch] = useState('')
+
   const debouncedSearch = useDebounce(search, 300)
+
+  const isAlumniTab = activeTab === 'Alumni'
+  const activeUnit = isAlumniTab ? null : (activeTab as Unit)
+
+  // Load Kamar Options
+  const { data: kamarData = [], isLoading: isKamarLoading } = useQuery({
+    queryKey: ['kamar-options', activeUnit],
+    queryFn: () => getKamarOptions(activeUnit ? [activeUnit] : undefined),
+    enabled: !isAlumniTab,
+  })
+
+  const filteredKamar = useMemo(() => {
+    if (!kamarSearch) return kamarData
+    return kamarData.filter((k) =>
+      k.nama_kamar.toLowerCase().includes(kamarSearch.toLowerCase())
+    )
+  }, [kamarData, kamarSearch])
+
+  const kamarOptions = useMemo(() => {
+    return filteredKamar.map((k) => ({ value: k.id, label: k.nama_kamar }))
+  }, [filteredKamar])
+
+  // Load Orang Tua Options
+  const { data: orangTuaData = [], isLoading: isOrangTuaLoading } = useQuery({
+    queryKey: ['orangtua-options'],
+    queryFn: getOrangTuaOptions,
+  })
+
+  const filteredOrangTua = useMemo(() => {
+    if (!orangTuaSearch) return orangTuaData
+    return orangTuaData.filter((ot) =>
+      ot.nama_lengkap.toLowerCase().includes(orangTuaSearch.toLowerCase())
+    )
+  }, [orangTuaData, orangTuaSearch])
+
+  const orangTuaOptions = useMemo(() => {
+    return filteredOrangTua.map((ot) => ({ value: ot.id, label: ot.nama_lengkap }))
+  }, [filteredOrangTua])
 
   const queryKey = [
     'students',
-    activeUnit,
+    activeTab,
     page,
     pageSize,
     debouncedSearch,
     selectedClassFilter,
+    alumniUnitFilter,
     sortField,
     sortDirection,
   ] as const
 
   const { data, isLoading } = useQuery({
     queryKey,
-    queryFn: () =>
-      getStudents(activeUnit, {
+    queryFn: () => {
+      const opts = {
         search: debouncedSearch || undefined,
-        kelas:
-          selectedClassFilter !== 'all' ? selectedClassFilter : undefined,
+        kelas: selectedClassFilter !== 'all' ? selectedClassFilter : undefined,
         page,
         pageSize,
         sortField,
         sortDirection,
-      }),
+      }
+      if (isAlumniTab) {
+        return getAlumniStudents({
+          ...opts,
+          unit: alumniUnitFilter !== 'all' ? alumniUnitFilter : undefined,
+        })
+      }
+      return getStudents(activeTab as Unit, opts)
+    },
   })
 
   const { data: studentClasses = [] } = useQuery({
-    queryKey: ['students', 'classes', activeUnit],
-    queryFn: () => getStudentClasses(activeUnit),
+    queryKey: ['students', 'classes', activeTab],
+    queryFn: () => {
+      if (isAlumniTab) return Promise.resolve([])
+      return getStudentClasses(activeTab as Unit)
+    },
   })
 
-  const form = useForm<StudentFormValues>({
-    resolver: zodResolver(studentSchema),
+  const addForm = useForm<StudentAddFormValues>({
+    resolver: zodResolver(studentAddSchema),
+    defaultValues: { nama: '', kelas: '', jenis_kelamin: 'L', kamar_id: null, nomor_induk: '', orangtua_id: null },
+  })
+
+  const editForm = useForm<StudentEditFormValues>({
+    resolver: zodResolver(studentEditSchema) as import('react-hook-form').Resolver<StudentEditFormValues>,
     defaultValues: {
       nama: '',
       kelas: '',
       jenis_kelamin: 'L',
+      kamar_id: null,
+      nomor_induk: '',
+      is_alumni: false,
+      orangtua_id: null,
     },
   })
 
@@ -169,37 +265,20 @@ export default function StudentsPage() {
   const getUserId = (): string | null => profile?.user_id ?? null
 
   const createMutation = useMutation({
-    mutationFn: (values: StudentFormValues) =>
-      createStudent({
-        ...values,
-        unit: activeUnit,
-      }),
+    mutationFn: (values: StudentAddFormValues) =>
+      createStudent({ ...values, unit: activeUnit ?? 'SD' }),
     onSuccess: async (result) => {
       const userId = getUserId()
       if (userId) {
-        await logAudit(
-          userId,
-          'CREATE',
-          'students',
-          result.id,
-          null,
-          studentToRecord(result)
-        )
+        await logAudit(userId, 'CREATE', 'students', result.id, null, studentToRecord(result))
       }
       invalidateStudents()
-      toast({
-        title: 'Berhasil',
-        description: 'Siswa berhasil ditambahkan',
-      })
+      toast({ title: 'Berhasil', description: 'Siswa berhasil ditambahkan' })
       setIsAddOpen(false)
-      form.reset()
+      addForm.reset()
     },
     onError: (error: Error) => {
-      toast({
-        title: 'Gagal',
-        description: error.message,
-        variant: 'destructive',
-      })
+      toast({ title: 'Gagal', description: error.message, variant: 'destructive' })
     },
   })
 
@@ -207,10 +286,9 @@ export default function StudentsPage() {
     mutationFn: ({
       id,
       values,
-      oldStudent,
     }: {
       id: string
-      values: StudentFormValues
+      values: StudentEditFormValues
       oldStudent: Student
     }) => updateStudent(id, values),
     onSuccess: async (result, variables) => {
@@ -226,20 +304,13 @@ export default function StudentsPage() {
         )
       }
       invalidateStudents()
-      toast({
-        title: 'Berhasil',
-        description: 'Siswa berhasil diperbarui',
-      })
+      toast({ title: 'Berhasil', description: 'Siswa berhasil diperbarui' })
       setIsEditOpen(false)
       setEditingStudent(null)
-      form.reset()
+      editForm.reset()
     },
     onError: (error: Error) => {
-      toast({
-        title: 'Gagal',
-        description: error.message,
-        variant: 'destructive',
-      })
+      toast({ title: 'Gagal', description: error.message, variant: 'destructive' })
     },
   })
 
@@ -263,33 +334,78 @@ export default function StudentsPage() {
         }
       }
       invalidateStudents()
-      toast({
-        title: 'Berhasil',
-        description: 'Siswa berhasil dihapus',
-      })
+      toast({ title: 'Berhasil', description: 'Siswa berhasil dihapus' })
       setIsDeleteOpen(false)
       setDeleteTargetIds([])
       setDeletingStudents([])
       setSelectedRows([])
     },
     onError: (error: Error) => {
-      toast({
-        title: 'Gagal',
-        description: error.message,
-        variant: 'destructive',
-      })
+      toast({ title: 'Gagal', description: error.message, variant: 'destructive' })
+    },
+  })
+
+  const alumniMutation = useMutation({
+    mutationFn: (id: string) => updateStudent(id, { is_alumni: true }),
+    onSuccess: async (result, id) => {
+      const userId = getUserId()
+      if (userId) {
+        await logAudit(
+          userId,
+          'UPDATE',
+          'students',
+          id,
+          { is_alumni: false },
+          { is_alumni: true }
+        )
+      }
+      invalidateStudents()
+      toast({ title: 'Berhasil', description: `${result.nama} telah ditandai sebagai alumni` })
+      setIsAlumniConfirmOpen(false)
+      setAlumniTargetStudent(null)
+    },
+    onError: (error: Error) => {
+      toast({ title: 'Gagal', description: error.message, variant: 'destructive' })
+    },
+  })
+
+  const restoreMutation = useMutation({
+    mutationFn: (id: string) => restoreStudent(id),
+    onSuccess: async (result, id) => {
+      const userId = getUserId()
+      if (userId) {
+        await logAudit(
+          userId,
+          'UPDATE',
+          'students',
+          id,
+          { is_alumni: true },
+          { is_alumni: false }
+        )
+      }
+      invalidateStudents()
+      toast({ title: 'Berhasil', description: `${result.nama} telah dikembalikan ke siswa aktif` })
+      setIsRestoreConfirmOpen(false)
+      setRestoreTargetStudent(null)
+    },
+    onError: (error: Error) => {
+      toast({ title: 'Gagal', description: error.message, variant: 'destructive' })
     },
   })
 
   const bulkUpdateMutation = useMutation({
     mutationFn: ({
       ids,
-      kelas,
+      oldStudents: _old,
+      ...payload
     }: {
       ids: string[]
-      kelas: string
+      kelas?: string
+      jenis_kelamin?: JenisKelamin
+      kamar_id?: string | null
+      nomor_induk?: string
       oldStudents: Student[]
-    }) => bulkUpdateStudents(ids, { kelas }),
+    }) => bulkUpdateStudents(ids, payload),
     onSuccess: async (_, variables) => {
       const userId = getUserId()
       if (userId) {
@@ -300,10 +416,7 @@ export default function StudentsPage() {
             'students',
             oldStudent.id,
             studentToRecord(oldStudent),
-            {
-              ...studentToRecord(oldStudent),
-              kelas: variables.kelas,
-            }
+            { ...studentToRecord(oldStudent), ...variables }
           )
         }
       }
@@ -314,14 +427,10 @@ export default function StudentsPage() {
       })
       setSelectedRows([])
       setIsBulkEditOpen(false)
-      setBulkEditData({ kelas: '' })
+      setBulkEditData({ kelas: '', jenis_kelamin: '', kamar_id: null, nomor_induk: '', orangtua_id: null })
     },
     onError: (error: Error) => {
-      toast({
-        title: 'Gagal',
-        description: error.message,
-        variant: 'destructive',
-      })
+      toast({ title: 'Gagal', description: error.message, variant: 'destructive' })
     },
   })
 
@@ -331,37 +440,24 @@ export default function StudentsPage() {
       const userId = getUserId()
       if (userId) {
         for (const result of results) {
-          await logAudit(
-            userId,
-            'BULK_CREATE' as AuditAction,
-            'students',
-            result.id,
-            null,
-            studentToRecord(result)
-          )
+          await logAudit(userId, 'BULK_CREATE' as AuditAction, 'students', result.id, null, studentToRecord(result))
         }
       }
       invalidateStudents()
-      toast({
-        title: 'Berhasil',
-        description: `Berhasil menambahkan ${results.length} siswa baru`,
-      })
+      toast({ title: 'Berhasil', description: `Berhasil menambahkan ${results.length} siswa baru` })
       closeBulkAddDialog()
     },
     onError: (error: Error) => {
-      toast({
-        title: 'Gagal',
-        description: error.message,
-        variant: 'destructive',
-      })
+      toast({ title: 'Gagal', description: error.message, variant: 'destructive' })
     },
   })
 
-  const handleUnitChange = (unit: Unit) => {
-    setActiveUnit(unit)
+  const handleTabChange = (tab: string) => {
+    setActiveTab(tab as TabValue)
     setPage(1)
     setSelectedRows([])
     setSelectedClassFilter('all')
+    setAlumniUnitFilter('all')
   }
 
   const handleSortChange = (field: string, direction: 'asc' | 'desc') => {
@@ -371,16 +467,21 @@ export default function StudentsPage() {
   }
 
   const openAddDialog = () => {
-    form.reset({ nama: '', kelas: '', jenis_kelamin: 'L' })
+    addForm.reset({ nama: '', kelas: '', jenis_kelamin: 'L', kamar_id: null, nomor_induk: '', orangtua_id: null })
     setIsAddOpen(true)
   }
 
   const openEditDialog = (student: Student) => {
     setEditingStudent(student)
-    form.reset({
+    const currentOrangTuaId = student.orangtua_siswa?.[0]?.orangtua_id || null
+    editForm.reset({
       nama: student.nama,
       kelas: student.kelas,
       jenis_kelamin: student.jenis_kelamin ?? 'L',
+      kamar_id: student.kamar_id ?? null,
+      nomor_induk: student.nomor_induk ?? '',
+      is_alumni: student.is_alumni ?? false,
+      orangtua_id: currentOrangTuaId,
     })
     setIsEditOpen(true)
   }
@@ -392,35 +493,44 @@ export default function StudentsPage() {
   }
 
   const openBulkDelete = () => {
-    const studentsToDelete =
-      data?.data.filter((s) => selectedRows.includes(s.id)) ?? []
+    const studentsToDelete = data?.data.filter((s) => selectedRows.includes(s.id)) ?? []
     setDeleteTargetIds(selectedRows)
     setDeletingStudents(studentsToDelete)
     setIsDeleteOpen(true)
   }
 
   const openBulkEdit = () => {
-    setBulkEditData({ kelas: '' })
+    setBulkEditData({ kelas: '', jenis_kelamin: '', kamar_id: null, nomor_induk: '', orangtua_id: null })
     setIsBulkEditOpen(true)
   }
 
-  const resetFormDefaults = () => {
-    form.reset({ nama: '', kelas: '', jenis_kelamin: 'L' })
+  const openAlumniConfirm = (student: Student) => {
+    setAlumniTargetStudent(student)
+    setIsAlumniConfirmOpen(true)
+  }
+
+  const openRestoreConfirm = (student: Student) => {
+    setRestoreTargetStudent(student)
+    setIsRestoreConfirmOpen(true)
+  }
+
+  const resetAddFormDefaults = () => {
+    addForm.reset({ nama: '', kelas: '', jenis_kelamin: 'L', kamar_id: null, nomor_induk: '', orangtua_id: null })
   }
 
   const closeBulkAddDialog = () => {
     setIsBulkAddOpen(false)
     setStudentsQueue([])
-    resetFormDefaults()
+    resetAddFormDefaults()
   }
 
   const openBulkAdd = () => {
-    resetFormDefaults()
+    resetAddFormDefaults()
     setStudentsQueue([])
     setIsBulkAddOpen(true)
   }
 
-  const addToStudentsQueue = (values: StudentFormValues) => {
+  const addToStudentsQueue = (values: StudentAddFormValues) => {
     setStudentsQueue((prev) => [
       ...prev,
       {
@@ -428,50 +538,57 @@ export default function StudentsPage() {
         nama: values.nama,
         kelas: values.kelas,
         jenis_kelamin: values.jenis_kelamin,
-        unit: activeUnit,
+        kamar_id: values.kamar_id,
+        nomor_induk: values.nomor_induk,
+        orangtua_id: values.orangtua_id,
+        unit: activeUnit ?? 'SD',
       },
     ])
-    resetFormDefaults()
-    toast({
-      title: 'Ditambahkan',
-      description: 'Item ditambahkan ke daftar. Isi form untuk menambah lagi.',
-    })
+    resetAddFormDefaults()
+    toast({ title: 'Ditambahkan', description: 'Item ditambahkan ke daftar. Isi form untuk menambah lagi.' })
   }
 
   const handleBulkEditSubmit = () => {
-    const kelas = bulkEditData.kelas.trim()
-    if (kelas.length < 1) {
-      toast({
-        title: 'Validasi gagal',
-        description: 'Kelas wajib diisi',
-        variant: 'destructive',
-      })
+    const hasAnyValue =
+      bulkEditData.kelas.trim() ||
+      bulkEditData.jenis_kelamin ||
+      bulkEditData.kamar_id ||
+      bulkEditData.nomor_induk.trim() ||
+      bulkEditData.orangtua_id
+
+    if (!hasAnyValue) {
+      toast({ title: 'Validasi gagal', description: 'Isi minimal satu field yang ingin diubah', variant: 'destructive' })
       return
     }
+    const payload: {
+      kelas?: string
+      jenis_kelamin?: JenisKelamin
+      kamar_id?: string | null
+      nomor_induk?: string
+      orangtua_id?: string | null
+    } = {}
+    if (bulkEditData.kelas.trim()) payload.kelas = bulkEditData.kelas.trim()
+    if (bulkEditData.jenis_kelamin) payload.jenis_kelamin = bulkEditData.jenis_kelamin
+    if (bulkEditData.kamar_id) payload.kamar_id = bulkEditData.kamar_id
+    if (bulkEditData.nomor_induk.trim()) payload.nomor_induk = bulkEditData.nomor_induk.trim()
+    if (bulkEditData.orangtua_id) payload.orangtua_id = bulkEditData.orangtua_id
 
-    const oldStudents =
-      data?.data.filter((s) => selectedRows.includes(s.id)) ?? []
-
-    bulkUpdateMutation.mutate({
-      ids: selectedRows,
-      kelas,
-      oldStudents,
-    })
+    const oldStudents = data?.data.filter((s) => selectedRows.includes(s.id)) ?? []
+    bulkUpdateMutation.mutate({ ids: selectedRows, ...payload, oldStudents })
   }
 
-  const onSubmitForm = (values: StudentFormValues) => {
-    if (isEditOpen && editingStudent) {
-      updateMutation.mutate({
-        id: editingStudent.id,
-        values,
-        oldStudent: editingStudent,
-      })
-    } else {
-      createMutation.mutate(values)
+  const onSubmitEditForm = (values: StudentEditFormValues) => {
+    if (editingStudent) {
+      updateMutation.mutate({ id: editingStudent.id, values, oldStudent: editingStudent })
     }
   }
 
-  const columns = useMemo<ColumnDef<Student>[]>(
+  const onSubmitAddForm = (values: StudentAddFormValues) => {
+    createMutation.mutate(values)
+  }
+
+  // Kolom untuk tab SD/SMP/SMA
+  const activeColumns = useMemo<ColumnDef<Student>[]>(
     () => [
       {
         id: 'no',
@@ -479,13 +596,17 @@ export default function StudentsPage() {
         enableSorting: false,
         cell: ({ row }) => (page - 1) * pageSize + row.index + 1,
       },
+      { accessorKey: 'nama', header: 'Nama' },
+      { accessorKey: 'kelas', header: 'Kelas' },
       {
-        accessorKey: 'nama',
-        header: 'Nama',
-      },
-      {
-        accessorKey: 'kelas',
-        header: 'Kelas',
+        id: 'orang_tua',
+        header: 'Nama Orang Tua',
+        enableSorting: false,
+        cell: ({ row }) => {
+          const list = row.original.orangtua_siswa
+          if (!list || list.length === 0) return '—'
+          return list.map((ot) => `${ot.orangtua?.nama_lengkap || '—'} (${ot.hubungan || 'Ortu'})`).join(', ')
+        },
       },
       {
         accessorKey: 'jenis_kelamin',
@@ -512,6 +633,16 @@ export default function StudentsPage() {
               type="button"
               variant="ghost"
               size="icon"
+              onClick={() => openAlumniConfirm(row.original)}
+              aria-label="Jadikan alumni"
+              title="Tandai sebagai alumni"
+            >
+              <UserX className="h-4 w-4 text-status-yellow" />
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
               onClick={() => openSingleDelete(row.original)}
               aria-label="Hapus siswa"
             >
@@ -524,37 +655,98 @@ export default function StudentsPage() {
     [page, pageSize]
   )
 
-  const isFormSubmitting = createMutation.isPending || updateMutation.isPending
-  const isBulkCreateSubmitting = bulkCreateMutation.isPending
-  const isFormOpen = isAddOpen || isEditOpen
+  // Kolom untuk tab Alumni
+  const alumniColumns = useMemo<ColumnDef<Student>[]>(
+    () => [
+      {
+        id: 'no',
+        header: 'No',
+        enableSorting: false,
+        cell: ({ row }) => (page - 1) * pageSize + row.index + 1,
+      },
+      { accessorKey: 'nama', header: 'Nama' },
+      { accessorKey: 'kelas', header: 'Kelas Terakhir' },
+      {
+        id: 'orang_tua',
+        header: 'Nama Orang Tua',
+        enableSorting: false,
+        cell: ({ row }) => {
+          const list = row.original.orangtua_siswa
+          if (!list || list.length === 0) return '—'
+          return list.map((ot) => `${ot.orangtua?.nama_lengkap || '—'} (${ot.hubungan || 'Ortu'})`).join(', ')
+        },
+      },
+      {
+        accessorKey: 'unit',
+        header: 'Unit',
+        enableSorting: false,
+      },
+      {
+        accessorKey: 'jenis_kelamin',
+        header: 'Jenis Kelamin',
+        enableSorting: false,
+        cell: ({ row }) => formatJenisKelamin(row.original.jenis_kelamin),
+      },
+      {
+        id: 'actions',
+        header: 'Aksi',
+        enableSorting: false,
+        cell: ({ row }) => (
+          <div className="flex items-center gap-1">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => openRestoreConfirm(row.original)}
+              aria-label="Kembalikan ke aktif"
+              className="gap-1 text-xs text-primary hover:text-primary"
+            >
+              <RotateCcw className="h-3 w-3" />
+              Kembalikan ke Aktif
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              onClick={() => openSingleDelete(row.original)}
+              aria-label="Hapus siswa"
+            >
+              <Trash2 className="h-4 w-4 text-status-red" />
+            </Button>
+          </div>
+        ),
+      },
+    ],
+    [page, pageSize]
+  )
 
-  const renderStudentFormFields = (showAddToListButton = false) => (
+  const isFormSubmitting = updateMutation.isPending
+  const isAddSubmitting = createMutation.isPending
+  const isBulkCreateSubmitting = bulkCreateMutation.isPending
+
+  const renderAddFormFields = (showAddToListButton = false) => (
     <div className="space-y-4">
       {showAddToListButton && (
         <div className="space-y-2">
           <Label htmlFor="bulk-unit">Unit</Label>
-          <Input id="bulk-unit" value={activeUnit} disabled readOnly />
+          <Input id="bulk-unit" value={activeUnit ?? ''} disabled readOnly />
         </div>
       )}
 
       <div className="space-y-2">
-        <Label htmlFor="nama">Nama Siswa</Label>
-        <Input id="nama" {...form.register('nama')} />
-        {form.formState.errors.nama && (
-          <p className="text-xs text-status-red">
-            {form.formState.errors.nama.message}
-          </p>
+        <Label htmlFor="add-nama">Nama Siswa</Label>
+        <Input id="add-nama" {...addForm.register('nama')} />
+        {addForm.formState.errors.nama && (
+          <p className="text-xs text-status-red">{addForm.formState.errors.nama.message}</p>
         )}
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor={showAddToListButton ? 'bulk-kelas' : 'kelas'}>
-          Kelas
-        </Label>
+        <Label htmlFor={showAddToListButton ? 'bulk-kelas' : 'add-kelas'}>Kelas</Label>
         <Input
-          id={showAddToListButton ? 'bulk-kelas' : 'kelas'}
+          id={showAddToListButton ? 'bulk-kelas' : 'add-kelas'}
           list={showAddToListButton ? 'kelas-suggestions' : undefined}
-          {...form.register('kelas')}
+          {...addForm.register('kelas')}
         />
         {showAddToListButton && studentClasses.length > 0 && (
           <datalist id="kelas-suggestions">
@@ -563,54 +755,84 @@ export default function StudentsPage() {
             ))}
           </datalist>
         )}
-        {form.formState.errors.kelas && (
-          <p className="text-xs text-status-red">
-            {form.formState.errors.kelas.message}
-          </p>
+        {addForm.formState.errors.kelas && (
+          <p className="text-xs text-status-red">{addForm.formState.errors.kelas.message}</p>
         )}
       </div>
 
       <div className="space-y-2">
         <Label>Jenis Kelamin</Label>
         <RadioGroup
-          value={form.watch('jenis_kelamin')}
+          value={addForm.watch('jenis_kelamin')}
           onValueChange={(value) =>
-            form.setValue('jenis_kelamin', value as JenisKelamin, {
-              shouldValidate: true,
-            })
+            addForm.setValue('jenis_kelamin', value as JenisKelamin, { shouldValidate: true })
           }
           className="flex gap-4"
         >
           <div className="flex items-center gap-2">
-            <RadioGroupItem
-              value="L"
-              id={showAddToListButton ? 'bulk-jk-l' : 'jk-l'}
-            />
-            <Label
-              htmlFor={showAddToListButton ? 'bulk-jk-l' : 'jk-l'}
-              className="font-normal"
-            >
-              Laki-laki
-            </Label>
+            <RadioGroupItem value="L" id={showAddToListButton ? 'bulk-jk-l' : 'add-jk-l'} />
+            <Label htmlFor={showAddToListButton ? 'bulk-jk-l' : 'add-jk-l'} className="font-normal">Laki-laki</Label>
           </div>
           <div className="flex items-center gap-2">
-            <RadioGroupItem
-              value="P"
-              id={showAddToListButton ? 'bulk-jk-p' : 'jk-p'}
-            />
-            <Label
-              htmlFor={showAddToListButton ? 'bulk-jk-p' : 'jk-p'}
-              className="font-normal"
-            >
-              Perempuan
-            </Label>
+            <RadioGroupItem value="P" id={showAddToListButton ? 'bulk-jk-p' : 'add-jk-p'} />
+            <Label htmlFor={showAddToListButton ? 'bulk-jk-p' : 'add-jk-p'} className="font-normal">Perempuan</Label>
           </div>
         </RadioGroup>
-        {form.formState.errors.jenis_kelamin && (
-          <p className="text-xs text-status-red">
-            {form.formState.errors.jenis_kelamin.message}
-          </p>
+        {addForm.formState.errors.jenis_kelamin && (
+          <p className="text-xs text-status-red">{addForm.formState.errors.jenis_kelamin.message}</p>
         )}
+      </div>
+
+      {/* Kamar (opsional) */}
+      <div className="space-y-2">
+        <Label htmlFor={showAddToListButton ? 'bulk-kamar' : 'add-kamar'}>
+          Kamar Pesantren <span className="text-[var(--text-tertiary)]">(opsional)</span>
+        </Label>
+        <Combobox
+          options={kamarOptions}
+          value={addForm.watch('kamar_id') || ''}
+          onSelect={(val) => {
+            addForm.setValue('kamar_id', val || null, { shouldValidate: true })
+          }}
+          onSearch={setKamarSearch}
+          placeholder="Pilih Kamar..."
+          isLoading={isKamarLoading}
+          emptyMessage={
+            kamarSearch
+              ? 'Kamar tidak ditemukan'
+              : 'Belum ada kamar untuk unit yang dipilih'
+          }
+        />
+      </div>
+
+      {/* Orang Tua (opsional) */}
+      <div className="space-y-2">
+        <Label htmlFor={showAddToListButton ? 'bulk-orangtua' : 'add-orangtua'}>
+          Nama Orang Tua <span className="text-[var(--text-tertiary)]">(opsional)</span>
+        </Label>
+        <Combobox
+          options={orangTuaOptions}
+          value={addForm.watch('orangtua_id') || ''}
+          onSelect={(val) => {
+            addForm.setValue('orangtua_id', val || null, { shouldValidate: true })
+          }}
+          onSearch={setOrangTuaSearch}
+          placeholder="Pilih Orang Tua..."
+          isLoading={isOrangTuaLoading}
+          emptyMessage="Orang tua tidak ditemukan"
+        />
+      </div>
+
+      {/* Nomor Induk (opsional) */}
+      <div className="space-y-2">
+        <Label htmlFor={showAddToListButton ? 'bulk-nomor-induk' : 'add-nomor-induk'}>
+          Nomor Induk <span className="text-[var(--text-tertiary)]">(opsional)</span>
+        </Label>
+        <Input
+          id={showAddToListButton ? 'bulk-nomor-induk' : 'add-nomor-induk'}
+          placeholder="Contoh: 2024001"
+          {...addForm.register('nomor_induk')}
+        />
       </div>
 
       {showAddToListButton && (
@@ -618,7 +840,7 @@ export default function StudentsPage() {
           type="button"
           variant="outline"
           className="w-full"
-          onClick={form.handleSubmit(addToStudentsQueue)}
+          onClick={addForm.handleSubmit(addToStudentsQueue)}
         >
           Tambah ke Daftar
         </Button>
@@ -632,21 +854,25 @@ export default function StudentsPage() {
         title="Data Siswa"
         actions={
           <>
-            <Button type="button" onClick={openAddDialog}>
-              <Plus className="mr-2 h-4 w-4" />
-              Tambah Siswa
-            </Button>
-            <Button type="button" variant="outline" onClick={openBulkAdd}>
-              <Upload className="mr-2 h-4 w-4" />
-              Tambah Banyak
-            </Button>
+            {!isAlumniTab && (
+              <>
+                <Button type="button" onClick={openAddDialog}>
+                  <Plus className="mr-2 h-4 w-4" />
+                  Tambah Siswa
+                </Button>
+                <Button type="button" variant="outline" onClick={openBulkAdd}>
+                  <Upload className="mr-2 h-4 w-4" />
+                  Tambah Banyak
+                </Button>
+              </>
+            )}
           </>
         }
       />
 
       <Tabs
-        value={activeUnit}
-        onValueChange={(value) => handleUnitChange(value as Unit)}
+        value={activeTab}
+        onValueChange={handleTabChange}
       >
         <TabsList>
           {UNITS.map((unit) => (
@@ -654,6 +880,7 @@ export default function StudentsPage() {
               {unit}
             </TabsTrigger>
           ))}
+          <TabsTrigger value="Alumni">Alumni</TabsTrigger>
         </TabsList>
       </Tabs>
 
@@ -671,25 +898,48 @@ export default function StudentsPage() {
               className="pl-9"
             />
           </div>
-          <Select
-            value={selectedClassFilter}
-            onValueChange={(value) => {
-              setSelectedClassFilter(value)
-              setPage(1)
-            }}
-          >
-            <SelectTrigger className="w-full sm:w-[180px]">
-              <SelectValue placeholder="Semua Kelas" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Semua Kelas</SelectItem>
-              {studentClasses.map((kelas) => (
-                <SelectItem key={kelas} value={kelas}>
-                  {kelas}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          {!isAlumniTab && (
+            <Select
+              value={selectedClassFilter}
+              onValueChange={(value) => {
+                setSelectedClassFilter(value)
+                setPage(1)
+              }}
+            >
+              <SelectTrigger className="w-full sm:w-[180px]">
+                <SelectValue placeholder="Semua Kelas" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Semua Kelas</SelectItem>
+                {studentClasses.map((kelas) => (
+                  <SelectItem key={kelas} value={kelas}>
+                    {kelas}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+          {isAlumniTab && (
+            <Select
+              value={alumniUnitFilter}
+              onValueChange={(value) => {
+                setAlumniUnitFilter(value as Unit | 'all')
+                setPage(1)
+              }}
+            >
+              <SelectTrigger className="w-full sm:w-[140px]">
+                <SelectValue placeholder="Semua Unit" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Semua Unit</SelectItem>
+                {UNITS.map((unit) => (
+                  <SelectItem key={unit} value={unit}>
+                    {unit}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
         </div>
         {selectedRows.length > 0 && (
           <p className="text-sm text-[var(--text-secondary)]">
@@ -698,34 +948,24 @@ export default function StudentsPage() {
         )}
       </div>
 
-      {selectedRows.length > 0 && (
+      {selectedRows.length > 0 && !isAlumniTab && (
         <div className="flex items-center gap-3 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-4 py-3">
           <span className="text-sm text-[var(--text-primary)]">
             {selectedRows.length} item terpilih
           </span>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={openBulkEdit}
-          >
+          <Button type="button" variant="outline" size="sm" onClick={openBulkEdit}>
             <Edit className="mr-2 h-4 w-4" />
-            Edit Kelas Terpilih
+            Edit {selectedRows.length} Siswa Terpilih
           </Button>
-          <Button
-            type="button"
-            variant="destructive"
-            size="sm"
-            onClick={openBulkDelete}
-          >
+          <Button type="button" variant="destructive" size="sm" onClick={openBulkDelete}>
             <Trash2 className="mr-2 h-4 w-4" />
-            Hapus {selectedRows.length} terpilih
+            Hapus {selectedRows.length} Siswa terpilih
           </Button>
         </div>
       )}
 
       <DataTable
-        columns={columns}
+        columns={isAlumniTab ? alumniColumns : activeColumns}
         data={data?.data ?? []}
         pagination={{
           page,
@@ -739,50 +979,175 @@ export default function StudentsPage() {
           setPage(1)
         }}
         onSortChange={handleSortChange}
-        selectedRows={selectedRows}
-        onSelectRows={setSelectedRows}
+        selectedRows={isAlumniTab ? [] : selectedRows}
+        onSelectRows={isAlumniTab ? undefined : setSelectedRows}
         isLoading={isLoading}
       />
 
-      {/* Dialog Tambah/Edit */}
+      {/* Dialog Tambah */}
       <Dialog
-        open={isFormOpen}
+        open={isAddOpen}
         onOpenChange={(open) => {
           if (!open) {
             setIsAddOpen(false)
-            setIsEditOpen(false)
-            setEditingStudent(null)
-            form.reset()
+            addForm.reset()
           }
         }}
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>
-              {isEditOpen ? 'Edit Siswa' : 'Tambah Siswa'}
-            </DialogTitle>
+            <DialogTitle>Tambah Siswa</DialogTitle>
           </DialogHeader>
-          <form
-            onSubmit={form.handleSubmit(onSubmitForm)}
-            className="space-y-4"
-          >
-            {renderStudentFormFields(false)}
-
+          <form onSubmit={addForm.handleSubmit(onSubmitAddForm)} className="space-y-4">
+            {renderAddFormFields(false)}
             <DialogFooter>
               <Button
                 type="button"
                 variant="outline"
                 onClick={() => {
                   setIsAddOpen(false)
+                  addForm.reset()
+                }}
+              >
+                Batal
+              </Button>
+              <Button type="submit" isLoading={isAddSubmitting}>
+                Tambah
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog Edit — form lengkap */}
+      <Dialog
+        open={isEditOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            setIsEditOpen(false)
+            setEditingStudent(null)
+            editForm.reset()
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Siswa</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={editForm.handleSubmit(onSubmitEditForm)} className="space-y-4">
+            {/* Nama */}
+            <div className="space-y-2">
+              <Label htmlFor="edit-nama">Nama Siswa</Label>
+              <Input id="edit-nama" {...editForm.register('nama')} />
+              {editForm.formState.errors.nama && (
+                <p className="text-xs text-status-red">{editForm.formState.errors.nama.message}</p>
+              )}
+            </div>
+
+            {/* Kelas */}
+            <div className="space-y-2">
+              <Label htmlFor="edit-kelas">Kelas</Label>
+              <Input id="edit-kelas" {...editForm.register('kelas')} />
+              {editForm.formState.errors.kelas && (
+                <p className="text-xs text-status-red">{editForm.formState.errors.kelas.message}</p>
+              )}
+            </div>
+
+            {/* Jenis Kelamin */}
+            <div className="space-y-2">
+              <Label>Jenis Kelamin</Label>
+              <RadioGroup
+                value={editForm.watch('jenis_kelamin')}
+                onValueChange={(value) =>
+                  editForm.setValue('jenis_kelamin', value as JenisKelamin, { shouldValidate: true })
+                }
+                className="flex gap-4"
+              >
+                <div className="flex items-center gap-2">
+                  <RadioGroupItem value="L" id="edit-jk-l" />
+                  <Label htmlFor="edit-jk-l" className="font-normal">Laki-laki</Label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <RadioGroupItem value="P" id="edit-jk-p" />
+                  <Label htmlFor="edit-jk-p" className="font-normal">Perempuan</Label>
+                </div>
+              </RadioGroup>
+              {editForm.formState.errors.jenis_kelamin && (
+                <p className="text-xs text-status-red">{editForm.formState.errors.jenis_kelamin.message}</p>
+              )}
+            </div>
+
+            {/* Kamar (opsional) */}
+            <div className="space-y-2">
+              <Label htmlFor="edit-kamar">Kamar Pesantren <span className="text-[var(--text-tertiary)]">(opsional)</span></Label>
+              <Combobox
+                options={kamarOptions}
+                value={editForm.watch('kamar_id') || ''}
+                onSelect={(val) => {
+                  editForm.setValue('kamar_id', val || null, { shouldValidate: true })
+                }}
+                onSearch={setKamarSearch}
+                placeholder="Pilih Kamar..."
+                isLoading={isKamarLoading}
+                emptyMessage={
+                  kamarSearch
+                    ? 'Kamar tidak ditemukan'
+                    : 'Belum ada kamar untuk unit yang dipilih'
+                }
+              />
+            </div>
+
+            {/* Orang Tua (opsional) */}
+            <div className="space-y-2">
+              <Label htmlFor="edit-orangtua">Nama Orang Tua <span className="text-[var(--text-tertiary)]">(opsional)</span></Label>
+              <Combobox
+                options={orangTuaOptions}
+                value={editForm.watch('orangtua_id') || ''}
+                onSelect={(val) => {
+                  editForm.setValue('orangtua_id', val || null, { shouldValidate: true })
+                }}
+                onSearch={setOrangTuaSearch}
+                placeholder="Pilih Orang Tua..."
+                isLoading={isOrangTuaLoading}
+                emptyMessage="Orang tua tidak ditemukan"
+              />
+            </div>
+
+            {/* Nomor Induk (opsional) */}
+            <div className="space-y-2">
+              <Label htmlFor="edit-nomor-induk">Nomor Induk <span className="text-[var(--text-tertiary)]">(opsional)</span></Label>
+              <Input id="edit-nomor-induk" placeholder="Contoh: 2024001" {...editForm.register('nomor_induk')} />
+            </div>
+
+            {/* Switch: Tandai Alumni */}
+            <div className="flex items-center justify-between rounded-lg border border-[var(--border)] bg-[var(--surface-2)] px-4 py-3">
+              <div>
+                <p className="text-sm font-medium text-[var(--text-primary)]">Tandai sebagai Alumni</p>
+                <p className="text-xs text-[var(--text-secondary)]">Siswa tidak akan tampil di tab unit aktif</p>
+              </div>
+              <Switch
+                id="edit-is-alumni"
+                checked={editForm.watch('is_alumni')}
+                onCheckedChange={(checked) =>
+                  editForm.setValue('is_alumni', checked, { shouldValidate: true })
+                }
+              />
+            </div>
+
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
                   setIsEditOpen(false)
                   setEditingStudent(null)
-                  form.reset()
+                  editForm.reset()
                 }}
               >
                 Batal
               </Button>
               <Button type="submit" isLoading={isFormSubmitting}>
-                {isEditOpen ? 'Simpan' : 'Tambah'}
+                Simpan
               </Button>
             </DialogFooter>
           </form>
@@ -804,33 +1169,136 @@ export default function StudentsPage() {
         onConfirm={() => deleteMutation.mutate(deleteTargetIds)}
       />
 
-      {/* Dialog Bulk Edit */}
+      {/* Dialog Konfirmasi Alumni */}
+      <ConfirmDialog
+        open={isAlumniConfirmOpen}
+        onOpenChange={(open) => {
+          setIsAlumniConfirmOpen(open)
+          if (!open) setAlumniTargetStudent(null)
+        }}
+        title="Tandai sebagai Alumni"
+        description={
+          alumniTargetStudent
+            ? `Apakah Anda yakin ingin menandai "${alumniTargetStudent.nama}" sebagai alumni? Siswa tidak akan tampil di daftar aktif.`
+            : 'Apakah Anda yakin ingin menandai siswa ini sebagai alumni?'
+        }
+        variant="destructive"
+        isLoading={alumniMutation.isPending}
+        onConfirm={() => {
+          if (alumniTargetStudent) alumniMutation.mutate(alumniTargetStudent.id)
+        }}
+      />
+
+      {/* Dialog Konfirmasi Kembalikan Alumni */}
+      <ConfirmDialog
+        open={isRestoreConfirmOpen}
+        onOpenChange={(open) => {
+          setIsRestoreConfirmOpen(open)
+          if (!open) setRestoreTargetStudent(null)
+        }}
+        title="Kembalikan ke Siswa Aktif"
+        description={
+          restoreTargetStudent
+            ? `Apakah Anda yakin ingin mengembalikan "${restoreTargetStudent.nama}" ke daftar siswa aktif?`
+            : 'Apakah Anda yakin ingin mengembalikan siswa ini ke daftar aktif?'
+        }
+        isLoading={restoreMutation.isPending}
+        onConfirm={() => {
+          if (restoreTargetStudent) restoreMutation.mutate(restoreTargetStudent.id)
+        }}
+      />
+
+      {/* Dialog Bulk Edit — semua field */}
       <Dialog
         open={isBulkEditOpen}
         onOpenChange={(open) => {
           setIsBulkEditOpen(open)
-          if (!open) {
-            setBulkEditData({ kelas: '' })
-          }
+          if (!open) setBulkEditData({ kelas: '', jenis_kelamin: '', kamar_id: null, nomor_induk: '', orangtua_id: null })
         }}
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Edit Kelas Massal</DialogTitle>
+            <DialogTitle>Edit Massal Siswa</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <p className="text-sm text-[var(--text-secondary)]">
-              Mengedit {selectedRows.length} siswa terpilih
+              Mengedit <strong>{selectedRows.length}</strong> siswa terpilih. Kosongkan field yang tidak ingin diubah.
             </p>
+
+            {/* Kelas */}
             <div className="space-y-2">
-              <Label htmlFor="bulk-edit-kelas">Kelas Baru</Label>
+              <Label htmlFor="bulk-edit-kelas">Kelas Baru <span className="text-[var(--text-tertiary)]">(opsional)</span></Label>
               <Input
                 id="bulk-edit-kelas"
-                placeholder="Masukkan kelas baru..."
+                placeholder="Contoh: VII-A"
                 value={bulkEditData.kelas}
-                onChange={(e) =>
-                  setBulkEditData({ kelas: e.target.value })
+                onChange={(e) => setBulkEditData((prev) => ({ ...prev, kelas: e.target.value }))}
+              />
+            </div>
+
+            {/* Jenis Kelamin */}
+            <div className="space-y-2">
+              <Label>Jenis Kelamin <span className="text-[var(--text-tertiary)]">(opsional)</span></Label>
+              <RadioGroup
+                value={bulkEditData.jenis_kelamin}
+                onValueChange={(v) => setBulkEditData((prev) => ({ ...prev, jenis_kelamin: v as JenisKelamin | '' }))}
+                className="flex gap-4"
+              >
+                <div className="flex items-center gap-2">
+                  <RadioGroupItem value="" id="bulk-jk-none" />
+                  <Label htmlFor="bulk-jk-none" className="font-normal">Tidak diubah</Label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <RadioGroupItem value="L" id="bulk-jk-l" />
+                  <Label htmlFor="bulk-jk-l" className="font-normal">Laki-laki</Label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <RadioGroupItem value="P" id="bulk-jk-p" />
+                  <Label htmlFor="bulk-jk-p" className="font-normal">Perempuan</Label>
+                </div>
+              </RadioGroup>
+            </div>
+
+            {/* Kamar */}
+            <div className="space-y-2">
+              <Label htmlFor="bulk-edit-kamar">Kamar Pesantren <span className="text-[var(--text-tertiary)]">(opsional)</span></Label>
+              <Combobox
+                options={kamarOptions}
+                value={bulkEditData.kamar_id || ''}
+                onSelect={(val) => setBulkEditData((prev) => ({ ...prev, kamar_id: val || null }))}
+                onSearch={setKamarSearch}
+                placeholder="Pilih Kamar..."
+                isLoading={isKamarLoading}
+                emptyMessage={
+                  kamarSearch
+                    ? 'Kamar tidak ditemukan'
+                    : 'Belum ada kamar untuk unit yang dipilih'
                 }
+              />
+            </div>
+
+            {/* Orang Tua */}
+            <div className="space-y-2">
+              <Label htmlFor="bulk-edit-orangtua">Nama Orang Tua <span className="text-[var(--text-tertiary)]">(opsional)</span></Label>
+              <Combobox
+                options={orangTuaOptions}
+                value={bulkEditData.orangtua_id || ''}
+                onSelect={(val) => setBulkEditData((prev) => ({ ...prev, orangtua_id: val || null }))}
+                onSearch={setOrangTuaSearch}
+                placeholder="Pilih Orang Tua..."
+                isLoading={isOrangTuaLoading}
+                emptyMessage="Orang tua tidak ditemukan"
+              />
+            </div>
+
+            {/* Nomor Induk */}
+            <div className="space-y-2">
+              <Label htmlFor="bulk-edit-nomor">Nomor Induk <span className="text-[var(--text-tertiary)]">(opsional)</span></Label>
+              <Input
+                id="bulk-edit-nomor"
+                placeholder="Contoh: 2024001"
+                value={bulkEditData.nomor_induk}
+                onChange={(e) => setBulkEditData((prev) => ({ ...prev, nomor_induk: e.target.value }))}
               />
             </div>
           </div>
@@ -840,7 +1308,7 @@ export default function StudentsPage() {
               variant="outline"
               onClick={() => {
                 setIsBulkEditOpen(false)
-                setBulkEditData({ kelas: '' })
+                setBulkEditData({ kelas: '', jenis_kelamin: '', kamar_id: null, nomor_induk: '', orangtua_id: null })
               }}
             >
               Batal
@@ -856,6 +1324,7 @@ export default function StudentsPage() {
         </DialogContent>
       </Dialog>
 
+      {/* Dialog Tambah Banyak */}
       <Dialog
         open={isBulkAddOpen}
         onOpenChange={(open) => {
@@ -867,7 +1336,7 @@ export default function StudentsPage() {
             <DialogTitle>Tambah Banyak Data Siswa</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
-            {renderStudentFormFields(true)}
+            {renderAddFormFields(true)}
 
             {studentsQueue.length > 0 && (
               <div className="space-y-2">
@@ -888,9 +1357,7 @@ export default function StudentsPage() {
                       <TableRow key={item.localId}>
                         <TableCell>{item.nama}</TableCell>
                         <TableCell>{item.kelas}</TableCell>
-                        <TableCell>
-                          {formatJenisKelamin(item.jenis_kelamin)}
-                        </TableCell>
+                        <TableCell>{formatJenisKelamin(item.jenis_kelamin)}</TableCell>
                         <TableCell>
                           <Button
                             type="button"
@@ -923,9 +1390,7 @@ export default function StudentsPage() {
               disabled={studentsQueue.length === 0}
               onClick={() =>
                 bulkCreateMutation.mutate(
-                  studentsQueue.map(
-                    ({ localId: _localId, ...payload }) => payload
-                  )
+                  studentsQueue.map(({ localId: _localId, ...payload }) => payload)
                 )
               }
             >

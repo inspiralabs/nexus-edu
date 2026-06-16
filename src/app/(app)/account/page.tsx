@@ -4,6 +4,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation } from '@tanstack/react-query'
 import { useRouter } from 'next/navigation'
 import { useEffect, useRef, useState } from 'react'
+import { Eye, EyeOff } from 'lucide-react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
@@ -94,6 +95,8 @@ export default function AccountPage() {
   const { profile, isLoading, refreshProfile } = useAuth()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null)
+  const [showNewPassword, setShowNewPassword] = useState(false)
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false)
 
   const profileForm = useForm<ProfileFormValues>({
     resolver: zodResolver(profileSchema),
@@ -381,12 +384,29 @@ export default function AccountPage() {
           >
             <div className="space-y-2">
               <Label htmlFor="password_baru">Password Baru</Label>
-              <Input
-                id="password_baru"
-                type="password"
-                autoComplete="new-password"
-                {...passwordForm.register('password_baru')}
-              />
+              <div className="relative">
+                <Input
+                  id="password_baru"
+                  type={showNewPassword ? 'text' : 'password'}
+                  autoComplete="new-password"
+                  className="pr-10"
+                  {...passwordForm.register('password_baru')}
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="absolute right-2 top-1/2 -translate-y-1/2"
+                  onClick={() => setShowNewPassword((prev) => !prev)}
+                  aria-label={showNewPassword ? 'Sembunyikan password baru' : 'Tampilkan password baru'}
+                >
+                  {showNewPassword ? (
+                    <EyeOff className="h-4 w-4" />
+                  ) : (
+                    <Eye className="h-4 w-4" />
+                  )}
+                </Button>
+              </div>
               {passwordForm.formState.errors.password_baru && (
                 <p className="text-xs text-status-red">
                   {passwordForm.formState.errors.password_baru.message}
@@ -398,12 +418,29 @@ export default function AccountPage() {
               <Label htmlFor="konfirmasi_password">
                 Konfirmasi Password Baru
               </Label>
-              <Input
-                id="konfirmasi_password"
-                type="password"
-                autoComplete="new-password"
-                {...passwordForm.register('konfirmasi_password')}
-              />
+              <div className="relative">
+                <Input
+                  id="konfirmasi_password"
+                  type={showConfirmPassword ? 'text' : 'password'}
+                  autoComplete="new-password"
+                  className="pr-10"
+                  {...passwordForm.register('konfirmasi_password')}
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="absolute right-2 top-1/2 -translate-y-1/2"
+                  onClick={() => setShowConfirmPassword((prev) => !prev)}
+                  aria-label={showConfirmPassword ? 'Sembunyikan konfirmasi password baru' : 'Tampilkan konfirmasi password baru'}
+                >
+                  {showConfirmPassword ? (
+                    <EyeOff className="h-4 w-4" />
+                  ) : (
+                    <Eye className="h-4 w-4" />
+                  )}
+                </Button>
+              </div>
               {passwordForm.formState.errors.konfirmasi_password && (
                 <p className="text-xs text-status-red">
                   {passwordForm.formState.errors.konfirmasi_password.message}

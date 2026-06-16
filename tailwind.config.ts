@@ -18,15 +18,15 @@ const config: Config = {
         'text-secondary': { DEFAULT: '#6B6B68' },
         'text-tertiary': { DEFAULT: '#9A9A97' },
         primary: {
-          DEFAULT: '#2D7A4F',
-          hover: '#246040',
-          light: '#E8F5EE',
+          DEFAULT: '#1e5d7e',
+          hover: '#174d6a',
+          light: '#e8f4fa',
           foreground: '#FFFFFF',
         },
         secondary: {
-          DEFAULT: '#C9A84C',
-          hover: '#B8963E',
-          light: '#FBF5E6',
+          DEFAULT: '#437793',
+          hover: '#366180',
+          light: '#eaf3f8',
           foreground: '#FFFFFF',
         },
         'status-red': {

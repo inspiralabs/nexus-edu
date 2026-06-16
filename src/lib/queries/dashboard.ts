@@ -146,6 +146,7 @@ export async function getKedisiplinanTopKategori(
   const { data, error } = await supabase
     .from('kedisiplinan')
     .select('kategori_disiplin(nama_kategori)')
+    .eq('status', 'Sudah Diproses')
 
   if (error) throw new Error(error.message)
 

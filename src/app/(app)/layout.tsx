@@ -6,6 +6,7 @@ import { Header } from '@/components/layout/header'
 import { Sidebar, SidebarProvider, useSidebar } from '@/components/layout/sidebar'
 import { LoadingSpinner } from '@/components/shared/loading-spinner'
 import { useAuth } from '@/hooks/use-auth'
+import { CREATOR_WHATSAPP, INSPIRALABS_URL } from '@/lib/constants'
 
 const PATH_TITLES: Record<string, string> = {
   '/dashboard': 'Dashboard',
@@ -25,8 +26,20 @@ const PATH_TITLES: Record<string, string> = {
   '/prestasi/bidang': 'Bidang',
   '/prestasi/kategori': 'Kategori Prestasi',
   '/prestasi/cetak': 'Cetak Laporan Prestasi',
+  '/diknas': 'Dashboard Akademik',
+  '/diknas/presensi': 'Presensi',
+  '/diknas/nilai-harian': 'Nilai Harian',
+  '/diknas/nilai-uas': 'Nilai UAS',
+  '/diknas/rekap-nilai': 'Rekap Nilai Rapor',
+  '/diknas/bank-soal': 'Bank Soal',
+  '/diknas/catatan': 'Catatan Kelakuan',
   '/admin/overview': 'Admin Overview',
   '/admin/users': 'Kelola User',
+  '/admin/guru': 'Data Guru',
+  '/admin/orangtua': 'Data Orang Tua',
+  '/admin/mapel': 'Mata Pelajaran',
+  '/admin/kamar': 'Data Kamar',
+  '/admin/semester': 'Semester & Tahun Pelajaran',
   '/admin/announcements': 'Pengumuman',
   '/superadmin': 'Super Dashboard',
   '/superadmin/roles': 'Role Management',
@@ -34,7 +47,9 @@ const PATH_TITLES: Record<string, string> = {
   '/superadmin/analytics': 'Analytics',
   '/superadmin/settings': 'System Settings',
   '/account': 'Akun Saya',
+  '/about': 'Tentang AMANAH',
 }
+
 
 function getPageTitle(pathname: string): string {
   return PATH_TITLES[pathname] ?? 'Halaman'
@@ -67,16 +82,34 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex h-screen overflow-hidden bg-[var(--background)]">
       <Sidebar />
-      <div className="flex min-h-screen flex-1 flex-col overflow-hidden">
+      {/* flex-1 membuat area konten mengisi sisa ruang otomatis sesuai lebar sidebar */}
+      <div className="flex min-h-screen flex-1 flex-col overflow-hidden min-w-0">
         <Header
           title={getPageTitle(pathname)}
           onMobileMenuToggle={toggleMobile}
         />
         <div className="flex flex-1 flex-col overflow-y-auto">
           <main className="flex-1 p-6">{children}</main>
-          <footer className="mt-auto border-t border-border bg-background/50 px-6 py-4 text-center md:text-right">
-            <p className="text-xs font-medium text-slate-500">
-              &copy;2026 InspiraLabs &middot; Unggul Sulaiman, S.Kom
+          <footer className="mt-auto border-t border-border bg-[var(--surface)] px-6 py-4 text-center md:text-right">
+            <p className="text-xs font-medium text-[var(--text-secondary)]">
+              &copy;2026{' '}
+              <a
+                href={INSPIRALABS_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-primary hover:underline"
+              >
+                InspiraLabs
+              </a>{' '}
+              &middot;{' '}
+              <a
+                href={CREATOR_WHATSAPP}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-primary hover:underline"
+              >
+                Unggul Sulaiman, S.Kom
+              </a>
             </p>
           </footer>
         </div>

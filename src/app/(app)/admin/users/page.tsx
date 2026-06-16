@@ -39,6 +39,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   TooltipProvider,
 } from '@/components/ui/tooltip'
@@ -54,6 +55,10 @@ import {
   revokeUser,
   updateManageableProfile,
 } from '@/lib/queries/admin'
+import {
+  getGuruTanpaAkun,
+  getOrangTuaTanpaAkun,
+} from '@/lib/queries/admin-extended'
 import type { ManageableRole } from '@/lib/queries/users'
 import type { Profile } from '@/lib/supabase/types'
 
@@ -61,6 +66,7 @@ const PAGE_SIZE_OPTIONS = [10, 20, 30, 40, 50] as const
 
 type RoleFilter = 'all' | ManageableRole
 type StatusFilter = 'all' | 'active' | 'pending'
+type UserTypeTab = 'semua' | 'guru' | 'orangtua' | 'admin'
 
 const editProfileSchema = z.object({
   nama_lengkap: z.string().min(2, 'Nama minimal 2 karakter'),
@@ -73,13 +79,15 @@ const editProfileSchema = z.object({
     ),
   email: z.string().email('Format email tidak valid'),
   guru_mapel: z.string().min(1, 'Guru mapel wajib diisi'),
-  role: z.enum(['user', 'admin']),
+  role: z.enum(['user', 'admin', 'orangtua']),
 })
 
 type EditProfileFormValues = z.infer<typeof editProfileSchema>
 
 const createUserSchema = editProfileSchema.extend({
   password: z.string().min(8, 'Password minimal 8 karakter'),
+  guru_id: z.string().optional(),
+  orangtua_id: z.string().optional(),
 })
 
 type CreateUserFormValues = z.infer<typeof createUserSchema>
@@ -101,7 +109,9 @@ function matchesSearch(profile: Profile, search: string): boolean {
 }
 
 function getRoleChangeLabel(newRole: ManageableRole): string {
-  return newRole === 'admin' ? 'Admin' : 'User'
+  if (newRole === 'admin') return 'Admin'
+  if (newRole === 'orangtua') return 'Orang Tua'
+  return 'User'
 }
 
 export default function AdminUsersPage() {
@@ -111,6 +121,7 @@ export default function AdminUsersPage() {
 
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
+  const [activeTab, setActiveTab] = useState<UserTypeTab>('semua')
   const [roleFilter, setRoleFilter] = useState<RoleFilter>('all')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const [search, setSearch] = useState('')
@@ -126,6 +137,8 @@ export default function AdminUsersPage() {
   const [isEditOpen, setIsEditOpen] = useState(false)
   const [approvalTarget, setApprovalTarget] = useState<Profile | null>(null)
   const [isAddOpen, setIsAddOpen] = useState(false)
+  const [selectedGuruId, setSelectedGuruId] = useState<string>('')
+  const [selectedOrangTuaId, setSelectedOrangTuaId] = useState<string>('')
 
   const editForm = useForm<EditProfileFormValues>({
     resolver: zodResolver(editProfileSchema),
@@ -147,6 +160,8 @@ export default function AdminUsersPage() {
       password: '',
       guru_mapel: '',
       role: 'user',
+      guru_id: '',
+      orangtua_id: '',
     },
   })
 
@@ -158,23 +173,46 @@ export default function AdminUsersPage() {
 
   useEffect(() => {
     setPage(1)
-  }, [debouncedSearch, roleFilter, statusFilter])
+  }, [debouncedSearch, roleFilter, statusFilter, activeTab])
+
+  // Role filter berdasarkan tab aktif
+  const effectiveRoleFilter = useMemo((): RoleFilter => {
+    switch (activeTab) {
+      case 'guru': return 'user'
+      case 'orangtua': return 'orangtua' as ManageableRole
+      case 'admin': return 'admin'
+      default: return roleFilter
+    }
+  }, [activeTab, roleFilter])
 
   const profileFilters = useMemo(
     () => ({
-      role: roleFilter === 'all' ? undefined : roleFilter,
+      role: effectiveRoleFilter === 'all' ? undefined : effectiveRoleFilter,
       isApproved:
         statusFilter === 'all'
           ? undefined
           : statusFilter === 'active',
     }),
-    [roleFilter, statusFilter]
+    [effectiveRoleFilter, statusFilter]
   )
 
   const { data: allProfiles = [], isLoading } = useQuery({
     queryKey: ['admin-profiles-manageable', profileFilters],
     queryFn: () => getManageableProfiles(profileFilters),
     enabled: isAdmin,
+  })
+
+  // Query guru & orangtua belum punya akun (untuk form tambah pengguna)
+  const { data: guruTanpaAkun = [] } = useQuery({
+    queryKey: ['guru-tanpa-akun'],
+    queryFn: getGuruTanpaAkun,
+    enabled: isAdmin && isAddOpen,
+  })
+
+  const { data: orangTuaTanpaAkun = [] } = useQuery({
+    queryKey: ['orangtua-tanpa-akun'],
+    queryFn: getOrangTuaTanpaAkun,
+    enabled: isAdmin && isAddOpen,
   })
 
   const filteredProfiles = useMemo(
@@ -379,6 +417,36 @@ export default function AdminUsersPage() {
     deleteMutation.isPending ||
     createUserMutation.isPending
 
+  const handleOpenAdd = useCallback(() => {
+    let defaultRole: ManageableRole = 'user'
+    let defaultMapel = ''
+
+    if (activeTab === 'guru') {
+      defaultRole = 'user'
+      defaultMapel = ''
+    } else if (activeTab === 'orangtua') {
+      defaultRole = 'orangtua' as ManageableRole
+      defaultMapel = 'Orang Tua'
+    } else if (activeTab === 'admin') {
+      defaultRole = 'admin'
+      defaultMapel = 'Admin'
+    }
+
+    createUserForm.reset({
+      nama_lengkap: '',
+      username: '',
+      email: '',
+      password: '',
+      guru_mapel: defaultMapel,
+      role: defaultRole,
+      guru_id: '',
+      orangtua_id: '',
+    })
+    setSelectedGuruId('')
+    setSelectedOrangTuaId('')
+    setIsAddOpen(true)
+  }, [activeTab, createUserForm])
+
   const handleOpenEdit = useCallback(
     (item: Profile) => {
       setEditingProfile(item)
@@ -387,7 +455,7 @@ export default function AdminUsersPage() {
         username: item.username,
         email: item.email ?? '',
         guru_mapel: item.guru_mapel ?? '',
-        role: item.role === 'admin' ? 'admin' : 'user',
+        role: item.role as ManageableRole,
       })
       setIsEditOpen(true)
     },
@@ -453,6 +521,22 @@ export default function AdminUsersPage() {
       <div className="space-y-6">
         <PageHeader title="Kelola User" />
 
+        {/* Tabs tipe pengguna */}
+        <Tabs
+          value={activeTab}
+          onValueChange={(v) => {
+            setActiveTab(v as UserTypeTab)
+            setPage(1)
+          }}
+        >
+          <TabsList>
+            <TabsTrigger value="semua">Semua</TabsTrigger>
+            <TabsTrigger value="guru">Guru / Musyrif</TabsTrigger>
+            <TabsTrigger value="orangtua">Orang Tua</TabsTrigger>
+            <TabsTrigger value="admin">Admin</TabsTrigger>
+          </TabsList>
+        </Tabs>
+
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:flex-1">
             <div className="relative w-full max-w-md sm:flex-1">
@@ -498,7 +582,7 @@ export default function AdminUsersPage() {
 
           <Button
             type="button"
-            onClick={() => setIsAddOpen(true)}
+            onClick={handleOpenAdd}
             className="shrink-0 self-end sm:self-auto"
           >
             <Plus className="mr-2 h-4 w-4" />
@@ -641,6 +725,8 @@ export default function AdminUsersPage() {
             if (!open) {
               setIsAddOpen(false)
               createUserForm.reset()
+              setSelectedGuruId('')
+              setSelectedOrangTuaId('')
             }
           }}
         >
@@ -652,6 +738,78 @@ export default function AdminUsersPage() {
               onSubmit={createUserForm.handleSubmit(onSubmitCreateUser)}
               className="space-y-4"
             >
+              {/* Pre-fill dari data guru yang belum punya akun */}
+              {(activeTab === 'guru' || (activeTab === 'semua' && createUserForm.watch('role') === 'user')) && guruTanpaAkun.length > 0 && (
+                <div className="space-y-2 rounded-lg border border-dashed border-border bg-surface-2 p-3">
+                  <Label>Ambil Data dari Guru (opsional)</Label>
+                  <Select
+                    value={selectedGuruId}
+                    onValueChange={(id) => {
+                      setSelectedGuruId(id)
+                      setSelectedOrangTuaId('')
+                      createUserForm.setValue('guru_id', id)
+                      createUserForm.setValue('orangtua_id', undefined)
+                      const guru = guruTanpaAkun.find((g) => g.id === id)
+                      if (guru) {
+                        createUserForm.setValue('nama_lengkap', guru.nama_lengkap)
+                        createUserForm.setValue('email', guru.email ?? '')
+                        createUserForm.setValue('guru_mapel', guru.tipe)
+                      }
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Pilih guru yang belum punya akun..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {guruTanpaAkun.map((g) => (
+                        <SelectItem key={g.id} value={g.id}>
+                          {g.nama_lengkap} ({g.tipe})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-[var(--text-tertiary)]">
+                    Data nama dan email akan terisi otomatis
+                  </p>
+                </div>
+              )}
+
+              {/* Pre-fill dari data orang tua yang belum punya akun */}
+              {(activeTab === 'orangtua' || (activeTab === 'semua' && createUserForm.watch('role') === 'orangtua')) && orangTuaTanpaAkun.length > 0 && (
+                <div className="space-y-2 rounded-lg border border-dashed border-border bg-surface-2 p-3">
+                  <Label>Ambil Data dari Orang Tua (opsional)</Label>
+                  <Select
+                    value={selectedOrangTuaId}
+                    onValueChange={(id) => {
+                      setSelectedOrangTuaId(id)
+                      setSelectedGuruId('')
+                      createUserForm.setValue('orangtua_id', id)
+                      createUserForm.setValue('guru_id', undefined)
+                      const ortu = orangTuaTanpaAkun.find((o) => o.id === id)
+                      if (ortu) {
+                        createUserForm.setValue('nama_lengkap', ortu.nama_lengkap)
+                        createUserForm.setValue('email', ortu.email ?? '')
+                        createUserForm.setValue('guru_mapel', 'Orang Tua')
+                      }
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Pilih orang tua yang belum punya akun..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {orangTuaTanpaAkun.map((o) => (
+                        <SelectItem key={o.id} value={o.id}>
+                          {o.nama_lengkap}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-[var(--text-tertiary)]">
+                    Data nama dan email akan terisi otomatis
+                  </p>
+                </div>
+              )}
+
               <div className="space-y-2">
                 <Label htmlFor="create-nama_lengkap">Nama Lengkap</Label>
                 <Input
@@ -724,17 +882,26 @@ export default function AdminUsersPage() {
                 <Label htmlFor="create-role">Role</Label>
                 <Select
                   value={createUserForm.watch('role')}
-                  onValueChange={(value) =>
-                    createUserForm.setValue('role', value as ManageableRole, {
+                  onValueChange={(value) => {
+                    const nextRole = value as ManageableRole
+                    createUserForm.setValue('role', nextRole, {
                       shouldValidate: true,
                     })
-                  }
+                    if (nextRole === 'orangtua') {
+                      createUserForm.setValue('guru_mapel', 'Orang Tua')
+                    } else if (nextRole === 'admin') {
+                      createUserForm.setValue('guru_mapel', 'Admin')
+                    } else {
+                      createUserForm.setValue('guru_mapel', '')
+                    }
+                  }}
                 >
                   <SelectTrigger id="create-role">
                     <SelectValue placeholder="Pilih role" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="user">User</SelectItem>
+                    <SelectItem value="user">User (Guru/Musyrif)</SelectItem>
+                    <SelectItem value="orangtua">Orang Tua</SelectItem>
                     <SelectItem value="admin">Admin</SelectItem>
                   </SelectContent>
                 </Select>
@@ -842,17 +1009,24 @@ export default function AdminUsersPage() {
                 <Label htmlFor="edit-role">Role</Label>
                 <Select
                   value={editForm.watch('role')}
-                  onValueChange={(value) =>
-                    editForm.setValue('role', value as ManageableRole, {
+                  onValueChange={(value) => {
+                    const nextRole = value as ManageableRole
+                    editForm.setValue('role', nextRole, {
                       shouldValidate: true,
                     })
-                  }
+                    if (nextRole === 'orangtua') {
+                      editForm.setValue('guru_mapel', 'Orang Tua')
+                    } else if (nextRole === 'admin') {
+                      editForm.setValue('guru_mapel', 'Admin')
+                    }
+                  }}
                 >
                   <SelectTrigger id="edit-role">
                     <SelectValue placeholder="Pilih role" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="user">User</SelectItem>
+                    <SelectItem value="user">User (Guru/Musyrif)</SelectItem>
+                    <SelectItem value="orangtua">Orang Tua</SelectItem>
                     <SelectItem value="admin">Admin</SelectItem>
                   </SelectContent>
                 </Select>
