@@ -85,6 +85,7 @@ interface BulkPresensiItem {
   nama: string
   kelas: string
   status: string
+  keterangan: string | null
 }
 
 // ─── Halaman ──────────────────────────────────────────────────────────────────
@@ -102,6 +103,13 @@ export default function PresensiPage() {
   const [filterMapel, setFilterMapel] = useState('all')
   const [filterSemester, setFilterSemester] = useState('aktif')
   const [selectedRows, setSelectedRows] = useState<string[]>([])
+
+  // Sorting states
+  const [sortField, setSortField] = useState<string>('tanggal')
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc')
+
+  // Date filter state
+  const [filterTanggal, setFilterTanggal] = useState<Date | undefined>(undefined)
 
   // Mode massal
   const [inputMode, setInputMode] = useState<'tabel' | 'massal'>('tabel')
@@ -226,10 +234,13 @@ export default function PresensiPage() {
       mapelId: filterMapel !== 'all' ? filterMapel : undefined,
       semesterId: resolvedSemesterId,
       search: debouncedSearch || undefined,
+      tanggal: filterTanggal ? format(filterTanggal, 'yyyy-MM-dd') : undefined,
       page,
       pageSize,
+      sortField,
+      sortDirection,
     }),
-    [activeUnit, filterKelas, filterMapel, resolvedSemesterId, debouncedSearch, page, pageSize]
+    [activeUnit, filterKelas, filterMapel, resolvedSemesterId, debouncedSearch, filterTanggal, page, pageSize, sortField, sortDirection]
   )
 
   const { data, isLoading } = useQuery({
@@ -266,12 +277,13 @@ export default function PresensiPage() {
           nama: s.nama,
           kelas: s.kelas,
           status: 'Hadir',
+          keterangan: null,
         }))
       )
     } else if (bulkItems.length > 0) {
       setBulkItems([])
     }
-  }, [siswaPerKelas, bulkItems.length])
+  }, [siswaPerKelas])
 
   // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -395,6 +407,7 @@ export default function PresensiPage() {
           semester_id: activeSemester.id,
           tanggal: format(bulkTanggal, 'yyyy-MM-dd'),
           status: item.status,
+          keterangan: item.keterangan || null,
           dicatat_oleh: profile.id,
         }))
       )
@@ -415,6 +428,10 @@ export default function PresensiPage() {
         title: 'Presensi massal berhasil disimpan',
         description: `${results.length} data presensi berhasil dicatat`,
       })
+      setInputMode('tabel')
+      setBulkItems([])
+      setBulkKelas('')
+      setBulkBulan('')
     },
     onError: (error: Error) =>
       toast({ title: 'Gagal menyimpan presensi massal', description: error.message, variant: 'destructive' }),
@@ -462,7 +479,10 @@ export default function PresensiPage() {
       {
         accessorKey: 'keterangan',
         header: 'Keterangan',
-        cell: ({ row }) => row.original.keterangan ?? '-',
+        cell: ({ row }) => {
+          const ket = row.original.keterangan
+          return (ket && ket.trim() !== '') ? ket : '-'
+        },
       },
       {
         id: 'aksi',
@@ -536,6 +556,12 @@ export default function PresensiPage() {
     } else {
       createMutation.mutate(values)
     }
+  }
+
+  const handleSortChange = (field: string, direction: 'asc' | 'desc') => {
+    setSortField(field)
+    setSortDirection(direction)
+    setPage(1)
   }
 
   const isFormOpen = isAddOpen || isEditOpen
@@ -690,6 +716,7 @@ export default function PresensiPage() {
                           Hadir Semua
                         </Button>
                       </th>
+                      <th className="px-4 py-2 text-left font-medium text-[var(--text-secondary)]">Keterangan</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -715,6 +742,19 @@ export default function PresensiPage() {
                               ))}
                             </SelectContent>
                           </Select>
+                        </td>
+                        <td className="px-4 py-2">
+                          <Input
+                            placeholder="Keterangan..."
+                            value={item.keterangan ?? ''}
+                            onChange={(e) => {
+                              const val = e.target.value
+                              setBulkItems((prev) =>
+                                prev.map((x, i) => (i === idx ? { ...x, keterangan: val || null } : x))
+                              )
+                            }}
+                            className="h-8 w-60"
+                          />
                         </td>
                       </tr>
                     ))}
@@ -785,6 +825,23 @@ export default function PresensiPage() {
                 ))}
               </SelectContent>
             </Select>
+            <div className="flex items-center gap-1">
+              <DatePicker
+                value={filterTanggal}
+                onChange={(d) => { setFilterTanggal(d); setPage(1) }}
+                placeholder="Semua Tanggal"
+              />
+              {filterTanggal && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-9 px-2 text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                  onClick={() => { setFilterTanggal(undefined); setPage(1) }}
+                >
+                  Clear
+                </Button>
+              )}
+            </div>
             <div className="ml-auto flex gap-2">
               {selectedRows.length > 0 && (
                 <Button
@@ -825,7 +882,7 @@ export default function PresensiPage() {
                 setPageSize(s)
                 setPage(1)
               }}
-              onSortChange={() => {}}
+              onSortChange={handleSortChange}
               selectedRows={selectedRows}
               onSelectRows={setSelectedRows}
               isLoading={isLoading}

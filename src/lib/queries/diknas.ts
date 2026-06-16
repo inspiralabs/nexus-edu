@@ -77,6 +77,9 @@ export type DiknasDashboardFilters = {
   pageSize?: number
   isApproved?: boolean
   tipe?: string
+  sortField?: string
+  sortDirection?: 'asc' | 'desc'
+  tanggal?: string
 }
 
 // ─── Status Presensi ────────────────────────────────────────────────────────
@@ -471,6 +474,7 @@ export async function getPresensi(
   if (siswaIds) countQ = countQ.in('siswa_id', siswaIds)
   if (filters.semesterId) countQ = countQ.eq('semester_id', filters.semesterId)
   if (filters.mapelId) countQ = countQ.eq('mata_pelajaran_id', filters.mapelId)
+  if (filters.tanggal) countQ = countQ.eq('tanggal', filters.tanggal)
   
   if (access.isGuru && access.mapelIds.length > 0) {
     countQ = countQ.in('mata_pelajaran_id', access.mapelIds)
@@ -482,16 +486,30 @@ export async function getPresensi(
   let dataQ = supabase
     .from('presensi')
     .select(PRESENSI_SELECT)
-    .order('tanggal', { ascending: false })
-    .range(from, to)
 
   if (siswaIds) dataQ = dataQ.in('siswa_id', siswaIds)
   if (filters.semesterId) dataQ = dataQ.eq('semester_id', filters.semesterId)
   if (filters.mapelId) dataQ = dataQ.eq('mata_pelajaran_id', filters.mapelId)
+  if (filters.tanggal) dataQ = dataQ.eq('tanggal', filters.tanggal)
 
   if (access.isGuru && access.mapelIds.length > 0) {
     dataQ = dataQ.in('mata_pelajaran_id', access.mapelIds)
   }
+
+  const sortBy = filters.sortField || 'tanggal'
+  const ascending = filters.sortDirection !== 'desc'
+
+  if (['tanggal', 'status', 'keterangan'].includes(sortBy)) {
+    dataQ = dataQ.order(sortBy, { ascending })
+  } else if (sortBy === 'nama' || sortBy === 'kelas') {
+    dataQ = dataQ.order('siswa_id', { ascending })
+  } else if (sortBy === 'mapel') {
+    dataQ = dataQ.order('mata_pelajaran_id', { ascending })
+  } else {
+    dataQ = dataQ.order('tanggal', { ascending: false })
+  }
+
+  dataQ = dataQ.range(from, to)
 
   const { data, error } = await dataQ
   if (error) throw new Error(error.message)

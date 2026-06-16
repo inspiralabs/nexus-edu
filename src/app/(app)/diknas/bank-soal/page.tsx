@@ -91,7 +91,6 @@ export default function BankSoalPage() {
   const [deletingItem, setDeletingItem] = useState<BankSoalEntry | null>(null)
 
   const [mapelSearch, setMapelSearch] = useState('')
-  const [mapelOptions, setMapelOptions] = useState<ComboboxOption[]>([])
 
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
@@ -145,15 +144,7 @@ export default function BankSoalPage() {
     queryFn: getSemesterOptions,
   })
 
-  // Sync Combobox option for single mapel
-  useEffect(() => {
-    if (isSingleMapel && singleMapelId && mapelList.length > 0) {
-      const singleMapel = mapelList.find((m: MataKuliah) => m.id === singleMapelId)
-      if (singleMapel) {
-        setMapelOptions([{ value: singleMapel.id, label: singleMapel.nama_mapel }])
-      }
-    }
-  }, [isSingleMapel, singleMapelId, mapelList])
+
 
   const resolvedSemesterId = useMemo(() => {
     if (filterSemester === 'aktif') return activeSemester?.id ?? undefined
@@ -178,15 +169,35 @@ export default function BankSoalPage() {
     queryFn: () => getBankSoal(queryFilters),
   })
 
-  useQuery({
+  const { data: searchedMapels = [] } = useQuery({
     queryKey: ['mapel-search-bank', debouncedMapelSearch],
-    queryFn: async () => {
-      const results = await searchMataKuliah(debouncedMapelSearch)
-      setMapelOptions(results.map((m) => ({ value: m.id, label: m.nama_mapel })))
-      return results
-    },
+    queryFn: () => searchMataKuliah(debouncedMapelSearch),
     enabled: isFormOpen && !isSingleMapel,
   })
+
+  const mapelOptions = useMemo<ComboboxOption[]>(() => {
+    if (isSingleMapel && singleMapelId && mapelList.length > 0) {
+      const singleMapel = mapelList.find((m: MataKuliah) => m.id === singleMapelId)
+      return singleMapel ? [{ value: singleMapel.id, label: singleMapel.nama_mapel }] : []
+    }
+
+    const options: ComboboxOption[] = []
+
+    if (isEditOpen && editingItem?.mata_pelajaran) {
+      options.push({
+        value: editingItem.mata_pelajaran_id!,
+        label: editingItem.mata_pelajaran.nama_mapel,
+      })
+    }
+
+    searchedMapels.forEach((m) => {
+      if (!options.some((opt) => opt.value === m.id)) {
+        options.push({ value: m.id, label: m.nama_mapel })
+      }
+    })
+
+    return options
+  }, [isSingleMapel, singleMapelId, mapelList, isEditOpen, editingItem, searchedMapels])
 
   // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -208,16 +219,10 @@ export default function BankSoalPage() {
       mata_pelajaran_id: singleMapelId ?? null,
       semester_id: null,
     })
-    setMapelOptions([])
   }
 
   const openEditDialog = (item: BankSoalEntry) => {
     setEditingItem(item)
-    setMapelOptions(
-      item.mata_pelajaran
-        ? [{ value: item.mata_pelajaran_id!, label: item.mata_pelajaran.nama_mapel }]
-        : []
-    )
     const extKonten = item.konten as { pdf_url?: string } | null
     const existingUrl = extKonten?.pdf_url ?? null
     setPreviewUrl(existingUrl)
