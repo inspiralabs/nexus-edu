@@ -199,7 +199,7 @@ export async function updateStudent(
 ): Promise<Student> {
   const supabase = createClient()
 
-  let finalKamarId = data.kamar_id !== undefined ? data.kamar_id : undefined
+  let finalKamarId = data.kamar_id !== undefined ? (data.kamar_id === '' ? null : data.kamar_id) : undefined
 
   if (finalKamarId === undefined && data.kamar) {
     const { data: kamarData } = await supabase
@@ -290,7 +290,7 @@ export async function bulkUpdateStudents(
 ): Promise<void> {
   const supabase = createClient()
 
-  let finalKamarId = data.kamar_id !== undefined ? data.kamar_id : undefined
+  let finalKamarId = data.kamar_id !== undefined ? (data.kamar_id === '' ? null : data.kamar_id) : undefined
 
   if (finalKamarId === undefined && data.kamar) {
     const { data: kamarData } = await supabase
@@ -305,7 +305,7 @@ export async function bulkUpdateStudents(
     }
   }
 
-  let finalOrangTuaId = data.orangtua_id !== undefined ? data.orangtua_id : undefined
+  let finalOrangTuaId = data.orangtua_id !== undefined ? (data.orangtua_id === '' ? null : data.orangtua_id) : undefined
   if (finalOrangTuaId === undefined && data.orang_tua) {
     const { data: otData } = await supabase
       .from('orangtua')

@@ -22,6 +22,7 @@ export interface AdminUsersColumnsOptions {
   onEdit: (profile: Profile) => void
   onRequestDelete: (profile: Profile) => void
   isActionPending: boolean
+  mapelMap?: Map<string, string>
 }
 
 function formatTanggal(value: string): string {
@@ -75,10 +76,28 @@ export function createAdminUsersColumns(
       cell: ({ row }) => row.original.email ?? '-',
     },
     {
-      accessorKey: 'guru_mapel',
-      header: 'Guru Mapel',
+      id: 'guru_mapel',
+      header: 'Guru Mapel / Jabatan',
       enableSorting: false,
-      cell: ({ row }) => row.original.guru_mapel ?? '-',
+      cell: ({ row }) => {
+        const item = row.original
+        if (item.role === 'orangtua') return 'Orang Tua'
+        if (item.role === 'admin') return 'Admin'
+        if (item.role === 'superadmin') return 'Super Admin'
+
+        if (!item.mapel_ids || item.mapel_ids.length === 0) {
+          if (item.tipe_role === 'musyrif') return 'Musyrif'
+          if (item.tipe_role === 'guru_musyrif') return 'Guru & Musyrif'
+          return 'Guru'
+        }
+
+        const names = item.mapel_ids
+          .map((id) => options.mapelMap?.get(id) || null)
+          .filter(Boolean)
+
+        if (names.length === 0) return 'Guru'
+        return names.join(', ')
+      },
     },
     {
       accessorKey: 'role',

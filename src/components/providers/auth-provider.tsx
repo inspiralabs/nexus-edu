@@ -43,7 +43,6 @@ function AuthProvider({ children }: { children: React.ReactNode }) {
           id,
           user_id,
           nama_lengkap,
-          guru_mapel,
           username,
           role,
           is_approved,

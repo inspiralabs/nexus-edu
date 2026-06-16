@@ -3,7 +3,6 @@ import type { Profile } from '@/lib/supabase/types'
 
 export interface UpdateProfileInput {
   nama_lengkap: string
-  guru_mapel: string
 }
 
 function getFileExtension(file: File): string {
@@ -55,7 +54,6 @@ export async function updateProfile(
     .from('profiles')
     .update({
       nama_lengkap: data.nama_lengkap,
-      guru_mapel: data.guru_mapel,
       updated_at: new Date().toISOString(),
     })
     .eq('user_id', userId)

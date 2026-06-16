@@ -608,51 +608,53 @@ export default function KedisiplinanDataPage() {
     setEditingItem(item)
     resetComboboxState()
 
-    if (item.students && item.siswa_id) {
+    if (item.siswa_id) {
       setStudentOptions([
         {
           value: item.siswa_id,
-          label: `${item.students.nama} - ${item.students.kelas}`,
+          label: item.students
+            ? `${item.students.nama} - ${item.students.kelas}`
+            : 'Siswa tidak ditemukan',
         },
       ])
-      setKelasDisplay(item.students.kelas)
+      setKelasDisplay(item.students?.kelas ?? '')
     }
 
-    if (item.kategori_disiplin && item.kategori_id) {
+    if (item.kategori_id) {
       setKategoriOptions([
         {
           value: item.kategori_id,
-          label: item.kategori_disiplin.nama_kategori,
+          label: item.kategori_disiplin?.nama_kategori ?? 'Kategori tidak ditemukan',
         },
       ])
     }
 
-    if (item.divisi && item.divisi_id) {
+    if (item.divisi_id) {
       setDivisiOptions([
         {
           value: item.divisi_id,
           label: formatDivisiLabel(
-            item.divisi.nama_divisi,
-            item.divisi.unit
+            item.divisi?.nama_divisi ?? 'Divisi tidak ditemukan',
+            item.divisi?.unit
           ),
         },
       ])
     }
 
-    if (item.pasal && item.pasal_id) {
+    if (item.pasal_id) {
       setPasalOptions([
         {
           value: item.pasal_id,
-          label: formatPasalLabel(item.pasal),
+          label: item.pasal ? formatPasalLabel(item.pasal) : 'Pasal tidak ditemukan',
         },
       ])
     }
 
-    if (item.tindakan && item.tindakan_id) {
+    if (item.tindakan_id) {
       setTindakanOptions([
         {
           value: item.tindakan_id,
-          label: item.tindakan.nama_tindakan,
+          label: item.tindakan?.nama_tindakan ?? 'Tindakan tidak ditemukan',
         },
       ])
     }

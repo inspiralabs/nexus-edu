@@ -8,6 +8,7 @@ import type {
   MataPelajaran,
   OrangTua,
   TipeGuru,
+  TipeRole,
   Unit,
 } from '@/lib/supabase/types'
 
@@ -191,9 +192,19 @@ export async function getGuru(
 
 export async function createGuru(input: CreateGuruInput): Promise<Guru> {
   const supabase = createClient()
+  const payload = {
+    nama_lengkap: input.nama_lengkap,
+    nip: input.nip || null,
+    jenis_kelamin: input.jenis_kelamin || null,
+    mapel_ids: input.mapel_ids || [],
+    unit: input.unit || [],
+    tipe: input.tipe || 'guru',
+    email: input.email || null,
+    no_hp: input.no_hp || null,
+  }
   const { data, error } = await supabase
     .from('guru')
-    .insert(input)
+    .insert(payload)
     .select()
     .single()
 
@@ -206,14 +217,42 @@ export async function updateGuru(
   input: UpdateGuruInput
 ): Promise<Guru> {
   const supabase = createClient()
+  const payload: any = {}
+  if (input.nama_lengkap !== undefined) payload.nama_lengkap = input.nama_lengkap
+  if (input.nip !== undefined) payload.nip = input.nip || null
+  if (input.jenis_kelamin !== undefined) payload.jenis_kelamin = input.jenis_kelamin || null
+  if (input.mapel_ids !== undefined) payload.mapel_ids = input.mapel_ids || []
+  if (input.unit !== undefined) payload.unit = input.unit || []
+  if (input.tipe !== undefined) payload.tipe = input.tipe || 'guru'
+  if (input.email !== undefined) payload.email = input.email || null
+  if (input.no_hp !== undefined) payload.no_hp = input.no_hp || null
+
   const { data, error } = await supabase
     .from('guru')
-    .update(input)
+    .update(payload)
     .eq('id', id)
     .select()
     .single()
 
   if (error) throw new Error(error.message)
+
+  if (data && data.profile_id) {
+    const isMusyrif = data.tipe === 'musyrif' || data.tipe === 'guru_musyrif'
+    const isMultiMapel = data.mapel_ids && data.mapel_ids.length > 1
+    await supabase
+      .from('profiles')
+      .update({
+        nama_lengkap: data.nama_lengkap,
+        email: data.email,
+        tipe_role: data.tipe as any,
+        unit_mengajar: data.unit as any,
+        mapel_ids: data.mapel_ids,
+        is_musyrif: isMusyrif,
+        is_multi_mapel: isMultiMapel,
+      })
+      .eq('id', data.profile_id)
+  }
+
   return data as Guru
 }
 
@@ -236,6 +275,24 @@ export async function linkGuruToProfile(
     .single()
 
   if (error) throw new Error(error.message)
+
+  if (data) {
+    const isMusyrif = data.tipe === 'musyrif' || data.tipe === 'guru_musyrif'
+    const isMultiMapel = data.mapel_ids && data.mapel_ids.length > 1
+    await supabase
+      .from('profiles')
+      .update({
+        nama_lengkap: data.nama_lengkap,
+        email: data.email,
+        tipe_role: data.tipe as any,
+        unit_mengajar: data.unit as any,
+        mapel_ids: data.mapel_ids,
+        is_musyrif: isMusyrif,
+        is_multi_mapel: isMultiMapel,
+      })
+      .eq('id', profileId)
+  }
+
   return data as Guru
 }
 

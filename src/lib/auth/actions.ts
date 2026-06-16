@@ -9,7 +9,6 @@ import { createClient } from '@/lib/supabase/server'
 
 interface SignupFormData {
   nama_lengkap: string
-  guru_mapel?: string
   tipe_role: 'guru' | 'musyrif' | 'guru_musyrif'
   unit_mengajar: ('SD' | 'SMP' | 'SMA')[]
   mapel_ids?: string[]
@@ -114,7 +113,6 @@ export async function signup(
   const normalizedUsername = formData.username.trim().toLowerCase()
   const email = formData.email.trim().toLowerCase()
   const namaLengkap = formData.nama_lengkap.trim()
-  const guruMapel = (formData.guru_mapel ?? '').trim()
 
   const { data: existingProfile, error: checkError } = await admin
     .from('profiles')
@@ -193,7 +191,6 @@ export async function signup(
   const { error: insertError } = await admin.from('profiles').insert({
     user_id: userId,
     nama_lengkap: namaLengkap,
-    guru_mapel: guruMapel || null,
     username: normalizedUsername,
     email,
     role: 'user',
@@ -457,7 +454,6 @@ export async function createManageableUserByAdmin(
   const normalizedUsername = formData.username.trim().toLowerCase()
   const email = formData.email.trim().toLowerCase()
   const namaLengkap = formData.nama_lengkap.trim()
-  const guruMapel = formData.guru_mapel.trim()
   const roleValue = formData.role
 
   const { data: existingProfile, error: checkError } = await admin
@@ -516,16 +512,46 @@ export async function createManageableUserByAdmin(
 
   const userId = authData.user.id
 
+  let tipeRoleValue: any = null
+  let unitMengajarValue: any[] | null = null
+  let mapelIdsValue: string[] | null = null
+  let isMusyrifValue: boolean | null = null
+  let isMultiMapelValue: boolean | null = null
+
+  if (formData.guru_id) {
+    const { data: guruData } = await admin
+      .from('guru')
+      .select('tipe, unit, mapel_ids')
+      .eq('id', formData.guru_id)
+      .maybeSingle()
+
+    if (guruData) {
+      tipeRoleValue = guruData.tipe
+      unitMengajarValue = guruData.unit
+      mapelIdsValue = guruData.mapel_ids
+      isMusyrifValue = guruData.tipe === 'musyrif' || guruData.tipe === 'guru_musyrif'
+      isMultiMapelValue = guruData.mapel_ids && guruData.mapel_ids.length > 1 ? true : false
+    }
+  } else if (formData.role === 'orangtua') {
+    tipeRoleValue = 'orangtua'
+  } else if (formData.role === 'user') {
+    tipeRoleValue = 'guru'
+  }
+
   const { data: insertedProfile, error: insertError } = await admin
     .from('profiles')
     .insert({
       user_id: userId,
       nama_lengkap: namaLengkap,
-      guru_mapel: guruMapel,
       username: normalizedUsername,
       email,
       role: roleValue,
       is_approved: true,
+      tipe_role: tipeRoleValue,
+      unit_mengajar: unitMengajarValue,
+      mapel_ids: mapelIdsValue,
+      is_musyrif: isMusyrifValue,
+      is_multi_mapel: isMultiMapelValue,
     })
     .select('id')
     .single()
@@ -565,13 +591,15 @@ export async function createManageableUserByAdmin(
     new_data: {
       user_id: userId,
       nama_lengkap: namaLengkap,
-      guru_mapel: guruMapel,
       username: normalizedUsername,
       email,
       role: roleValue,
       is_approved: true,
       guru_id: formData.guru_id || null,
       orangtua_id: formData.orangtua_id || null,
+      tipe_role: tipeRoleValue,
+      unit_mengajar: unitMengajarValue,
+      mapel_ids: mapelIdsValue,
     },
   })
 

@@ -24,7 +24,6 @@ export interface Profile {
   id: string
   user_id: string | null
   nama_lengkap: string
-  guru_mapel: string | null
   username: string
   role: Role
   is_approved: boolean

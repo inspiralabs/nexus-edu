@@ -975,26 +975,26 @@ export default function PrestasiDataPage() {
         setGuruOptions([
           {
             value: item.guru_id,
-            label: item.profiles.nama_lengkap,
+            label: item.profiles?.nama_lengkap ?? 'User Dihapus',
           },
         ])
       }
 
       if (item.event && item.event_id) {
         setEventOptions([
-          { value: item.event_id, label: item.event.nama_event },
+          { value: item.event_id, label: item.event?.nama_event ?? 'Event Tidak Valid' },
         ])
       }
 
       if (item.juara && item.juara_id) {
         setJuaraOptions([
-          { value: item.juara_id, label: item.juara.nama_juara },
+          { value: item.juara_id, label: item.juara?.nama_juara ?? 'Juara Tidak Valid' },
         ])
       }
 
       if (item.bidang && item.bidang_id) {
         setBidangOptions([
-          { value: item.bidang_id, label: item.bidang.nama_bidang },
+          { value: item.bidang_id, label: item.bidang?.nama_bidang ?? 'Bidang Tidak Valid' },
         ])
       }
 
@@ -1002,7 +1002,7 @@ export default function PrestasiDataPage() {
         setKategoriOptions([
           {
             value: item.kategori_id,
-            label: item.kategori_prestasi.nama_kategori,
+            label: item.kategori_prestasi?.nama_kategori ?? 'Kategori Tidak Valid',
           },
         ])
       }
@@ -1024,27 +1024,27 @@ export default function PrestasiDataPage() {
         setStudentOptions([
           {
             value: item.siswa_id,
-            label: `${item.students.nama} - ${item.students.kelas}`,
+            label: `${item.students?.nama ?? 'Siswa Dihapus'} - ${item.students?.kelas ?? '-'}`,
           },
         ])
-        setKelasDisplay(item.students.kelas)
+        setKelasDisplay(item.students?.kelas ?? '')
       }
 
       if (item.event && item.event_id) {
         setEventOptions([
-          { value: item.event_id, label: item.event.nama_event },
+          { value: item.event_id, label: item.event?.nama_event ?? 'Event Tidak Valid' },
         ])
       }
 
       if (item.juara && item.juara_id) {
         setJuaraOptions([
-          { value: item.juara_id, label: item.juara.nama_juara },
+          { value: item.juara_id, label: item.juara?.nama_juara ?? 'Juara Tidak Valid' },
         ])
       }
 
       if (item.bidang && item.bidang_id) {
         setBidangOptions([
-          { value: item.bidang_id, label: item.bidang.nama_bidang },
+          { value: item.bidang_id, label: item.bidang?.nama_bidang ?? 'Bidang Tidak Valid' },
         ])
       }
 
@@ -1052,7 +1052,7 @@ export default function PrestasiDataPage() {
         setKategoriOptions([
           {
             value: item.kategori_id,
-            label: item.kategori_prestasi.nama_kategori,
+            label: item.kategori_prestasi?.nama_kategori ?? 'Kategori Tidak Valid',
           },
         ])
       }

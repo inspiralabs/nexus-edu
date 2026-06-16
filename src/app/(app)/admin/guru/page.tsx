@@ -133,7 +133,7 @@ export default function GuruPage() {
   const { data: allMapel = [] } = useQuery({
     queryKey: ['all-mapel'],
     queryFn: () => getAllMapel(),
-    enabled: isFormOpen,
+    enabled: true,
   })
 
   const filteredMapel: MataPelajaran[] = useMemo(() => {
@@ -307,6 +307,19 @@ export default function GuruPage() {
         header: 'Unit',
         enableSorting: false,
         cell: ({ row }) => (row.original.unit ?? []).join(', ') || '-',
+      },
+      {
+        id: 'mata_pelajaran',
+        header: 'Mata Pelajaran',
+        enableSorting: false,
+        cell: ({ row }) => {
+          const mapelIds = row.original.mapel_ids ?? []
+          if (mapelIds.length === 0) return '-'
+          const names = mapelIds
+            .map((id) => allMapel.find((m) => m.id === id)?.nama_mapel)
+            .filter(Boolean)
+          return names.join(', ') || '-'
+        },
       },
       {
         accessorKey: 'email',

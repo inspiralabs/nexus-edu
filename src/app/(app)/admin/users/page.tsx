@@ -56,6 +56,7 @@ import {
   updateManageableProfile,
 } from '@/lib/queries/admin'
 import {
+  getAllMapel,
   getGuruTanpaAkun,
   getOrangTuaTanpaAkun,
 } from '@/lib/queries/admin-extended'
@@ -78,7 +79,6 @@ const editProfileSchema = z.object({
       'Username hanya boleh huruf, angka, dan underscore'
     ),
   email: z.string().email('Format email tidak valid'),
-  guru_mapel: z.string().min(1, 'Guru mapel wajib diisi'),
   role: z.enum(['user', 'admin', 'orangtua']),
 })
 
@@ -146,7 +146,6 @@ export default function AdminUsersPage() {
       nama_lengkap: '',
       username: '',
       email: '',
-      guru_mapel: '',
       role: 'user',
     },
   })
@@ -158,7 +157,6 @@ export default function AdminUsersPage() {
       username: '',
       email: '',
       password: '',
-      guru_mapel: '',
       role: 'user',
       guru_id: '',
       orangtua_id: '',
@@ -201,6 +199,20 @@ export default function AdminUsersPage() {
     queryFn: () => getManageableProfiles(profileFilters),
     enabled: isAdmin,
   })
+
+  const { data: allMapel = [] } = useQuery({
+    queryKey: ['all-mapel-users'],
+    queryFn: () => getAllMapel(),
+    enabled: isAdmin,
+  })
+
+  const mapelMap = useMemo(() => {
+    const map = new Map<string, string>()
+    allMapel.forEach((m) => {
+      map.set(m.id, m.nama_mapel)
+    })
+    return map
+  }, [allMapel])
 
   // Query guru & orangtua belum punya akun (untuk form tambah pengguna)
   const { data: guruTanpaAkun = [] } = useQuery({
@@ -419,17 +431,13 @@ export default function AdminUsersPage() {
 
   const handleOpenAdd = useCallback(() => {
     let defaultRole: ManageableRole = 'user'
-    let defaultMapel = ''
 
     if (activeTab === 'guru') {
       defaultRole = 'user'
-      defaultMapel = ''
     } else if (activeTab === 'orangtua') {
       defaultRole = 'orangtua' as ManageableRole
-      defaultMapel = 'Orang Tua'
     } else if (activeTab === 'admin') {
       defaultRole = 'admin'
-      defaultMapel = 'Admin'
     }
 
     createUserForm.reset({
@@ -437,7 +445,6 @@ export default function AdminUsersPage() {
       username: '',
       email: '',
       password: '',
-      guru_mapel: defaultMapel,
       role: defaultRole,
       guru_id: '',
       orangtua_id: '',
@@ -454,7 +461,6 @@ export default function AdminUsersPage() {
         nama_lengkap: item.nama_lengkap,
         username: item.username,
         email: item.email ?? '',
-        guru_mapel: item.guru_mapel ?? '',
         role: item.role as ManageableRole,
       })
       setIsEditOpen(true)
@@ -473,12 +479,14 @@ export default function AdminUsersPage() {
         onEdit: handleOpenEdit,
         onRequestDelete: setDeleteTarget,
         isActionPending,
+        mapelMap,
       }),
     [
       page,
       pageSize,
       handleOpenEdit,
       isActionPending,
+      mapelMap,
     ]
   )
 
@@ -753,7 +761,6 @@ export default function AdminUsersPage() {
                       if (guru) {
                         createUserForm.setValue('nama_lengkap', guru.nama_lengkap)
                         createUserForm.setValue('email', guru.email ?? '')
-                        createUserForm.setValue('guru_mapel', guru.tipe)
                       }
                     }}
                   >
@@ -763,7 +770,7 @@ export default function AdminUsersPage() {
                     <SelectContent>
                       {guruTanpaAkun.map((g) => (
                         <SelectItem key={g.id} value={g.id}>
-                          {g.nama_lengkap} ({g.tipe})
+                          {g.nama_lengkap} ({mapelMap.get(g.tipe) ?? g.tipe})
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -789,7 +796,6 @@ export default function AdminUsersPage() {
                       if (ortu) {
                         createUserForm.setValue('nama_lengkap', ortu.nama_lengkap)
                         createUserForm.setValue('email', ortu.email ?? '')
-                        createUserForm.setValue('guru_mapel', 'Orang Tua')
                       }
                     }}
                   >
@@ -866,19 +872,6 @@ export default function AdminUsersPage() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="create-guru_mapel">Guru Mapel / Jabatan</Label>
-                <Input
-                  id="create-guru_mapel"
-                  {...createUserForm.register('guru_mapel')}
-                />
-                {createUserForm.formState.errors.guru_mapel && (
-                  <p className="text-xs text-status-red">
-                    {createUserForm.formState.errors.guru_mapel.message}
-                  </p>
-                )}
-              </div>
-
-              <div className="space-y-2">
                 <Label htmlFor="create-role">Role</Label>
                 <Select
                   value={createUserForm.watch('role')}
@@ -887,13 +880,6 @@ export default function AdminUsersPage() {
                     createUserForm.setValue('role', nextRole, {
                       shouldValidate: true,
                     })
-                    if (nextRole === 'orangtua') {
-                      createUserForm.setValue('guru_mapel', 'Orang Tua')
-                    } else if (nextRole === 'admin') {
-                      createUserForm.setValue('guru_mapel', 'Admin')
-                    } else {
-                      createUserForm.setValue('guru_mapel', '')
-                    }
                   }}
                 >
                   <SelectTrigger id="create-role">
@@ -993,19 +979,6 @@ export default function AdminUsersPage() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="edit-guru_mapel">Guru Mapel</Label>
-                <Input
-                  id="edit-guru_mapel"
-                  {...editForm.register('guru_mapel')}
-                />
-                {editForm.formState.errors.guru_mapel && (
-                  <p className="text-xs text-status-red">
-                    {editForm.formState.errors.guru_mapel.message}
-                  </p>
-                )}
-              </div>
-
-              <div className="space-y-2">
                 <Label htmlFor="edit-role">Role</Label>
                 <Select
                   value={editForm.watch('role')}
@@ -1014,11 +987,6 @@ export default function AdminUsersPage() {
                     editForm.setValue('role', nextRole, {
                       shouldValidate: true,
                     })
-                    if (nextRole === 'orangtua') {
-                      editForm.setValue('guru_mapel', 'Orang Tua')
-                    } else if (nextRole === 'admin') {
-                      editForm.setValue('guru_mapel', 'Admin')
-                    }
                   }}
                 >
                   <SelectTrigger id="edit-role">

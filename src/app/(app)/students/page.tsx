@@ -76,9 +76,9 @@ const studentAddSchema = z.object({
   nama: z.string().min(2, 'Nama minimal 2 karakter'),
   kelas: z.string().min(1, 'Kelas wajib diisi'),
   jenis_kelamin: z.enum(['L', 'P'], { message: 'Pilih jenis kelamin' }),
-  kamar_id: z.string().uuid().optional().nullable(),
+  kamar_id: z.string().uuid().optional().nullable().or(z.literal('')),
   nomor_induk: z.string().optional(),
-  orangtua_id: z.string().uuid().optional().nullable(),
+  orangtua_id: z.string().uuid().optional().nullable().or(z.literal('')),
 })
 
 // Schema edit siswa — lengkap
@@ -86,10 +86,10 @@ const studentEditSchema = z.object({
   nama: z.string().min(2, 'Nama minimal 2 karakter'),
   kelas: z.string().min(1, 'Kelas wajib diisi'),
   jenis_kelamin: z.enum(['L', 'P'], { message: 'Pilih jenis kelamin' }),
-  kamar_id: z.string().uuid().optional().nullable(),
+  kamar_id: z.string().uuid().optional().nullable().or(z.literal('')),
   nomor_induk: z.string().optional(),
   is_alumni: z.boolean(),
-  orangtua_id: z.string().uuid().optional().nullable(),
+  orangtua_id: z.string().uuid().optional().nullable().or(z.literal('')),
 })
 
 type StudentAddFormValues = z.infer<typeof studentAddSchema>

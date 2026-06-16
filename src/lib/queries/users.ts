@@ -7,7 +7,6 @@ type AuditProfileRow = Pick<
   | 'id'
   | 'user_id'
   | 'nama_lengkap'
-  | 'guru_mapel'
   | 'username'
   | 'role'
   | 'is_approved'
@@ -26,7 +25,6 @@ export interface UpdateManageableProfileInput {
   nama_lengkap: string
   username: string
   email: string
-  guru_mapel: string
   role: ManageableRole
 }
 
@@ -35,7 +33,6 @@ export interface CreateManageableUserInput {
   username: string
   email: string
   password: string
-  guru_mapel: string
   role: ManageableRole
   guru_id?: string
   orangtua_id?: string
@@ -67,7 +64,6 @@ function profileToAuditData(profile: AuditProfileRow): Record<string, unknown> {
     id: profile.id,
     user_id: profile.user_id,
     nama_lengkap: profile.nama_lengkap,
-    guru_mapel: profile.guru_mapel,
     username: profile.username,
     role: profile.role,
     is_approved: profile.is_approved,
@@ -138,7 +134,6 @@ export async function updateManageableProfile(
       nama_lengkap: input.nama_lengkap.trim(),
       username: input.username.trim().toLowerCase(),
       email: input.email.trim().toLowerCase(),
-      guru_mapel: input.guru_mapel.trim(),
       role: roleValue,
       updated_at: updatedAt,
     })

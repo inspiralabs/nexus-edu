@@ -21,7 +21,6 @@ import { getKamarOptions, getMataKuliah } from '@/lib/queries/students'
 
 const signupGuruSchema = z.object({
   nama_lengkap: z.string().min(2, 'Nama lengkap minimal 2 karakter'),
-  guru_mapel: z.string().optional(),
   tipe_role: z.enum(['guru', 'musyrif', 'guru_musyrif']),
   unit_mengajar: z.array(z.enum(['SD', 'SMP', 'SMA'])).min(1, 'Pilih minimal 1 unit mengajar'),
   mapel_ids: z.array(z.string().uuid()).optional(),
@@ -62,7 +61,6 @@ export default function SignupGuruPage() {
     resolver: zodResolver(signupGuruSchema),
     defaultValues: {
       nama_lengkap: '',
-      guru_mapel: '',
       tipe_role: 'guru',
       unit_mengajar: [],
       mapel_ids: [],
@@ -172,7 +170,6 @@ export default function SignupGuruPage() {
     startTransition(async () => {
       const result = await signup({
         nama_lengkap: values.nama_lengkap,
-        guru_mapel: values.guru_mapel,
         tipe_role: values.tipe_role,
         unit_mengajar: values.unit_mengajar,
         mapel_ids: values.mapel_ids,
@@ -270,18 +267,7 @@ export default function SignupGuruPage() {
             )}
           </div>
 
-          {/* Guru Mapel / Jabatan */}
-          <div className="space-y-2">
-            <Label htmlFor="guru_mapel">Guru Mapel / Jabatan</Label>
-            <Input
-              id="guru_mapel"
-              placeholder="Masukkan guru mapel utama atau jabatan saat ini"
-              {...register('guru_mapel')}
-            />
-            {errors.guru_mapel && (
-              <p className="text-xs text-status-red">{errors.guru_mapel.message}</p>
-            )}
-          </div>
+
 
           {/* Tipe Select */}
           <div className="space-y-2">

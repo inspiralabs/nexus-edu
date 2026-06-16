@@ -52,7 +52,6 @@ type AuditProfileRow = Pick<
   | 'id'
   | 'user_id'
   | 'nama_lengkap'
-  | 'guru_mapel'
   | 'username'
   | 'role'
   | 'is_approved'
@@ -67,7 +66,6 @@ function profileToAuditData(profile: AuditProfileRow): Record<string, unknown> {
     id: profile.id,
     user_id: profile.user_id,
     nama_lengkap: profile.nama_lengkap,
-    guru_mapel: profile.guru_mapel,
     username: profile.username,
     role: profile.role,
     is_approved: profile.is_approved,

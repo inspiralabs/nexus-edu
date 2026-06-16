@@ -1,9 +1,9 @@
 'use client'
 
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import { useRouter } from 'next/navigation'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Eye, EyeOff } from 'lucide-react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
@@ -22,12 +22,12 @@ import {
   updateProfile,
   uploadAvatar,
 } from '@/lib/queries/profile'
+import { getAllMapel } from '@/lib/queries/admin-extended'
 import { createClient } from '@/lib/supabase/client'
 import type { Profile, Role } from '@/lib/supabase/types'
 
 const profileSchema = z.object({
   nama_lengkap: z.string().min(2, 'Nama lengkap minimal 2 karakter'),
-  guru_mapel: z.string().min(1, 'Guru mapel wajib diisi'),
 })
 
 const passwordSchema = z
@@ -73,7 +73,6 @@ function profileToRecord(profile: Profile): Record<string, unknown> {
     id: profile.id,
     user_id: profile.user_id,
     nama_lengkap: profile.nama_lengkap,
-    guru_mapel: profile.guru_mapel,
     username: profile.username,
     role: profile.role,
     is_approved: profile.is_approved,
@@ -102,9 +101,22 @@ export default function AccountPage() {
     resolver: zodResolver(profileSchema),
     defaultValues: {
       nama_lengkap: '',
-      guru_mapel: '',
     },
   })
+
+  const { data: allMapel = [] } = useQuery({
+    queryKey: ['all-mapel'],
+    queryFn: () => getAllMapel(),
+    enabled: profile?.role === 'user',
+  })
+
+  const userMapelNames = useMemo(() => {
+    if (!profile?.mapel_ids || profile.mapel_ids.length === 0) return '-'
+    return profile.mapel_ids
+      .map((id) => allMapel.find((m) => m.id === id)?.nama_mapel)
+      .filter(Boolean)
+      .join(', ') || '-'
+  }, [profile?.mapel_ids, allMapel])
 
   const passwordForm = useForm<PasswordFormValues>({
     resolver: zodResolver(passwordSchema),
@@ -118,7 +130,6 @@ export default function AccountPage() {
     if (profile) {
       profileForm.reset({
         nama_lengkap: profile.nama_lengkap,
-        guru_mapel: profile.guru_mapel ?? '',
       })
       setAvatarPreview(profile.avatar_url)
     }
@@ -186,7 +197,6 @@ export default function AccountPage() {
       await refreshAuthContext()
       profileForm.reset({
         nama_lengkap: updatedProfile.nama_lengkap,
-        guru_mapel: updatedProfile.guru_mapel ?? '',
       })
       toast({
         title: 'Berhasil',
@@ -320,6 +330,26 @@ export default function AccountPage() {
                 {getRoleLabel(profile.role)}
               </Badge>
             </div>
+            {profile.role === 'user' && (
+              <>
+                <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                  <span className="text-sm text-[var(--text-secondary)]">
+                    Tipe Pendidik
+                  </span>
+                  <span className="text-sm text-text-secondary font-medium">
+                    {profile.tipe_role === 'guru' ? 'Guru DIKNAS' : profile.tipe_role === 'musyrif' ? 'Musyrif/ah' : profile.tipe_role === 'guru_musyrif' ? 'Guru & Musyrif' : '-'}
+                  </span>
+                </div>
+                <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                  <span className="text-sm text-[var(--text-secondary)]">
+                    Mata Pelajaran
+                  </span>
+                  <span className="text-sm text-text-secondary font-medium">
+                    {userMapelNames}
+                  </span>
+                </div>
+              </>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -348,18 +378,7 @@ export default function AccountPage() {
               )}
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="guru_mapel">Guru Mapel</Label>
-              <Input
-                id="guru_mapel"
-                {...profileForm.register('guru_mapel')}
-              />
-              {profileForm.formState.errors.guru_mapel && (
-                <p className="text-xs text-status-red">
-                  {profileForm.formState.errors.guru_mapel.message}
-                </p>
-              )}
-            </div>
+
 
             <Button
               type="submit"

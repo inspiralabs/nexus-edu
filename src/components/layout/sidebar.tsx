@@ -51,7 +51,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { useAuth } from '@/hooks/use-auth'
-import type { Role } from '@/lib/supabase/types'
+import type { Role, TipeRole } from '@/lib/supabase/types'
 import { cn } from '@/lib/utils'
 
 const LOCALSTORAGE_KEY = 'amanah-sidebar-collapsed'
@@ -551,7 +551,7 @@ function filterMenuByRole(
     }))
 }
 
-function getRoleBadgeLabel(role: Role, guruMapel?: string | null): string {
+function getRoleBadgeLabel(role: Role, tipeRole?: TipeRole | null): string {
   switch (role) {
     case 'superadmin':
       return 'Superadmin'
@@ -560,7 +560,10 @@ function getRoleBadgeLabel(role: Role, guruMapel?: string | null): string {
     case 'orangtua':
       return 'Orang Tua'
     default:
-      return guruMapel?.trim() || 'Guru / Musyrif'
+      if (tipeRole === 'guru') return 'Guru'
+      if (tipeRole === 'musyrif') return 'Musyrif'
+      if (tipeRole === 'guru_musyrif') return 'Guru / Musyrif'
+      return 'Guru / Musyrif'
   }
 }
 
@@ -931,7 +934,7 @@ function Sidebar() {
                     variant={getRoleBadgeVariant(profile.role)}
                     className="mt-1"
                   >
-                    {getRoleBadgeLabel(profile.role, profile.guru_mapel)}
+                    {getRoleBadgeLabel(profile.role, profile.tipe_role)}
                   </Badge>
                 </div>
               </div>

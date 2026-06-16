@@ -125,7 +125,7 @@ function PendingRow({
         </p>
         <p className="text-sm text-[var(--text-secondary)]">
           @{user.username}
-          {user.guru_mapel ? ` · ${user.guru_mapel}` : ''}
+          {user.role === 'orangtua' ? ' · Orang Tua' : user.role === 'admin' ? ' · Admin' : user.tipe_role ? ` · ${user.tipe_role === 'guru' ? 'Guru' : user.tipe_role === 'musyrif' ? 'Musyrif' : user.tipe_role === 'guru_musyrif' ? 'Guru & Musyrif' : user.tipe_role}` : ' · Guru'}
         </p>
         <p className="text-xs text-[var(--text-tertiary)]">
           Daftar: {formatTanggalDaftar(user.created_at)}
