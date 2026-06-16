@@ -9,6 +9,7 @@ const PROTECTED_PREFIXES = [
   '/admin',
   '/superadmin',
   '/account',
+  '/orangtua',
 ] as const
 
 const PUBLIC_ROUTES = ['/', '/login', '/signup'] as const

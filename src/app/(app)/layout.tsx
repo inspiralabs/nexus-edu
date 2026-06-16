@@ -48,6 +48,11 @@ const PATH_TITLES: Record<string, string> = {
   '/superadmin/settings': 'System Settings',
   '/account': 'Akun Saya',
   '/about': 'Tentang AMANAH',
+  '/orangtua': 'Dashboard Orang Tua',
+  '/orangtua/mutabaah': 'Mutabaah Anak',
+  '/orangtua/diknas': 'Akademik Anak',
+  '/orangtua/kedisiplinan': 'Kedisiplinan Anak',
+  '/orangtua/prestasi': 'Prestasi Anak',
 }
 
 
