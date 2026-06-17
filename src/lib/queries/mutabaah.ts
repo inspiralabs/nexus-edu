@@ -1423,6 +1423,7 @@ export interface MutabaahDetailCell {
   sub_kegiatan_id: string | null
   status: MutabaahStatus
   is_libur: boolean
+  profiles?: { nama_lengkap: string } | null
 }
 
 /**
@@ -1438,7 +1439,7 @@ export async function getMutabaahDetailBySiswa(
 
   const { data, error } = await supabase
     .from('mutabaah')
-    .select('tanggal, kegiatan_id, sub_kegiatan_id, status, is_libur')
+    .select('tanggal, kegiatan_id, sub_kegiatan_id, status, is_libur, profiles:dicatat_oleh!left(nama_lengkap)')
     .eq('siswa_id', siswaId)
     .gte('tanggal', tanggalDari)
     .lte('tanggal', tanggalSampai)
@@ -1446,7 +1447,17 @@ export async function getMutabaahDetailBySiswa(
 
   if (error) throw new Error(error.message)
 
-  return (data ?? []) as MutabaahDetailCell[]
+  // Unpack profiles relationship if returned as array
+  const formattedData = (data ?? []).map((row: any) => {
+    const rawProfiles = row.profiles
+    const profiles = Array.isArray(rawProfiles) ? rawProfiles[0] ?? null : rawProfiles
+    return {
+      ...row,
+      profiles: profiles ? { nama_lengkap: profiles.nama_lengkap } : null
+    }
+  })
+
+  return formattedData as MutabaahDetailCell[]
 }
 
 // ─── Progress dengan info Kegiatan (untuk Dialog Target & Nilai) ─────────────

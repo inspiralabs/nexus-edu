@@ -223,14 +223,22 @@ function RekapDetailDialog({
                   >
                     Total Hadir
                   </th>
-                  {tanggalList.map((tgl) => (
-                    <th
-                      key={tgl}
-                      className="border-b border-r border-[var(--border)] bg-[var(--surface-2)] px-2 py-2.5 text-center font-semibold text-[var(--text-primary)] min-w-[72px]"
-                    >
-                      {format(new Date(tgl), 'dd MMM', { locale: idLocale })}
-                    </th>
-                  ))}
+                  {tanggalList.map((tgl) => {
+                    const item = detailData.find((d) => d.tanggal === tgl)
+                    return (
+                      <th
+                        key={tgl}
+                        className="border-b border-r border-[var(--border)] bg-[var(--surface-2)] px-2 py-2.5 text-center font-semibold text-[var(--text-primary)] min-w-[96px]"
+                      >
+                        <div className="flex flex-col items-center">
+                          <span className="font-medium">{format(new Date(tgl), 'dd MMM', { locale: idLocale })}</span>
+                          <span className="text-[10px] text-muted-foreground font-normal">
+                            Oleh: {item?.profiles?.nama_lengkap || 'Sistem'}
+                          </span>
+                        </div>
+                      </th>
+                    )
+                  })}
                 </tr>
               </thead>
               <tbody>
