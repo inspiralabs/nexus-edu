@@ -3,7 +3,7 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { type ColumnDef } from '@tanstack/react-table'
-import { Edit, ExternalLink, Plus, Search, Trash2 } from 'lucide-react'
+import { Edit, ExternalLink, Plus, Search, Trash2, X } from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
@@ -137,11 +137,12 @@ export default function GuruPage() {
   })
 
   const filteredMapel: MataPelajaran[] = useMemo(() => {
-    if (!mapelSearch) return allMapel
-    return allMapel.filter((m) =>
+    const byUnit = allMapel.filter((m) => selectedUnits.includes(m.unit))
+    if (!mapelSearch) return byUnit
+    return byUnit.filter((m) =>
       m.nama_mapel.toLowerCase().includes(mapelSearch.toLowerCase())
     )
-  }, [allMapel, mapelSearch])
+  }, [allMapel, selectedUnits, mapelSearch])
 
   const mapelOptions: ComboboxOption[] = useMemo(
     () => filteredMapel.map((m) => ({ value: m.id, label: `${m.nama_mapel} (${m.unit})` })),
@@ -276,6 +277,13 @@ export default function GuruPage() {
       ? current.filter((u) => u !== unit)
       : [...current, unit]
     form.setValue('unit', updated, { shouldValidate: true })
+
+    const currentMapelIds = form.getValues('mapel_ids') ?? []
+    const updatedMapelIds = currentMapelIds.filter((id) => {
+      const mapel = allMapel.find((m) => m.id === id)
+      return mapel && updated.includes(mapel.unit)
+    })
+    form.setValue('mapel_ids', updatedMapelIds, { shouldValidate: true })
   }
 
   const columns = useMemo<ColumnDef<Guru>[]>(
@@ -545,36 +553,77 @@ export default function GuruPage() {
             {/* Mata Pelajaran (multi-select via combobox + checkboxes) */}
             <div className="space-y-2">
               <Label>Mata Pelajaran (opsional)</Label>
-              <div className="relative">
-                <Combobox
-                  options={mapelOptions}
-                  value={selectedMapelIds[0] ?? ''}
-                  onSelect={() => {}}
-                  onSearch={setMapelSearch}
-                  placeholder="Cari mata pelajaran..."
-                  isLoading={false}
-                />
-              </div>
-              {mapelOptions.length > 0 && (
-                <div className="mt-2 max-h-32 space-y-1 overflow-y-auto rounded-md border border-[var(--border)] p-2">
-                  {mapelOptions.map((opt) => (
-                    <div key={opt.value} className="flex items-center gap-2">
-                      <Checkbox
-                        id={`mapel-${opt.value}`}
-                        checked={selectedMapelIds.includes(opt.value)}
-                        onCheckedChange={() => toggleMapel(opt.value)}
-                      />
-                      <Label htmlFor={`mapel-${opt.value}`} className="font-normal text-sm">
-                        {opt.label}
-                      </Label>
-                    </div>
-                  ))}
-                </div>
-              )}
-              {selectedMapelIds.length > 0 && (
-                <p className="text-xs text-[var(--text-secondary)]">
-                  {selectedMapelIds.length} mata pelajaran dipilih
+              {selectedUnits.length === 0 ? (
+                <p className="text-xs text-[var(--text-tertiary)] italic">
+                  Pilih unit mengajar terlebih dahulu untuk menampilkan daftar mata pelajaran.
                 </p>
+              ) : (
+                <>
+                  <div className="relative">
+                    <Combobox
+                      options={mapelOptions}
+                      value=""
+                      onSelect={(val) => toggleMapel(val)}
+                      onSearch={setMapelSearch}
+                      placeholder="Cari mata pelajaran..."
+                      isLoading={false}
+                    />
+                  </div>
+                  {mapelOptions.length > 0 ? (
+                    <div className="mt-2 max-h-32 space-y-1 overflow-y-auto rounded-md border border-[var(--border)] p-2">
+                      {mapelOptions.map((opt) => (
+                        <div key={opt.value} className="flex items-center gap-2">
+                          <Checkbox
+                            id={`mapel-${opt.value}`}
+                            checked={selectedMapelIds.includes(opt.value)}
+                            onCheckedChange={() => toggleMapel(opt.value)}
+                          />
+                          <Label htmlFor={`mapel-${opt.value}`} className="font-normal text-sm">
+                            {opt.label}
+                          </Label>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    mapelSearch && (
+                      <p className="text-xs text-status-red italic mt-2">
+                        Mata pelajaran tidak ditemukan
+                      </p>
+                    )
+                  )}
+                  {selectedMapelIds.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 mt-2">
+                      {selectedMapelIds.map((id) => {
+                        const mapelObj = allMapel.find((m) => m.id === id)
+                        if (!mapelObj) return null
+                        return (
+                          <Badge
+                            key={id}
+                            variant="secondary"
+                            className="flex items-center gap-1.5 py-1 px-2.5 text-xs bg-[var(--surface-3)] hover:bg-[var(--surface-4)] text-[var(--text-primary)] border border-[var(--border)] font-normal rounded-md"
+                          >
+                            <span>
+                              {mapelObj.nama_mapel} - {mapelObj.unit}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => toggleMapel(id)}
+                              className="rounded-full p-0.5 hover:bg-[var(--surface-4)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors focus:outline-none"
+                              aria-label={`Hapus ${mapelObj.nama_mapel}`}
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          </Badge>
+                        )
+                      })}
+                    </div>
+                  )}
+                  {selectedMapelIds.length > 0 && (
+                    <p className="text-xs text-[var(--text-secondary)] mt-1">
+                      {selectedMapelIds.length} mata pelajaran dipilih
+                    </p>
+                  )}
+                </>
               )}
             </div>
 

@@ -2,12 +2,13 @@
 
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useQuery } from '@tanstack/react-query'
-import { AlertCircle, CheckCircle, Eye, EyeOff, GraduationCap } from 'lucide-react'
+import { AlertCircle, CheckCircle, Eye, EyeOff, GraduationCap, X } from 'lucide-react'
 import Image from 'next/image'
 import Link from 'next/link'
 import { useEffect, useMemo, useState, useTransition } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -334,8 +335,8 @@ export default function SignupGuruPage() {
                   <div className="relative">
                     <Combobox
                       options={mapelOptions}
-                      value={selectedMapelIds[0] ?? ''}
-                      onSelect={() => {}}
+                      value=""
+                      onSelect={(val) => toggleMapel(val)}
                       onSearch={setMapelSearch}
                       placeholder="Cari mata pelajaran..."
                       isLoading={isMapelLoading}
@@ -369,7 +370,34 @@ export default function SignupGuruPage() {
                     )
                   )}
                   {selectedMapelIds.length > 0 && (
-                    <p className="text-xs text-[var(--text-secondary)]">
+                    <div className="flex flex-wrap gap-1.5 mt-2">
+                      {selectedMapelIds.map((id) => {
+                        const mapelObj = mapelData.find((m) => m.id === id)
+                        if (!mapelObj) return null
+                        return (
+                          <Badge
+                            key={id}
+                            variant="secondary"
+                            className="flex items-center gap-1.5 py-1 px-2.5 text-xs bg-[var(--surface-3)] hover:bg-[var(--surface-4)] text-[var(--text-primary)] border border-[var(--border)] font-normal rounded-md"
+                          >
+                            <span>
+                              {mapelObj.nama_mapel} - {mapelObj.unit}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => toggleMapel(id)}
+                              className="rounded-full p-0.5 hover:bg-[var(--surface-4)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors focus:outline-none"
+                              aria-label={`Hapus ${mapelObj.nama_mapel}`}
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          </Badge>
+                        )
+                      })}
+                    </div>
+                  )}
+                  {selectedMapelIds.length > 0 && (
+                    <p className="text-xs text-[var(--text-secondary)] mt-1">
                       {selectedMapelIds.length} mata pelajaran dipilih
                     </p>
                   )}
