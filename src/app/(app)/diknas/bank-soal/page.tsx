@@ -53,7 +53,7 @@ import { GuruMapelGate } from '../_components/guru-mapel-gate'
 // ─── Konstanta ────────────────────────────────────────────────────────────────
 
 const PAGE_SIZE_OPTIONS = [10, 20, 30, 50] as const
-const TIPE_SOAL_OPTIONS = ['Pilihan Ganda', 'Essai'] as const
+const TIPE_SOAL_OPTIONS = ['Pilihan Ganda', 'Essai', 'Pilihan Ganda dan Essai', 'Ujian Lisan', 'Ujian Berbasis Proyek', "Ujian Kelompok"] as const
 
 // ─── Schema ───────────────────────────────────────────────────────────────────
 
@@ -509,277 +509,277 @@ export default function BankSoalPage() {
 
   return (
     <GuruMapelGate>
-    <div className="space-y-4">
-      {/* Filter bar */}
-      <div className="no-print flex flex-wrap items-center gap-3">
-        <div className="relative flex-1 min-w-[160px]">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-secondary)]" />
-          <Input
-            placeholder="Cari judul bank soal..."
-            value={search}
-            onChange={(e) => { setSearch(e.target.value); setPage(1) }}
-            className="pl-9"
-          />
-        </div>
-        <Select value={filterMapel} onValueChange={(v) => { setFilterMapel(v); setPage(1) }} disabled={shouldDisableMapelSelect}>
-          <SelectTrigger className="w-48"><SelectValue placeholder="Mapel" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Semua Mapel</SelectItem>
-            {filteredMapels.map((m: MataKuliah) => (
-              <SelectItem key={m.id} value={m.id}>{m.nama_mapel} - {m.unit}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Select value={filterTipeSoal} onValueChange={(v) => { setFilterTipeSoal(v); setPage(1) }}>
-          <SelectTrigger className="w-48"><SelectValue placeholder="Tipe Soal" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Semua Tipe Soal</SelectItem>
-            {TIPE_SOAL_OPTIONS.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
-          </SelectContent>
-        </Select>
-        <Select value={filterSemester} onValueChange={(v) => { setFilterSemester(v); setPage(1) }}>
-          <SelectTrigger className="w-52"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="aktif">Semester Aktif</SelectItem>
-            <SelectItem value="all">Semua Semester</SelectItem>
-            {semesterList.map((s) => (
-              <SelectItem key={s.id} value={s.id}>
-                Smt {s.nomor_semester} — {s.tahun_pelajaran?.nama}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <div className="ml-auto flex gap-2">
-          {selectedRows.length > 0 && (
-            <Button variant="destructive" size="sm" onClick={() => setIsBulkDeleteOpen(true)}>
-              <Trash2 className="mr-2 h-4 w-4" />
-              Hapus ({selectedRows.length})
+      <div className="space-y-4">
+        {/* Filter bar */}
+        <div className="no-print flex flex-wrap items-center gap-3">
+          <div className="relative flex-1 min-w-[160px]">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-secondary)]" />
+            <Input
+              placeholder="Cari judul bank soal..."
+              value={search}
+              onChange={(e) => { setSearch(e.target.value); setPage(1) }}
+              className="pl-9"
+            />
+          </div>
+          <Select value={filterMapel} onValueChange={(v) => { setFilterMapel(v); setPage(1) }} disabled={shouldDisableMapelSelect}>
+            <SelectTrigger className="w-48"><SelectValue placeholder="Mapel" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Semua Mapel</SelectItem>
+              {filteredMapels.map((m: MataKuliah) => (
+                <SelectItem key={m.id} value={m.id}>{m.nama_mapel} - {m.unit}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={filterTipeSoal} onValueChange={(v) => { setFilterTipeSoal(v); setPage(1) }}>
+            <SelectTrigger className="w-48"><SelectValue placeholder="Tipe Soal" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Semua Tipe Soal</SelectItem>
+              {TIPE_SOAL_OPTIONS.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          <Select value={filterSemester} onValueChange={(v) => { setFilterSemester(v); setPage(1) }}>
+            <SelectTrigger className="w-52"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="aktif">Semester Aktif</SelectItem>
+              <SelectItem value="all">Semua Semester</SelectItem>
+              {semesterList.map((s) => (
+                <SelectItem key={s.id} value={s.id}>
+                  Smt {s.nomor_semester} — {s.tahun_pelajaran?.nama}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <div className="ml-auto flex gap-2">
+            {selectedRows.length > 0 && (
+              <Button variant="destructive" size="sm" onClick={() => setIsBulkDeleteOpen(true)}>
+                <Trash2 className="mr-2 h-4 w-4" />
+                Hapus ({selectedRows.length})
+              </Button>
+            )}
+            <Button size="sm" onClick={() => { form.reset(); setIsAddOpen(true) }}>
+              <Plus className="mr-2 h-4 w-4" />
+              Tambah
             </Button>
-          )}
-          <Button size="sm" onClick={() => { form.reset(); setIsAddOpen(true) }}>
-            <Plus className="mr-2 h-4 w-4" />
-            Tambah
-          </Button>
+          </div>
         </div>
-      </div>
 
-      {isLoading ? (
-        <div className="space-y-2">
-          {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-10 w-full rounded-lg" />)}
-        </div>
-      ) : (
-        <DataTable
-          columns={columns}
-          data={data?.data ?? []}
-          pagination={{
-            page,
-            pageSize,
-            total: data?.total ?? 0,
-          }}
-          pageSizeOptions={[...PAGE_SIZE_OPTIONS]}
-          onPageChange={setPage}
-          onPageSizeChange={(s) => {
-            setPageSize(s)
-            setPage(1)
-          }}
-          onSortChange={() => {}}
-          selectedRows={selectedRows}
-          onSelectRows={setSelectedRows}
-          isLoading={isLoading}
-        />
-      )}
+        {isLoading ? (
+          <div className="space-y-2">
+            {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-10 w-full rounded-lg" />)}
+          </div>
+        ) : (
+          <DataTable
+            columns={columns}
+            data={data?.data ?? []}
+            pagination={{
+              page,
+              pageSize,
+              total: data?.total ?? 0,
+            }}
+            pageSizeOptions={[...PAGE_SIZE_OPTIONS]}
+            onPageChange={setPage}
+            onPageSizeChange={(s) => {
+              setPageSize(s)
+              setPage(1)
+            }}
+            onSortChange={() => { }}
+            selectedRows={selectedRows}
+            onSelectRows={setSelectedRows}
+            isLoading={isLoading}
+          />
+        )}
 
-      {/* Form Dialog */}
-      <Dialog open={isFormOpen} onOpenChange={(o) => { if (!o) closeDialog() }}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{isEditOpen ? 'Edit Bank Soal' : 'Tambah Bank Soal'}</DialogTitle>
-          </DialogHeader>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-            <div className="space-y-1">
-              <Label>Judul</Label>
-              <Input
-                {...form.register('judul')}
-                placeholder="Contoh: Ulangan Harian Bab 1 — Matematika Kelas 7"
-              />
-              {form.formState.errors.judul && (
-                <p className="text-xs text-destructive">{form.formState.errors.judul.message}</p>
-              )}
-            </div>
-            <div className="grid gap-4 sm:grid-cols-2">
+        {/* Form Dialog */}
+        <Dialog open={isFormOpen} onOpenChange={(o) => { if (!o) closeDialog() }}>
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>{isEditOpen ? 'Edit Bank Soal' : 'Tambah Bank Soal'}</DialogTitle>
+            </DialogHeader>
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
               <div className="space-y-1">
-                <Label>Tipe Soal</Label>
-                <Select
-                  value={form.watch('tipe')}
-                  onValueChange={(v) => form.setValue('tipe', v as any)}
-                >
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {TIPE_SOAL_OPTIONS.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1">
-                <Label>Mata Pelajaran</Label>
-                <Combobox
-                  options={mapelOptions}
-                  value={form.watch('mata_pelajaran_id') ?? ''}
-                  onSelect={(v) => form.setValue('mata_pelajaran_id', v || null)}
-                  onSearch={setMapelSearch}
-                  placeholder="Cari mapel..."
-                  emptyMessage="Mapel tidak ditemukan"
-                  disabled={shouldDisableMapelSelect}
+                <Label>Judul</Label>
+                <Input
+                  {...form.register('judul')}
+                  placeholder="Contoh: Ulangan Harian Bab 1 — Matematika Kelas 7"
                 />
+                {form.formState.errors.judul && (
+                  <p className="text-xs text-destructive">{form.formState.errors.judul.message}</p>
+                )}
               </div>
-            </div>
-            <div className="space-y-1">
-              <Label>Semester</Label>
-              <Select
-                value={form.watch('semester_id') ?? ''}
-                onValueChange={(v) => form.setValue('semester_id', v || null)}
-              >
-                <SelectTrigger><SelectValue placeholder="Pilih semester" /></SelectTrigger>
-                <SelectContent>
-                  {semesterList.map((s) => (
-                    <SelectItem key={s.id} value={s.id}>
-                      Smt {s.nomor_semester} — {s.tahun_pelajaran?.nama}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-1">
+                  <Label>Tipe Soal</Label>
+                  <Select
+                    value={form.watch('tipe')}
+                    onValueChange={(v) => form.setValue('tipe', v as any)}
+                  >
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {TIPE_SOAL_OPTIONS.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label>Mata Pelajaran</Label>
+                  <Combobox
+                    options={mapelOptions}
+                    value={form.watch('mata_pelajaran_id') ?? ''}
+                    onSelect={(v) => form.setValue('mata_pelajaran_id', v || null)}
+                    onSearch={setMapelSearch}
+                    placeholder="Cari mapel..."
+                    emptyMessage="Mapel tidak ditemukan"
+                    disabled={shouldDisableMapelSelect}
+                  />
+                </div>
+              </div>
               <div className="space-y-1">
-                <Label>Tipe Nilai</Label>
+                <Label>Semester</Label>
                 <Select
-                  value={form.watch('tipe_nilai_id') ?? ''}
-                  onValueChange={(v) => form.setValue('tipe_nilai_id', v || '')}
+                  value={form.watch('semester_id') ?? ''}
+                  onValueChange={(v) => form.setValue('semester_id', v || null)}
                 >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Pilih Tipe Nilai" />
-                  </SelectTrigger>
+                  <SelectTrigger><SelectValue placeholder="Pilih semester" /></SelectTrigger>
                   <SelectContent>
-                    {tipeNilaiList.map((t) => (
-                      <SelectItem key={t.id} value={t.id}>
-                        {t.nama_tipe} ({t.jenis_nilai})
+                    {semesterList.map((s) => (
+                      <SelectItem key={s.id} value={s.id}>
+                        Smt {s.nomor_semester} — {s.tahun_pelajaran?.nama}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
-                {selectedTipeNilai && (
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Jenis: <span className="font-semibold text-primary">{selectedTipeNilai.jenis_nilai}</span>
-                  </p>
-                )}
-                {form.formState.errors.tipe_nilai_id && (
-                  <p className="text-xs text-destructive">{form.formState.errors.tipe_nilai_id.message}</p>
-                )}
               </div>
-              <div className="space-y-1">
-                <Label>Materi</Label>
-                <Input
-                  {...form.register('materi')}
-                  placeholder="Contoh: Aljabar Linear, Fotosintesis"
-                />
-                {form.formState.errors.materi && (
-                  <p className="text-xs text-destructive">{form.formState.errors.materi.message}</p>
-                )}
-              </div>
-            </div>
 
-            <div className="space-y-2">
-              <Label>Bab (Pilih Bab yang Tercakup)</Label>
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                {Array.from({ length: 8 }).map((_, idx) => {
-                  const babName = `BAB ${idx + 1}`
-                  const currentBab = form.watch('bab') || []
-                  const isChecked = currentBab.includes(babName)
-                  return (
-                    <div key={babName} className="flex items-center space-x-2">
-                      <Checkbox
-                        id={`bab-${babName}`}
-                        checked={isChecked}
-                        onCheckedChange={(checked) => {
-                          if (checked) {
-                            form.setValue('bab', [...currentBab, babName])
-                          } else {
-                            form.setValue('bab', currentBab.filter((b) => b !== babName))
-                          }
-                        }}
-                      />
-                      <Label htmlFor={`bab-${babName}`} className="text-sm font-normal cursor-pointer select-none">
-                        {babName}
-                      </Label>
-                    </div>
-                  )
-                })}
-              </div>
-              {form.formState.errors.bab && (
-                <p className="text-xs text-destructive">{form.formState.errors.bab.message}</p>
-              )}
-            </div>
-
-            <div className="space-y-1">
-              <Label>Berkas Soal (PDF)</Label>
-              <Input
-                type="file"
-                accept=".pdf"
-                onChange={(e) => {
-                  const file = e.target.files?.[0]
-                  if (file) {
-                    setSelectedFile(file)
-                    const localUrl = URL.createObjectURL(file)
-                    setPreviewUrl(localUrl)
-                  }
-                }}
-                className="cursor-pointer"
-              />
-              {previewUrl && (
-                <div className="mt-2 border border-[var(--border)] rounded-md overflow-hidden bg-[var(--surface-2)]">
-                  <iframe src={previewUrl} className="w-full h-96" />
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-1">
+                  <Label>Tipe Nilai</Label>
+                  <Select
+                    value={form.watch('tipe_nilai_id') ?? ''}
+                    onValueChange={(v) => form.setValue('tipe_nilai_id', v || '')}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Pilih Tipe Nilai" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {tipeNilaiList.map((t) => (
+                        <SelectItem key={t.id} value={t.id}>
+                          {t.nama_tipe} ({t.jenis_nilai})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {selectedTipeNilai && (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Jenis: <span className="font-semibold text-primary">{selectedTipeNilai.jenis_nilai}</span>
+                    </p>
+                  )}
+                  {form.formState.errors.tipe_nilai_id && (
+                    <p className="text-xs text-destructive">{form.formState.errors.tipe_nilai_id.message}</p>
+                  )}
                 </div>
-              )}
-            </div>
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={closeDialog}>Batal</Button>
-              <Button type="submit" disabled={isSaving}>
-                {isSaving ? 'Menyimpan...' : 'Simpan'}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+                <div className="space-y-1">
+                  <Label>Materi</Label>
+                  <Input
+                    {...form.register('materi')}
+                    placeholder="Contoh: Aljabar Linear, Fotosintesis"
+                  />
+                  {form.formState.errors.materi && (
+                    <p className="text-xs text-destructive">{form.formState.errors.materi.message}</p>
+                  )}
+                </div>
+              </div>
 
-      <ConfirmDialog
-        open={isDeleteOpen}
-        onOpenChange={setIsDeleteOpen}
-        title="Hapus Bank Soal"
-        description="Bank soal ini akan dihapus permanen. Lanjutkan?"
-        onConfirm={() => {
-          if (!profile?.id) {
-            toast({ title: 'Sesi pengguna tidak valid', variant: 'destructive' })
-            return
-          }
-          deletingItem && deleteMutation.mutate([deletingItem.id])
-        }}
-        isLoading={deleteMutation.isPending}
-      />
-      <ConfirmDialog
-        open={isBulkDeleteOpen}
-        onOpenChange={setIsBulkDeleteOpen}
-        title="Hapus Bank Soal Terpilih"
-        description={`${selectedRows.length} bank soal akan dihapus permanen. Lanjutkan?`}
-        onConfirm={() => {
-          if (!profile?.id) {
-            toast({ title: 'Sesi pengguna tidak valid', variant: 'destructive' })
-            return
-          }
-          deleteMutation.mutate(selectedRows)
-        }}
-        isLoading={deleteMutation.isPending}
-      />
-    </div>
+              <div className="space-y-2">
+                <Label>Bab (Pilih Bab yang Tercakup)</Label>
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  {Array.from({ length: 8 }).map((_, idx) => {
+                    const babName = `BAB ${idx + 1}`
+                    const currentBab = form.watch('bab') || []
+                    const isChecked = currentBab.includes(babName)
+                    return (
+                      <div key={babName} className="flex items-center space-x-2">
+                        <Checkbox
+                          id={`bab-${babName}`}
+                          checked={isChecked}
+                          onCheckedChange={(checked) => {
+                            if (checked) {
+                              form.setValue('bab', [...currentBab, babName])
+                            } else {
+                              form.setValue('bab', currentBab.filter((b) => b !== babName))
+                            }
+                          }}
+                        />
+                        <Label htmlFor={`bab-${babName}`} className="text-sm font-normal cursor-pointer select-none">
+                          {babName}
+                        </Label>
+                      </div>
+                    )
+                  })}
+                </div>
+                {form.formState.errors.bab && (
+                  <p className="text-xs text-destructive">{form.formState.errors.bab.message}</p>
+                )}
+              </div>
+
+              <div className="space-y-1">
+                <Label>Berkas Soal (PDF)</Label>
+                <Input
+                  type="file"
+                  accept=".pdf"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0]
+                    if (file) {
+                      setSelectedFile(file)
+                      const localUrl = URL.createObjectURL(file)
+                      setPreviewUrl(localUrl)
+                    }
+                  }}
+                  className="cursor-pointer"
+                />
+                {previewUrl && (
+                  <div className="mt-2 border border-[var(--border)] rounded-md overflow-hidden bg-[var(--surface-2)]">
+                    <iframe src={previewUrl} className="w-full h-96" />
+                  </div>
+                )}
+              </div>
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={closeDialog}>Batal</Button>
+                <Button type="submit" disabled={isSaving}>
+                  {isSaving ? 'Menyimpan...' : 'Simpan'}
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
+
+        <ConfirmDialog
+          open={isDeleteOpen}
+          onOpenChange={setIsDeleteOpen}
+          title="Hapus Bank Soal"
+          description="Bank soal ini akan dihapus permanen. Lanjutkan?"
+          onConfirm={() => {
+            if (!profile?.id) {
+              toast({ title: 'Sesi pengguna tidak valid', variant: 'destructive' })
+              return
+            }
+            deletingItem && deleteMutation.mutate([deletingItem.id])
+          }}
+          isLoading={deleteMutation.isPending}
+        />
+        <ConfirmDialog
+          open={isBulkDeleteOpen}
+          onOpenChange={setIsBulkDeleteOpen}
+          title="Hapus Bank Soal Terpilih"
+          description={`${selectedRows.length} bank soal akan dihapus permanen. Lanjutkan?`}
+          onConfirm={() => {
+            if (!profile?.id) {
+              toast({ title: 'Sesi pengguna tidak valid', variant: 'destructive' })
+              return
+            }
+            deleteMutation.mutate(selectedRows)
+          }}
+          isLoading={deleteMutation.isPending}
+        />
+      </div>
     </GuruMapelGate>
   )
 }

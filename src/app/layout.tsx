@@ -13,9 +13,12 @@ const inter = Inter({
 })
 
 export const metadata: Metadata = {
-  title: 'SQA Platform',
+  title: 'AMANAH Platform',
   description:
-    'Platform Digital Yang Membantu Guru Di Lingkungan Sekolah Quran Asy Syahid',
+    'Platform Digital Yang Membantu Guru,Musyrif dan Orang Tua Di Lingkungan Sekolah Quran Asy Syahid',
+  icons: {
+    icon: "/icon.png",
+  },
 }
 
 export default function RootLayout({

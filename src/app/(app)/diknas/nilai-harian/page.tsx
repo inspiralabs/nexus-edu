@@ -694,6 +694,11 @@ export default function NilaiHarianPage() {
         ),
       },
       {
+        id: 'dicatat_oleh',
+        header: 'Dikurasi Oleh',
+        cell: ({ row }) => row.original.profiles?.nama_lengkap ?? '-',
+      },
+      {
         id: 'aksi',
         header: 'Aksi',
         enableSorting: false,
