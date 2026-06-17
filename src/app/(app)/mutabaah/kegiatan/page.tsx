@@ -381,9 +381,14 @@ export default function KegiatanMutabaahPage() {
       {
         accessorKey: 'poin_target',
         header: 'Poin Target',
-        cell: ({ row }) => (
-          <span className="font-mono text-sm">{row.original.poin_target}</span>
-        ),
+        cell: ({ row }) => {
+          const kegiatan = row.original
+          const subs = kegiatan.sub_kegiatan
+          const displayPoin = subs && subs.length > 0
+            ? subs.reduce((total, sub) => total + (sub.poin_target || 0), 0)
+            : kegiatan.poin_target
+          return <span className="font-mono text-sm">{displayPoin}</span>
+        },
       },
       {
         id: 'actions',
