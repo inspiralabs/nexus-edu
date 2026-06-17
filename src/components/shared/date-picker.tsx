@@ -19,6 +19,9 @@ interface DatePickerProps {
   disabled?: boolean
   minDate?: Date
   maxDate?: Date
+  modifiers?: Record<string, any>
+  modifiersStyles?: Record<string, React.CSSProperties>
+  modifiersClassNames?: Record<string, string>
 }
 
 function DatePicker({
@@ -28,6 +31,9 @@ function DatePicker({
   disabled = false,
   minDate,
   maxDate,
+  modifiers,
+  modifiersStyles,
+  modifiersClassNames,
 }: DatePickerProps) {
   const [open, setOpen] = React.useState(false)
 
@@ -60,6 +66,9 @@ function DatePicker({
             if (maxDate && date > maxDate) return true
             return false
           }}
+          modifiers={modifiers}
+          modifiersStyles={modifiersStyles}
+          modifiersClassNames={modifiersClassNames}
         />
       </PopoverContent>
     </Popover>

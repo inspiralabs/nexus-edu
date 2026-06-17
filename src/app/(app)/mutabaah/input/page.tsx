@@ -29,6 +29,11 @@ import {
   type KegiatanItem,
   type MutabaahStatus,
 } from '@/lib/queries/mutabaah'
+import { getMissingMutabaahDates } from '@/lib/queries/kepesantrenan'
+import { getActiveSemester } from '@/lib/queries/semester'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Badge } from '@/components/ui/badge'
 
 // ─── Konstanta Tampilan ───────────────────────────────────────────────────────
 
@@ -98,10 +103,51 @@ export default function InputHarianPage() {
   const [activeTab, setActiveTab] = useState<'SD' | 'SMP' | 'SMA'>('SD')
   const [isLiburDialogOpen, setIsLiburDialogOpen] = useState(false)
 
+  const [missingDates, setMissingDates] = useState<Date[]>([])
+  const [isMissingDatesDialogOpen, setIsMissingDatesDialogOpen] = useState(false)
+
   // Flag agar tab default SD tidak dioverride oleh useEffect kamar
   const tabInitialized = useRef(false)
 
   const tanggalStr = format(selectedDate, 'yyyy-MM-dd')
+
+  // ── Query Semester Aktif ──
+  const { data: activeSemester } = useQuery({
+    queryKey: ['active-semester'],
+    queryFn: getActiveSemester,
+  })
+
+  const semesterId = activeSemester?.id
+  const musyrifId = profile?.id
+  const tanggalMulai = activeSemester?.tanggal_mulai
+  const tanggalSelesai = activeSemester?.tanggal_selesai
+
+  // ── Query Tanggal Mutabaah Belum Diisi ──
+  const { data: fetchedMissingDates } = useQuery({
+    queryKey: ['missing-mutabaah-dates', semesterId, musyrifId, tanggalMulai, tanggalSelesai],
+    queryFn: async () => {
+      if (!semesterId || !musyrifId || !tanggalMulai || !tanggalSelesai) return []
+      
+      const startStr = typeof tanggalMulai === 'string'
+        ? tanggalMulai.split('T')[0]
+        : format(new Date(tanggalMulai), 'yyyy-MM-dd')
+        
+      const endStr = typeof tanggalSelesai === 'string'
+        ? tanggalSelesai.split('T')[0]
+        : format(new Date(tanggalSelesai), 'yyyy-MM-dd')
+
+      return getMissingMutabaahDates(semesterId, musyrifId, startStr, endStr)
+    },
+    enabled: !!semesterId && !!musyrifId && !!tanggalMulai && !!tanggalSelesai,
+  })
+
+  useEffect(() => {
+    if (fetchedMissingDates) {
+      setMissingDates(fetchedMissingDates)
+    } else {
+      setMissingDates([])
+    }
+  }, [fetchedMissingDates])
 
   // ── Query Kamar ──
   const { data: rawKamarList, isLoading: loadingKamar } = useQuery({
@@ -306,6 +352,7 @@ export default function InputHarianPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['mutabaah-harian', tanggalStr, selectedKamar] })
+      queryClient.invalidateQueries({ queryKey: ['missing-mutabaah-dates'] })
       toast({
         title: 'Berhasil',
         description: `Seluruh kegiatan di kamar "${selectedKamar}" pada tanggal ${format(selectedDate, 'dd MMMM yyyy', { locale: idLocale })} berhasil diset Libur (L)`,
@@ -351,6 +398,7 @@ export default function InputHarianPage() {
       })
 
       queryClient.invalidateQueries({ queryKey: ['mutabaah-harian', tanggalStr, selectedKamar] })
+      queryClient.invalidateQueries({ queryKey: ['missing-mutabaah-dates'] })
 
       toast({
         title: 'Berhasil',
@@ -382,6 +430,15 @@ export default function InputHarianPage() {
       </div>
     )
   }
+
+  console.log('DEBUG MUTABAAH INPUT:', {
+    activeSemester,
+    semesterId,
+    musyrifId,
+    tanggalMulai,
+    tanggalSelesai,
+    missingDates,
+  })
 
   return (
     <div className="space-y-4">
@@ -426,6 +483,23 @@ export default function InputHarianPage() {
         </TabsList>
       </Tabs>
 
+      {/* ── Alert Tanggal Belum Diisi ── */}
+      {missingDates.length > 0 && (
+        <Alert variant="destructive">
+          <AlertTriangle className="h-4 w-4 text-red-600 dark:text-red-400" />
+          <AlertDescription className="flex items-center justify-between w-full">
+            <span>Terdapat beberapa tanggal yang belum diinput pada semester ini.</span>
+            <button
+              type="button"
+              onClick={() => setIsMissingDatesDialogOpen(true)}
+              className="ml-2 font-semibold underline hover:text-red-800 dark:hover:text-red-300 focus:outline-none"
+            >
+              [Lihat Daftar Tanggal]
+            </button>
+          </AlertDescription>
+        </Alert>
+      )}
+
       {/* ── Filter Bar ── */}
       <div className="flex flex-wrap items-end gap-3 rounded-lg border border-[var(--border)] bg-[var(--surface)] p-4">
         <div className="flex flex-col gap-1.5">
@@ -434,6 +508,19 @@ export default function InputHarianPage() {
             value={selectedDate}
             onChange={(d) => {
               if (d) setSelectedDate(d)
+            }}
+            modifiers={{
+              missing: (date: Date) =>
+                missingDates.some(
+                  (missingDate) =>
+                    missingDate.getFullYear() === date.getFullYear() &&
+                    missingDate.getMonth() === date.getMonth() &&
+                    missingDate.getDate() === date.getDate()
+                ),
+            }}
+            modifiersClassNames={{
+              missing:
+                'relative after:absolute after:bottom-1 after:left-1/2 after:-translate-x-1/2 after:h-1 after:w-1 after:rounded-full after:bg-red-500',
             }}
           />
         </div>
@@ -658,6 +745,38 @@ export default function InputHarianPage() {
         }}
         isLoading={setLiburMassalMutation.isPending}
       />
+
+      {/* ── Dialog Daftar Tanggal Belum Diisi ── */}
+      <Dialog open={isMissingDatesDialogOpen} onOpenChange={setIsMissingDatesDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Tanggal Belum Diinput</DialogTitle>
+          </DialogHeader>
+          <div className="mt-4 max-h-[60vh] overflow-y-auto pr-1">
+            <p className="text-sm text-[var(--text-secondary)] mb-4">
+              Pilih salah satu tanggal di bawah ini untuk langsung mengisi data kehadiran:
+            </p>
+            <div className="grid grid-cols-1 gap-2">
+              {missingDates.map((date, index) => {
+                const dateStr = format(date, 'EEEE, dd MMMM yyyy', { locale: idLocale })
+                return (
+                  <button
+                    key={index}
+                    type="button"
+                    onClick={() => {
+                      setSelectedDate(date)
+                      setIsMissingDatesDialogOpen(false)
+                    }}
+                    className="inline-flex items-center justify-center rounded-full border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-100 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-400 dark:hover:bg-red-900/50 transition-colors text-center cursor-pointer"
+                  >
+                    {dateStr}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
