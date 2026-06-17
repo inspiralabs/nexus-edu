@@ -102,6 +102,7 @@ export default function InputHarianPage() {
   const [isSaving, setIsSaving] = useState(false)
   const [activeTab, setActiveTab] = useState<'SD' | 'SMP' | 'SMA'>('SD')
   const [isLiburDialogOpen, setIsLiburDialogOpen] = useState(false)
+  const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false)
 
   const [missingDates, setMissingDates] = useState<Date[]>([])
   const [isMissingDatesDialogOpen, setIsMissingDatesDialogOpen] = useState(false)
@@ -336,36 +337,64 @@ export default function InputHarianPage() {
     return result
   }, [kegiatanList])
 
-  // ── Libur Massal Mutation ──
-  const setLiburMassalMutation = useMutation({
+  // ── Date Missing Check ──
+  const isDateMissing = useMemo(() => {
+    return missingDates.some(
+      (missingDate) =>
+        missingDate.getFullYear() === selectedDate.getFullYear() &&
+        missingDate.getMonth() === selectedDate.getMonth() &&
+        missingDate.getDate() === selectedDate.getDate()
+    )
+  }, [missingDates, selectedDate])
+
+  // ── Delete Presensi Mutation ──
+  const deletePresensiMutation = useMutation({
     mutationFn: async () => {
-      if (!profile || !selectedKamar || !musyrifId) return
-      const siswaIds = siswaList.map((s) => s.id)
-      const kegiatanIds = kegiatanList.map((k) => k.id)
-      await setAllLiburOnDate(tanggalStr, siswaIds, kegiatanIds, musyrifId)
-      await logAudit(musyrifId, 'CREATE', 'mutabaah', tanggalStr, null, {
+      if (!musyrifId) return
+      const supabase = (await import('@/lib/supabase/client')).createClient()
+      const { error } = await supabase
+        .from('mutabaah')
+        .delete()
+        .eq('tanggal', tanggalStr)
+        .eq('dicatat_oleh', musyrifId)
+
+      if (error) throw new Error(error.message)
+
+      await logAudit(musyrifId, 'DELETE', 'mutabaah', tanggalStr, null, {
         tanggal: tanggalStr,
-        kamar: selectedKamar,
-        action: 'set_libur_massal',
-        total_students: siswaIds.length,
+        action: 'delete_presensi_harian',
       })
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['mutabaah-harian', tanggalStr, selectedKamar] })
       queryClient.invalidateQueries({ queryKey: ['missing-mutabaah-dates'] })
+      // Reset local map
+      setMutabaahData((prev) => {
+        const next = new Map(prev)
+        const defaultStatus = hariLiburInfo.isLibur ? 'L' : '-'
+        next.forEach((_, key) => {
+          next.set(key, defaultStatus)
+        })
+        return next
+      })
+      setIsDeleteConfirmOpen(false)
       toast({
-        title: 'Berhasil',
-        description: `Seluruh kegiatan di kamar "${selectedKamar}" pada tanggal ${format(selectedDate, 'dd MMMM yyyy', { locale: idLocale })} berhasil diset Libur (L)`,
+        title: 'Berhasil menghapus',
+        description: `Presensi tanggal ${format(selectedDate, 'dd MMMM yyyy', { locale: idLocale })} berhasil dihapus`,
       })
     },
     onError: (err) => {
       toast({
-        title: 'Gagal',
+        title: 'Gagal menghapus',
         description: err instanceof Error ? err.message : 'Terjadi kesalahan',
         variant: 'destructive',
       })
     },
   })
+
+  const handleHapusPresensi = () => {
+    setIsDeleteConfirmOpen(true)
+  }
 
   // ── Simpan ──
   const handleSimpan = async () => {
@@ -403,7 +432,30 @@ export default function InputHarianPage() {
         return
       }
 
-      await upsertMutabaah(payloadSiapSimpan)
+      // 1. Fetch existing data for these students on this date
+      const supabase = (await import('@/lib/supabase/client')).createClient()
+      const { data: existingRecords, error: fetchError } = await supabase
+        .from('mutabaah')
+        .select('id, siswa_id, kegiatan_id, sub_kegiatan_id')
+        .eq('tanggal', tanggalStr)
+        .in('siswa_id', siswaList.map((s) => s.id))
+
+      if (fetchError) throw new Error(fetchError.message)
+
+      // 2. Inject ID into payload entries that match existing records to trigger updates
+      const finalPayload = payloadSiapSimpan.map((item) => {
+        const match = existingRecords?.find(
+          (ex) =>
+            ex.siswa_id === item.siswa_id &&
+            ex.kegiatan_id === item.kegiatan_id &&
+            (ex.sub_kegiatan_id === item.sub_kegiatan_id ||
+              (!ex.sub_kegiatan_id && !item.sub_kegiatan_id))
+        )
+        return match ? { ...item, id: match.id } : item
+      })
+
+      // 3. Upsert
+      await upsertMutabaah(finalPayload)
 
       await logAudit(musyrifId, 'CREATE', 'mutabaah', tanggalStr, null, {
         tanggal: tanggalStr,
@@ -451,12 +503,24 @@ export default function InputHarianPage() {
         title="Input Harian Mutabaah"
         description="Catat kehadiran kegiatan pesantren per tanggal — kegiatan (baris) × siswa (kolom)"
         actions={
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2 justify-end">
+            {!isDateMissing && selectedKamar && siswaList.length > 0 && (
+              <Button
+                id="btn-hapus-presensi"
+                variant="destructive"
+                onClick={handleHapusPresensi}
+                isLoading={deletePresensiMutation.isPending}
+                disabled={deletePresensiMutation.isPending}
+                className="shrink-0 bg-red-100 text-red-700 hover:bg-red-200 dark:bg-red-950/30 dark:text-red-400 dark:hover:bg-red-950/50 border border-red-200 dark:border-red-900/50"
+              >
+                Hapus Presensi Tanggal Ini
+              </Button>
+            )}
             <Button
               id="btn-libur-massal"
               variant="outline"
               onClick={() => setIsLiburDialogOpen(true)}
-              disabled={!selectedKamar || siswaList.length === 0 || setLiburMassalMutation.isPending}
+              disabled={!selectedKamar || siswaList.length === 0}
               className="shrink-0 text-amber-600 border-amber-300 hover:bg-amber-50 dark:text-amber-400 dark:border-amber-700 dark:hover:bg-amber-950/50"
             >
               Set Libur Massal
@@ -744,12 +808,53 @@ export default function InputHarianPage() {
         onOpenChange={setIsLiburDialogOpen}
         title="Set Libur Massal"
         description={`Apakah Anda yakin ingin menandai semua kegiatan untuk seluruh siswa di kamar "${selectedKamar}" pada tanggal ${format(selectedDate, 'dd MMMM yyyy', { locale: idLocale })} sebagai Libur (L)? Tindakan ini akan menimpa data yang belum disimpan.`}
-        onConfirm={async () => {
-          await setLiburMassalMutation.mutateAsync()
+        onConfirm={() => {
+          tandaiSemuaLibur()
           setIsLiburDialogOpen(false)
         }}
-        isLoading={setLiburMassalMutation.isPending}
+        isLoading={false}
       />
+
+      {/* ── Dialog Konfirmasi Hapus Presensi ── */}
+      <Dialog open={isDeleteConfirmOpen} onOpenChange={setIsDeleteConfirmOpen}>
+        <DialogContent className="max-w-md bg-[var(--surface)] border border-[var(--border)] shadow-lg backdrop-blur-md">
+          <DialogHeader className="flex flex-col items-center text-center pt-6">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-red-100 dark:bg-red-950/50 text-red-600 dark:text-red-400 mb-4 animate-bounce">
+              <AlertTriangle className="h-6 w-6" />
+            </div>
+            <DialogTitle className="text-lg font-bold text-[var(--text-primary)]">
+              Hapus Presensi Tanggal Ini
+            </DialogTitle>
+            <div className="mt-2 text-sm text-[var(--text-secondary)] leading-relaxed px-4">
+              Apakah Anda yakin ingin menghapus seluruh data presensi di kamar <strong className="text-[var(--text-primary)]">"{selectedKamar}"</strong> pada tanggal <strong className="text-[var(--text-primary)]">{format(selectedDate, 'dd MMMM yyyy', { locale: idLocale })}</strong>?
+              <p className="mt-2 text-xs text-red-500 font-semibold">⚠️ Tindakan ini bersifat permanen dan tidak dapat dibatalkan.</p>
+            </div>
+          </DialogHeader>
+          <div className="flex items-center justify-center gap-3 mt-6 pb-4">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setIsDeleteConfirmOpen(false)}
+              disabled={deletePresensiMutation.isPending}
+              className="px-5"
+            >
+              Batal
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={() => {
+                deletePresensiMutation.mutate()
+              }}
+              isLoading={deletePresensiMutation.isPending}
+              disabled={deletePresensiMutation.isPending}
+              className="bg-red-600 hover:bg-red-700 text-white font-semibold px-5"
+            >
+              Ya, Hapus Semua
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* ── Dialog Daftar Tanggal Belum Diisi ── */}
       <Dialog open={isMissingDatesDialogOpen} onOpenChange={setIsMissingDatesDialogOpen}>

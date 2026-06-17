@@ -146,13 +146,14 @@ function RekapDetailDialog({
       return getSubStatusOnDate(tgl, kegiatan.id, null)
     }
     
+    const statusHadir = ['Hadir', 'Terlambat', 'Terlambat Sekali']
     let hadirCount = 0
     let hasRecord = false
     for (const sub of subs) {
       const status = getSubStatusOnDate(tgl, kegiatan.id, sub.id)
       if (status) {
         hasRecord = true
-        if (status === 'Hadir') hadirCount++
+        if (status && statusHadir.includes(status)) hadirCount++
       }
     }
     if (!hasRecord) return undefined
@@ -256,18 +257,21 @@ function RekapDetailDialog({
                     const parentNo = String(idx + 1)
                     const hasSubs = kegiatan.sub_kegiatan && kegiatan.sub_kegiatan.length > 0
                     const isExpanded = !!expandedKegiatan[kegiatan.id]
+                    const statusHadir = ['Hadir', 'Terlambat', 'Terlambat Sekali']
                     
                     let totalHadir = 0
                     if (!hasSubs) {
                       for (const tgl of tanggalList) {
-                        if (getSubStatusOnDate(tgl, kegiatan.id, null) === 'Hadir') {
+                        const status = getSubStatusOnDate(tgl, kegiatan.id, null)
+                        if (status && statusHadir.includes(status)) {
                           totalHadir++
                         }
                       }
                     } else {
                       for (const sub of kegiatan.sub_kegiatan!) {
                         for (const tgl of tanggalList) {
-                          if (getSubStatusOnDate(tgl, kegiatan.id, sub.id) === 'Hadir') {
+                          const status = getSubStatusOnDate(tgl, kegiatan.id, sub.id)
+                          if (status && statusHadir.includes(status)) {
                             totalHadir++
                           }
                         }
@@ -361,10 +365,12 @@ function RekapDetailDialog({
                         {hasSubs && isExpanded && kegiatan.sub_kegiatan!.map((sub, subIdx) => {
                           const childNo = `${parentNo}.${subIdx + 1}`
                           const childBg = 'bg-[var(--surface-2)]/30'
+                          const statusHadir = ['Hadir', 'Terlambat', 'Terlambat Sekali']
                           
                           let subTotalHadir = 0
                           for (const tgl of tanggalList) {
-                            if (getSubStatusOnDate(tgl, kegiatan.id, sub.id) === 'Hadir') {
+                            const status = getSubStatusOnDate(tgl, kegiatan.id, sub.id)
+                            if (status && statusHadir.includes(status)) {
                               subTotalHadir++
                             }
                           }

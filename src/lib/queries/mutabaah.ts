@@ -639,19 +639,32 @@ export async function getMutabaahByTanggalKamar(
 
 /** Upsert data mutabaah (insert atau update jika sudah ada) */
 export async function upsertMutabaah(
-  entries: Omit<MutabaahEntry, 'id' | 'students' | 'kegiatan' | 'sub_kegiatan'>[]
+  entries: (Omit<MutabaahEntry, 'id' | 'students' | 'kegiatan' | 'sub_kegiatan'> & { id?: string })[]
 ): Promise<void> {
   if (entries.length === 0) return
 
   const supabase = createClient()
 
-  const { error } = await supabase
-    .from('mutabaah')
-    .upsert(entries, {
-      onConflict: 'siswa_id,kegiatan_id,sub_kegiatan_id,tanggal',
-    })
+  const updates = entries.filter((e) => e.id)
+  const inserts = entries.filter((e) => !e.id)
 
-  if (error) throw new Error(error.message)
+  if (updates.length > 0) {
+    const { error } = await supabase
+      .from('mutabaah')
+      .upsert(updates, {
+        onConflict: 'id',
+      })
+    if (error) throw new Error(error.message)
+  }
+
+  if (inserts.length > 0) {
+    const { error } = await supabase
+      .from('mutabaah')
+      .upsert(inserts, {
+        onConflict: 'siswa_id,kegiatan_id,sub_kegiatan_id,tanggal',
+      })
+    if (error) throw new Error(error.message)
+  }
 }
 
 /** Tandai semua kegiatan pada tanggal tertentu sebagai libur untuk semua siswa */
@@ -854,16 +867,18 @@ export async function getMutabaahRekap(
     const item = rekapMap.get(key)!
     item.total_hari++
 
-    if (r.status === 'Hadir') {
+    const statusHadir = ['Hadir', 'Terlambat', 'Terlambat Sekali']
+    if (statusHadir.includes(r.status)) {
       item.total_hadir++
+      if (r.status === 'Terlambat' || r.status === 'Terlambat Sekali') {
+        item.total_terlambat++
+      }
     } else if (r.status === 'Sakit') {
       item.total_sakit++
     } else if (r.status === 'Izin') {
       item.total_izin++
     } else if (r.status === 'Alpha') {
       item.total_alpha++
-    } else if (r.status === 'Terlambat' || r.status === 'Terlambat Sekali') {
-      item.total_terlambat++
     } else if (r.status === 'L' || r.is_libur) {
       item.total_libur++
     }
@@ -1028,8 +1043,9 @@ export async function getMutabaahProgress(
       is_libur: boolean
     }
 
-    // Hanya hitung Hadir (libur tidak dihitung)
-    if (!r.is_libur && r.status === 'Hadir') {
+    // Hanya hitung Hadir (libur tidak dihitung, terlambat dihitung hadir)
+    const statusHadir = ['Hadir', 'Terlambat', 'Terlambat Sekali']
+    if (!r.is_libur && statusHadir.includes(r.status)) {
       const key = `${r.kegiatan_id}__${r.sub_kegiatan_id ?? 'null'}`
       hadirMap.set(key, (hadirMap.get(key) ?? 0) + 1)
     }
@@ -1557,7 +1573,8 @@ export async function getMutabaahProgressWithNames(
       status: MutabaahStatus
       is_libur: boolean
     }
-    if (!r.is_libur && r.status === 'Hadir') {
+    const statusHadir = ['Hadir', 'Terlambat', 'Terlambat Sekali']
+    if (!r.is_libur && statusHadir.includes(r.status)) {
       const key = `${r.kegiatan_id}__${r.sub_kegiatan_id ?? 'null'}`
       hadirMap.set(key, (hadirMap.get(key) ?? 0) + 1)
     }
@@ -1703,7 +1720,8 @@ export async function getMutabaahRankings(
       status: string
       is_libur: boolean
     }
-    if (!r.is_libur && r.status === 'Hadir') {
+    const statusHadir = ['Hadir', 'Terlambat', 'Terlambat Sekali']
+    if (!r.is_libur && statusHadir.includes(r.status)) {
       const key = `${r.siswa_id}__${r.kegiatan_id}__${r.sub_kegiatan_id ?? 'null'}`
       hadirMap.set(key, (hadirMap.get(key) ?? 0) + 1)
     }
