@@ -36,18 +36,22 @@ export interface NilaiHarianEntry extends NilaiHarian {
   mata_pelajaran?: { nama_mapel: string } | null
   bank_soal?: { judul: string; tipe: string } | null
   profiles?: { nama_lengkap: string } | null
+  tipe_nilai_rel?: { nama_tipe: string; jenis_nilai: string } | null
 }
 
 export interface NilaiUASEntry extends NilaiUAS {
   students?: { nama: string; kelas: string; unit: string } | null
   mata_pelajaran?: { nama_mapel: string } | null
+  bank_soal?: { judul: string; tipe: string } | null
   profiles?: { nama_lengkap: string } | null
+  tipe_nilai_rel?: { nama_tipe: string; jenis_nilai: string } | null
 }
 
 export interface BankSoalEntry extends BankSoal {
   mata_pelajaran?: { nama_mapel: string; unit: string } | null
   semester?: { nomor_semester: number; tahun_pelajaran?: { nama: string } } | null
   profiles?: { nama_lengkap: string } | null
+  tipe_nilai?: { nama_tipe: string; jenis_nilai: string } | null
 }
 
 export interface CatatanKelakuanEntry extends CatatanKelakuan {
@@ -103,13 +107,13 @@ const PRESENSI_SELECT =
   'id, siswa_id, mata_pelajaran_id, semester_id, tanggal, status, keterangan, dicatat_oleh, created_at, students!left(nama, kelas, unit), mata_pelajaran!left(nama_mapel, unit), profiles:dicatat_oleh!left(nama_lengkap)'
 
 const NILAI_HARIAN_SELECT =
-  'id, siswa_id, mata_pelajaran_id, semester_id, tipe_nilai, nama_tugas, materi, bab, nilai_asli, nilai_remedial, nilai_final, tipe_remedial, bank_soal_id, is_approved, approved_at, approved_by, dicatat_oleh, tanggal, created_at, students!left(nama, kelas, unit), mata_pelajaran!left(nama_mapel), bank_soal!left(judul, tipe), profiles:dicatat_oleh!left(nama_lengkap)'
+  'id, siswa_id, mata_pelajaran_id, semester_id, tipe_nilai, nama_tugas, materi, bab, nilai_asli, nilai_remedial, nilai_final, tipe_remedial, bank_soal_id, tipe_nilai_id, is_approved, approved_at, approved_by, dicatat_oleh, tanggal, created_at, students!left(nama, kelas, unit), mata_pelajaran!left(nama_mapel), bank_soal!left(judul, tipe), profiles:dicatat_oleh!left(nama_lengkap), tipe_nilai_rel:tipe_nilai!left(nama_tipe, jenis_nilai)'
 
 const NILAI_UAS_SELECT =
-  'id, siswa_id, mata_pelajaran_id, semester_id, nilai_asli, nilai_remedial, nilai_final, tipe_remedial, bank_soal_id, is_approved, approved_at, approved_by, dicatat_oleh, created_at, students!left(nama, kelas, unit), mata_pelajaran!left(nama_mapel), profiles:dicatat_oleh!left(nama_lengkap)'
+  'id, siswa_id, mata_pelajaran_id, semester_id, nilai_asli, nilai_remedial, nilai_final, tipe_remedial, bank_soal_id, tipe_nilai_id, materi, bab, is_approved, approved_at, approved_by, dicatat_oleh, created_at, students!left(nama, kelas, unit), mata_pelajaran!left(nama_mapel), profiles:dicatat_oleh!left(nama_lengkap), bank_soal!left(judul, tipe), tipe_nilai_rel:tipe_nilai!left(nama_tipe, jenis_nilai)'
 
 const BANK_SOAL_SELECT =
-  'id, judul, tipe, mata_pelajaran_id, semester_id, konten, dibuat_oleh, created_at, mata_pelajaran!left(nama_mapel, unit), semester!left(nomor_semester, tahun_pelajaran(nama)), profiles:dibuat_oleh!left(nama_lengkap)'
+  'id, judul, tipe, mata_pelajaran_id, semester_id, konten, dibuat_oleh, tipe_nilai_id, materi, bab, created_at, mata_pelajaran!left(nama_mapel, unit), semester!left(nomor_semester, tahun_pelajaran(nama)), profiles:dibuat_oleh!left(nama_lengkap), tipe_nilai:tipe_nilai_id(nama_tipe, jenis_nilai)'
 
 const CATATAN_KELAKUAN_SELECT =
   'id, siswa_id, semester_id, tipe, catatan, tanggal, dicatat_oleh, created_at, students!left(nama, kelas, unit), profiles:dicatat_oleh!left(nama_lengkap)'
@@ -135,18 +139,22 @@ type NilaiHarianRow = NilaiHarian & {
   mata_pelajaran?: Relation<{ nama_mapel: string }>
   bank_soal?: Relation<{ judul: string; tipe: string }>
   profiles?: Relation<{ nama_lengkap: string }>
+  tipe_nilai_rel?: Relation<{ nama_tipe: string; jenis_nilai: string }>
 }
 
 type NilaiUASRow = NilaiUAS & {
   students?: Relation<{ nama: string; kelas: string; unit: string }>
   mata_pelajaran?: Relation<{ nama_mapel: string }>
   profiles?: Relation<{ nama_lengkap: string }>
+  bank_soal?: Relation<{ judul: string; tipe: string }>
+  tipe_nilai_rel?: Relation<{ nama_tipe: string; jenis_nilai: string }>
 }
 
 type BankSoalRow = BankSoal & {
   mata_pelajaran?: Relation<{ nama_mapel: string; unit: string }>
   semester?: Relation<{ nomor_semester: number; tahun_pelajaran?: { nama: string } }>
   profiles?: Relation<{ nama_lengkap: string }>
+  tipe_nilai?: Relation<{ nama_tipe: string; jenis_nilai: string }>
 }
 
 type CatatanKelakuanRow = CatatanKelakuan & {
@@ -186,6 +194,7 @@ function mapNilaiHarian(row: NilaiHarianRow): NilaiHarianEntry {
     nilai_final: row.nilai_final,
     tipe_remedial: row.tipe_remedial,
     bank_soal_id: row.bank_soal_id,
+    tipe_nilai_id: row.tipe_nilai_id,
     is_approved: row.is_approved,
     approved_at: row.approved_at,
     approved_by: row.approved_by,
@@ -196,6 +205,7 @@ function mapNilaiHarian(row: NilaiHarianRow): NilaiHarianEntry {
     mata_pelajaran: unwrapRelation(row.mata_pelajaran) ?? undefined,
     bank_soal: unwrapRelation(row.bank_soal) ?? undefined,
     profiles: unwrapRelation(row.profiles) ?? undefined,
+    tipe_nilai_rel: unwrapRelation(row.tipe_nilai_rel) ?? undefined,
   }
 }
 
@@ -210,6 +220,9 @@ function mapNilaiUAS(row: NilaiUASRow): NilaiUASEntry {
     nilai_final: row.nilai_final,
     tipe_remedial: row.tipe_remedial,
     bank_soal_id: row.bank_soal_id,
+    tipe_nilai_id: row.tipe_nilai_id,
+    materi: row.materi,
+    bab: row.bab,
     is_approved: row.is_approved,
     approved_at: row.approved_at,
     approved_by: row.approved_by,
@@ -217,7 +230,9 @@ function mapNilaiUAS(row: NilaiUASRow): NilaiUASEntry {
     created_at: row.created_at,
     students: unwrapRelation(row.students) ?? undefined,
     mata_pelajaran: unwrapRelation(row.mata_pelajaran) ?? undefined,
+    bank_soal: unwrapRelation(row.bank_soal) ?? undefined,
     profiles: unwrapRelation(row.profiles) ?? undefined,
+    tipe_nilai_rel: unwrapRelation(row.tipe_nilai_rel) ?? undefined,
   }
 }
 
@@ -231,10 +246,14 @@ function mapBankSoal(row: unknown): BankSoalEntry {
     semester_id: r.semester_id,
     konten: r.konten,
     dibuat_oleh: r.dibuat_oleh,
+    tipe_nilai_id: r.tipe_nilai_id,
+    materi: r.materi,
+    bab: r.bab,
     created_at: r.created_at,
     mata_pelajaran: unwrapRelation(r.mata_pelajaran) ?? undefined,
     semester: unwrapRelation(r.semester) ?? undefined,
     profiles: unwrapRelation(r.profiles) ?? undefined,
+    tipe_nilai: unwrapRelation(r.tipe_nilai) ?? undefined,
   }
 }
 
@@ -807,11 +826,12 @@ export async function createNilaiHarian(data: {
   tipe_nilai: 'Formatif' | 'Sumatif'
   nama_tugas: string
   materi?: string | null
-  bab?: string | null
+  bab?: string[] | null
   nilai_asli?: number | null
   nilai_remedial?: number | null
   tipe_remedial?: string | null
   bank_soal_id?: string | null
+  tipe_nilai_id?: string | null
   dicatat_oleh?: string | null
   tanggal?: string | null
 }): Promise<NilaiHarianEntry> {
@@ -834,9 +854,10 @@ export async function updateNilaiHarian(
   id: string,
   data: Partial<{
     tipe_nilai: 'Formatif' | 'Sumatif'
+    tipe_nilai_id: string | null
     nama_tugas: string
     materi: string | null
-    bab: string | null
+    bab: string[] | null
     nilai_asli: number | null
     nilai_remedial: number | null
     tipe_remedial: string | null
@@ -938,11 +959,12 @@ export async function bulkCreateNilaiHarian(
     tipe_nilai: 'Formatif' | 'Sumatif'
     nama_tugas: string
     materi?: string | null
-    bab?: string | null
+    bab?: string[] | null
     nilai_asli?: number | null
     nilai_remedial?: number | null
     tipe_remedial?: string | null
     bank_soal_id?: string | null
+    tipe_nilai_id?: string | null
     dicatat_oleh?: string | null
     tanggal?: string | null
   }[]
@@ -1044,6 +1066,9 @@ export async function createNilaiUAS(data: {
   nilai_remedial?: number | null
   tipe_remedial?: string | null
   bank_soal_id?: string | null
+  tipe_nilai_id?: string | null
+  materi?: string | null
+  bab?: string[] | null
   dicatat_oleh?: string | null
 }): Promise<NilaiUASEntry> {
   const supabase = createClient()
@@ -1068,6 +1093,9 @@ export async function updateNilaiUAS(
     nilai_remedial: number | null
     tipe_remedial: string | null
     bank_soal_id: string | null
+    tipe_nilai_id: string | null
+    materi: string | null
+    bab: string[] | null
     is_approved: boolean
     approved_at: string | null
     approved_by: string | null
@@ -1155,7 +1183,6 @@ export async function approveNilaiUAS(
 
   if (error) throw new Error(error.message)
 }
-
 export async function bulkCreateNilaiUAS(
   data: {
     siswa_id: string
@@ -1165,6 +1192,9 @@ export async function bulkCreateNilaiUAS(
     nilai_remedial?: number | null
     tipe_remedial?: string | null
     bank_soal_id?: string | null
+    tipe_nilai_id?: string | null
+    materi?: string | null
+    bab?: string[] | null
     dicatat_oleh?: string | null
   }[]
 ): Promise<NilaiUASEntry[]> {
@@ -1207,6 +1237,9 @@ export async function bulkCreateNilaiUAS(
     nilai_remedial: number | null
     tipe_remedial: string | null
     bank_soal_id: string | null
+    tipe_nilai_id: string | null
+    materi: string | null
+    bab: string[] | null
     dicatat_oleh: string | null | undefined
   }
 
@@ -1223,6 +1256,9 @@ export async function bulkCreateNilaiUAS(
       nilai_remedial: item.nilai_remedial || null,
       tipe_remedial: item.tipe_remedial || null,
       bank_soal_id: item.bank_soal_id || null,
+      tipe_nilai_id: item.tipe_nilai_id || null,
+      materi: item.materi || null,
+      bab: item.bab || null,
       dicatat_oleh: item.dicatat_oleh
     }
 
@@ -1329,7 +1365,6 @@ export async function getBankSoal(
 
   return { data: (data ?? []).map(mapBankSoal), total: count ?? 0 }
 }
-
 export async function createBankSoal(data: {
   judul: string
   tipe: string
@@ -1337,6 +1372,9 @@ export async function createBankSoal(data: {
   semester_id: string | null
   konten?: Record<string, unknown> | null
   dibuat_oleh?: string | null
+  tipe_nilai_id?: string | null
+  materi?: string | null
+  bab?: string[] | null
 }): Promise<BankSoalEntry> {
   const supabase = createClient()
   const access = await resolveMapelAccess()
@@ -1367,6 +1405,9 @@ export async function updateBankSoal(
     mata_pelajaran_id: string | null
     semester_id: string | null
     konten: Record<string, unknown> | null
+    tipe_nilai_id: string | null
+    materi: string | null
+    bab: string[] | null
   }>
 ): Promise<BankSoalEntry> {
   const supabase = createClient()
@@ -1395,6 +1436,24 @@ export async function updateBankSoal(
   if (error) throw new Error(error.message)
 
   return mapBankSoal(result)
+}
+
+export async function getBankSoalForAutoFill(
+  tipeNilaiId: string,
+  mapelId: string
+): Promise<BankSoalEntry | null> {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('bank_soal')
+    .select(BANK_SOAL_SELECT)
+    .eq('tipe_nilai_id', tipeNilaiId)
+    .eq('mata_pelajaran_id', mapelId)
+    .order('created_at', { ascending: false })
+    .limit(1)
+
+  if (error) throw new Error(error.message)
+  if (!data || data.length === 0) return null
+  return mapBankSoal(data[0])
 }
 
 export async function deleteBankSoal(ids: string[]): Promise<void> {
@@ -1859,5 +1918,21 @@ export async function getPresensiForOrangTua(
   filters: DiknasDashboardFilters & { siswaId: string }
 ): Promise<{ data: PresensiEntry[]; total: number }> {
   return getPresensi(filters)
+}
+
+export async function getBankSoalOptions(
+  semesterId: string,
+  mapelId: string
+): Promise<BankSoalEntry[]> {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('bank_soal')
+    .select(BANK_SOAL_SELECT)
+    .eq('semester_id', semesterId)
+    .eq('mata_pelajaran_id', mapelId)
+    .order('judul', { ascending: true })
+
+  if (error) throw new Error(error.message)
+  return (data ?? []).map(mapBankSoal)
 }
 

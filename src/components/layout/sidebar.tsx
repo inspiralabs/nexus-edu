@@ -383,6 +383,13 @@ const menuItems: MenuItemConfig[] = [
         minRole: 'admin',
       },
       {
+        id: 'admin-tipe-nilai',
+        label: 'Tipe Nilai',
+        href: '/admin/tipe-nilai',
+        icon: Sliders,
+        minRole: 'admin',
+      },
+      {
         id: 'admin-announcements',
         label: 'Pengumuman',
         href: '/admin/announcements',

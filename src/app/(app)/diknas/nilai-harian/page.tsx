@@ -36,6 +36,7 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { toast } from '@/components/ui/use-toast'
 import { useAuth } from '@/hooks/use-auth'
 import { useDebounce } from '@/hooks/use-debounce'
+import { Checkbox } from '@/components/ui/checkbox'
 import { logAudit } from '@/lib/audit/log'
 import {
   approveNilaiHarian,
@@ -50,9 +51,12 @@ import {
   searchBankSoal,
   searchMataKuliah,
   updateNilaiHarian,
+  getBankSoalForAutoFill,
+  getBankSoalOptions,
   type MataKuliah,
   type NilaiHarianEntry,
 } from '@/lib/queries/diknas'
+import { getTipeNilai } from '@/lib/queries/tipe-nilai'
 import { searchStudents } from '@/lib/queries/students'
 import type { Unit } from '@/lib/supabase/types'
 import { GuruMapelGate } from '../_components/guru-mapel-gate'
@@ -69,11 +73,13 @@ const nilaiHarianSchema = z.object({
   mata_pelajaran_id: z.string().min(1, 'Pilih mata pelajaran'),
   semester_id: z.string().nullable(),
   tipe_nilai: z.enum(['Formatif', 'Sumatif']),
+  tipe_nilai_id: z.string().nullable(),
   nama_tugas: z.string().min(1, 'Nama tugas wajib diisi'),
   materi: z.string().nullable(),
   bab: z.string().nullable(),
   nilai_asli: z.number().min(0).max(100).nullable(),
   bank_soal_id: z.string().nullable(),
+  tipe_soal: z.string().nullable(),
   tanggal: z.date().nullable(),
 })
 
@@ -116,11 +122,14 @@ export default function NilaiHarianPage() {
   // Bulk input states
   const [bulkKelas, setBulkKelas] = useState('')
   const [bulkMapel, setBulkMapel] = useState('')
+  const [bulkSemesterId, setBulkSemesterId] = useState('')
   const [bulkTanggal, setBulkTanggal] = useState<Date>(new Date())
-  const [bulkTipeNilai, setBulkTipeNilai] = useState<'Formatif' | 'Sumatif'>('Formatif')
+  const [bulkTipeNilaiId, setBulkTipeNilaiId] = useState('')
+  const [isAutoFilled, setIsAutoFilled] = useState(false)
   const [bulkNamaTugas, setBulkNamaTugas] = useState('')
   const [bulkMateri, setBulkMateri] = useState('')
-  const [bulkBab, setBulkBab] = useState('')
+  const [bulkBabText, setBulkBabText] = useState('')
+  const [bulkTipeSoal, setBulkTipeSoal] = useState('')
   const [bulkBankSoal, setBulkBankSoal] = useState('')
   const [bulkScores, setBulkScores] = useState<Record<string, number | null>>({})
 
@@ -157,16 +166,16 @@ export default function NilaiHarianPage() {
       mata_pelajaran_id: singleMapelId ?? '',
       semester_id: null,
       tipe_nilai: 'Formatif',
+      tipe_nilai_id: null,
       nama_tugas: '',
       materi: null,
-      bab: null,
+      bab: '',
       nilai_asli: null,
       bank_soal_id: null,
+      tipe_soal: null,
       tanggal: new Date(),
     },
-  })
-
-  // Sync mapel lock
+  })  // Sync mapel lock
   useEffect(() => {
     if (singleMapelId) {
       setFilterMapel(singleMapelId)
@@ -174,8 +183,6 @@ export default function NilaiHarianPage() {
       form.setValue('mata_pelajaran_id', singleMapelId)
     }
   }, [singleMapelId, form])
-
-  const isFormOpen = isEditOpen
 
   // ─── Queries ────────────────────────────────────────────────────────────────
 
@@ -188,6 +195,110 @@ export default function NilaiHarianPage() {
     queryKey: ['semester-options'],
     queryFn: getSemesterOptions,
   })
+
+  const { data: tipeNilaiList = [] } = useQuery({
+    queryKey: ['tipe-nilai-list'],
+    queryFn: getTipeNilai,
+  })
+
+  useEffect(() => {
+    if (activeSemester?.id && !bulkSemesterId) {
+      setBulkSemesterId(activeSemester.id)
+    }
+  }, [activeSemester, bulkSemesterId])
+
+  // Fetch bank soal options for bulk input
+  const { data: bulkBankSoalOptions = [] } = useQuery({
+    queryKey: ['bank-soal-options-bulk', bulkSemesterId, bulkMapel],
+    queryFn: () => getBankSoalOptions(bulkSemesterId, bulkMapel),
+    enabled: Boolean(bulkSemesterId && bulkMapel),
+  })
+
+  const filteredBulkBankSoals = useMemo(() => {
+    return bulkBankSoalOptions.filter((bs) => bs.tipe_nilai?.jenis_nilai !== 'Ujian Akhir Semester')
+  }, [bulkBankSoalOptions])
+
+  // Monitor changes to bulkBankSoal state
+  useEffect(() => {
+    if (bulkBankSoal) {
+      const selectedBs = filteredBulkBankSoals.find((b) => b.id === bulkBankSoal)
+      if (selectedBs) {
+        setBulkNamaTugas(selectedBs.judul)
+        setBulkTipeSoal(selectedBs.tipe || '')
+        setBulkMateri(selectedBs.materi || '')
+        setBulkBabText(selectedBs.bab ? selectedBs.bab.join(', ') : '')
+        setBulkTipeNilaiId(selectedBs.tipe_nilai_id || '')
+        setIsAutoFilled(true)
+      }
+    } else {
+      setBulkNamaTugas('')
+      setBulkTipeSoal('')
+      setBulkMateri('')
+      setBulkBabText('')
+      setBulkTipeNilaiId('')
+      setIsAutoFilled(false)
+    }
+  }, [bulkBankSoal, filteredBulkBankSoals])
+
+  const isFormOpen = isEditOpen
+  const editSemesterId = form.watch('semester_id')
+  const editMapelId = form.watch('mata_pelajaran_id')
+
+  const { data: editBankSoalOptions = [] } = useQuery({
+    queryKey: ['bank-soal-options-edit', editSemesterId, editMapelId],
+    queryFn: () => getBankSoalOptions(editSemesterId!, editMapelId!),
+    enabled: Boolean(editSemesterId && editMapelId && (isEditOpen || isFormOpen)),
+  })
+
+  const filteredEditBankSoals = useMemo(() => {
+    return editBankSoalOptions.filter((bs) => bs.tipe_nilai?.jenis_nilai !== 'Ujian Akhir Semester')
+  }, [editBankSoalOptions])
+
+  const bankSoalComboboxOptions = useMemo(() => {
+    const list = filteredEditBankSoals.map((b) => ({ value: b.id, label: b.judul }))
+    if (editingItem?.bank_soal && !list.some(opt => opt.value === editingItem.bank_soal_id)) {
+      list.push({ value: editingItem.bank_soal_id!, label: editingItem.bank_soal.judul })
+    }
+    return list
+  }, [filteredEditBankSoals, editingItem])
+
+  const watchedBankSoalId = form.watch('bank_soal_id')
+  const [prevBankSoalId, setPrevBankSoalId] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (isEditOpen) {
+      setPrevBankSoalId(editingItem?.bank_soal_id || null)
+    } else {
+      setPrevBankSoalId(null)
+    }
+  }, [isEditOpen, editingItem])
+
+  useEffect(() => {
+    if (watchedBankSoalId === prevBankSoalId) return
+
+    if (watchedBankSoalId) {
+      const selectedBs = filteredEditBankSoals.find((b) => b.id === watchedBankSoalId)
+      if (selectedBs) {
+        form.setValue('nama_tugas', selectedBs.judul)
+        form.setValue('tipe_soal', selectedBs.tipe || '')
+        form.setValue('materi', selectedBs.materi || '')
+        form.setValue('bab', selectedBs.bab ? selectedBs.bab.join(', ') : '')
+        form.setValue('tipe_nilai_id', selectedBs.tipe_nilai_id || null)
+        setPrevBankSoalId(watchedBankSoalId)
+      }
+    } else {
+      form.setValue('nama_tugas', '')
+      form.setValue('tipe_soal', '')
+      form.setValue('materi', '')
+      form.setValue('bab', '')
+      form.setValue('tipe_nilai_id', null)
+      setPrevBankSoalId(null)
+    }
+  }, [watchedBankSoalId, prevBankSoalId, filteredEditBankSoals])
+
+  const selectedTipeNilaiObj = useMemo(() => {
+    return tipeNilaiList.find((t) => t.id === bulkTipeNilaiId)
+  }, [bulkTipeNilaiId, tipeNilaiList])
 
   const resolvedSemesterId = useMemo(() => {
     if (filterSemester === 'aktif') return activeSemester?.id ?? undefined
@@ -283,11 +394,13 @@ export default function NilaiHarianPage() {
       mata_pelajaran_id: singleMapelId ?? '',
       semester_id: null,
       tipe_nilai: 'Formatif',
+      tipe_nilai_id: null,
       nama_tugas: '',
       materi: null,
-      bab: null,
+      bab: '',
       nilai_asli: null,
       bank_soal_id: null,
+      tipe_soal: null,
       tanggal: new Date(),
     })
     setSiswaOptions([])
@@ -317,15 +430,18 @@ export default function NilaiHarianPage() {
       mata_pelajaran_id: item.mata_pelajaran_id,
       semester_id: item.semester_id,
       tipe_nilai: item.tipe_nilai,
+      tipe_nilai_id: item.tipe_nilai_id || null,
       nama_tugas: item.nama_tugas,
       materi: item.materi,
-      bab: item.bab,
+      bab: item.bab ? item.bab.join(', ') : '',
       nilai_asli: item.nilai_asli,
       bank_soal_id: item.bank_soal_id,
+      tipe_soal: item.bank_soal?.tipe || null,
       tanggal: item.tanggal ? parseISO(item.tanggal) : new Date(),
     })
     setIsEditOpen(true)
   }
+  type NilaiHarianPayload = Omit<NilaiHarianFormValues, 'bab'> & { bab: string[] | null }
 
   function formatTanggal(t: string | null) {
     if (!t) return '-'
@@ -339,7 +455,7 @@ export default function NilaiHarianPage() {
   // ─── Mutations ──────────────────────────────────────────────────────────────
 
   const createMutation = useMutation({
-    mutationFn: (values: NilaiHarianFormValues) => {
+    mutationFn: (values: NilaiHarianPayload) => {
       if (!profile?.id) throw new Error('Sesi pengguna tidak valid')
       if (!(values.semester_id ?? activeSemester?.id)) throw new Error('Semester aktif tidak ditemukan')
       return createNilaiHarian({
@@ -347,6 +463,7 @@ export default function NilaiHarianPage() {
         mata_pelajaran_id: values.mata_pelajaran_id,
         semester_id: values.semester_id ?? activeSemester?.id ?? null,
         tipe_nilai: values.tipe_nilai,
+        tipe_nilai_id: values.tipe_nilai_id,
         nama_tugas: values.nama_tugas,
         materi: values.materi,
         bab: values.bab,
@@ -370,9 +487,10 @@ export default function NilaiHarianPage() {
   })
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, values }: { id: string; values: NilaiHarianFormValues }) =>
+    mutationFn: ({ id, values }: { id: string; values: NilaiHarianPayload }) =>
       updateNilaiHarian(id, {
         tipe_nilai: values.tipe_nilai,
+        tipe_nilai_id: values.tipe_nilai_id,
         nama_tugas: values.nama_tugas,
         materi: values.materi,
         bab: values.bab,
@@ -480,7 +598,7 @@ export default function NilaiHarianPage() {
   })
 
   const bulkCreateMutation = useMutation({
-    mutationFn: (payload: any[]) => bulkCreateNilaiHarian(payload),
+    mutationFn: (payload: Parameters<typeof bulkCreateNilaiHarian>[0]) => bulkCreateNilaiHarian(payload),
     onSuccess: async (results) => {
       const userId = getUserId()
       if (userId) {
@@ -495,8 +613,11 @@ export default function NilaiHarianPage() {
       setBulkScores({})
       setBulkNamaTugas('')
       setBulkMateri('')
-      setBulkBab('')
+      setBulkBabText('')
+      setBulkTipeSoal('')
       setBulkBankSoal('')
+      setBulkTipeNilaiId('')
+      setIsAutoFilled(false)
     },
     onError: (e: Error) =>
       toast({ title: 'Gagal menyimpan nilai massal', description: e.message, variant: 'destructive' }),
@@ -648,10 +769,14 @@ export default function NilaiHarianPage() {
       toast({ title: 'Semester aktif tidak ditemukan', variant: 'destructive' })
       return
     }
+    const mappedValues: NilaiHarianPayload = {
+      ...values,
+      bab: values.bab ? values.bab.split(',').map((s) => s.trim()).filter(Boolean) : null,
+    }
     if (isEditOpen && editingItem) {
-      updateMutation.mutate({ id: editingItem.id, values })
+      updateMutation.mutate({ id: editingItem.id, values: mappedValues })
     } else {
-      createMutation.mutate(values)
+      createMutation.mutate(mappedValues)
     }
   }
 
@@ -754,16 +879,17 @@ export default function NilaiHarianPage() {
             </Button>
           )}
           <Button
-            size="sm"
             onClick={() => {
               setBulkKelas('')
               setBulkScores({})
               setBulkNamaTugas('')
               setBulkMateri('')
-              setBulkBab('')
+              setBulkBabText('')
+              setBulkTipeSoal('')
               setBulkBankSoal('')
               setBulkTanggal(new Date())
-              setBulkTipeNilai('Formatif')
+              setBulkTipeNilaiId('')
+              setIsAutoFilled(false)
               if (singleMapelId) {
                 setBulkMapel(singleMapelId)
               } else {
@@ -842,57 +968,108 @@ export default function NilaiHarianPage() {
               </div>
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-2">
-              {/* Tipe Nilai */}
-              <div className="space-y-1">
-                <Label>Tipe Nilai</Label>
-                <Select value={form.watch('tipe_nilai')} onValueChange={(v) => form.setValue('tipe_nilai', v as 'Formatif' | 'Sumatif')}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Formatif">Formatif</SelectItem>
-                    <SelectItem value="Sumatif">Sumatif</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+            {(() => {
+              const isSingleAutoFilled = Boolean(form.watch('bank_soal_id'))
+              return (
+                <>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    {/* Tipe Nilai */}
+                    <div className="space-y-1">
+                      <Label>Tipe Nilai</Label>
+                      <Select
+                        value={form.watch('tipe_nilai_id') ?? ''}
+                        onValueChange={(v) => form.setValue('tipe_nilai_id', v || null)}
+                        disabled={isSingleAutoFilled}
+                      >
+                        <SelectTrigger><SelectValue placeholder="Pilih Tipe Nilai" /></SelectTrigger>
+                        <SelectContent>
+                          {tipeNilaiList
+                            .filter((t) => t.jenis_nilai !== 'Ujian Akhir Semester')
+                            .map((t) => (
+                              <SelectItem key={t.id} value={t.id}>
+                                {t.nama_tipe} ({t.jenis_nilai})
+                              </SelectItem>
+                            ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
 
-              {/* Tanggal */}
-              <div className="space-y-1">
-                <Label>Tanggal</Label>
-                <DatePicker
-                  value={form.watch('tanggal') ?? undefined}
-                  onChange={(d) => form.setValue('tanggal', d ?? null)}
-                />
-              </div>
-            </div>
+                    {/* Tanggal */}
+                    <div className="space-y-1">
+                      <Label>Tanggal</Label>
+                      <DatePicker
+                        value={form.watch('tanggal') ?? undefined}
+                        onChange={(d) => form.setValue('tanggal', d ?? null)}
+                      />
+                    </div>
+                  </div>
 
-            {/* Nama Tugas */}
-            <div className="space-y-1">
-              <Label>Nama Tugas</Label>
-              <Input
-                {...form.register('nama_tugas')}
-                placeholder="Contoh: Ulangan Bab 1, PR Hal. 30-35"
-              />
-              {form.formState.errors.nama_tugas && (
-                <p className="text-xs text-destructive">{form.formState.errors.nama_tugas.message}</p>
-              )}
-            </div>
+                  {/* Bank Soal Selector */}
+                  <div className="space-y-1">
+                    <Label>Bank Soal (opsional)</Label>
+                    <Select
+                      value={form.watch('bank_soal_id') ?? 'none'}
+                      onValueChange={(v) => form.setValue('bank_soal_id', v === 'none' ? null : v)}
+                    >
+                      <SelectTrigger><SelectValue placeholder="Pilih Bank Soal..." /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">-- Input Manual (Tanpa Bank Soal) --</SelectItem>
+                        {bankSoalComboboxOptions.map((opt) => (
+                          <SelectItem key={opt.value} value={opt.value}>
+                            {opt.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
 
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-1">
-                <Label>Materi (opsional)</Label>
-                <Input
-                  {...form.register('materi')}
-                  placeholder="Nama materi/topik"
-                />
-              </div>
-              <div className="space-y-1">
-                <Label>Bab (opsional)</Label>
-                <Input
-                  {...form.register('bab')}
-                  placeholder="Contoh: Bab 3"
-                />
-              </div>
-            </div>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    {/* Tipe Soal */}
+                    <div className="space-y-1">
+                      <Label>Tipe Soal (Pilihan Ganda/Essai)</Label>
+                      <Input
+                        {...form.register('tipe_soal')}
+                        placeholder="Contoh: Pilihan Ganda"
+                        disabled={isSingleAutoFilled}
+                      />
+                    </div>
+
+                    {/* Nama Tugas */}
+                    <div className="space-y-1">
+                      <Label>Nama Tugas</Label>
+                      <Input
+                        {...form.register('nama_tugas')}
+                        placeholder="Contoh: Ulangan Bab 1, PR Hal. 30-35"
+                        disabled={isSingleAutoFilled}
+                      />
+                      {form.formState.errors.nama_tugas && (
+                        <p className="text-xs text-destructive">{form.formState.errors.nama_tugas.message}</p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="space-y-1">
+                      <Label>Materi (opsional)</Label>
+                      <Input
+                        {...form.register('materi')}
+                        placeholder="Nama materi/topik"
+                        disabled={isSingleAutoFilled}
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <Label>Bab (opsional, pisahkan dengan koma)</Label>
+                      <Input
+                        {...form.register('bab')}
+                        placeholder="Contoh: BAB 1, BAB 2"
+                        disabled={isSingleAutoFilled}
+                      />
+                    </div>
+                  </div>
+                </>
+              )
+            })()}
 
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-1">
@@ -905,17 +1082,6 @@ export default function NilaiHarianPage() {
                   value={form.watch('nilai_asli') ?? ''}
                   onChange={(e) => form.setValue('nilai_asli', e.target.value === '' ? null : parseFloat(e.target.value))}
                   placeholder="0–100"
-                />
-              </div>
-              <div className="space-y-1">
-                <Label>Bank Soal (opsional)</Label>
-                <Combobox
-                  options={bankSoalOptions}
-                  value={form.watch('bank_soal_id') ?? ''}
-                  onSelect={(v) => form.setValue('bank_soal_id', v || null)}
-                  onSearch={setBankSoalSearch}
-                  placeholder="Pilih bank soal..."
-                  emptyMessage="Bank soal tidak ditemukan"
                 />
               </div>
             </div>
@@ -947,6 +1113,10 @@ export default function NilaiHarianPage() {
                 toast({ title: 'Pilih mata pelajaran terlebih dahulu', variant: 'destructive' })
                 return
               }
+              if (!bulkTipeNilaiId) {
+                toast({ title: 'Pilih tipe nilai terlebih dahulu', variant: 'destructive' })
+                return
+              }
               if (!bulkNamaTugas.trim()) {
                 toast({ title: 'Nama tugas wajib diisi', variant: 'destructive' })
                 return
@@ -954,21 +1124,42 @@ export default function NilaiHarianPage() {
               const payload = siswaPerKelas.map((s) => ({
                 siswa_id: s.id,
                 mata_pelajaran_id: bulkMapel,
-                semester_id: activeSemester?.id ?? null,
-                tipe_nilai: bulkTipeNilai,
+                semester_id: bulkSemesterId || activeSemester?.id || null,
+                tipe_nilai: (selectedTipeNilaiObj ? (selectedTipeNilaiObj.jenis_nilai === 'Harian' ? 'Formatif' : 'Sumatif') : 'Formatif') as 'Formatif' | 'Sumatif',
+                tipe_nilai_id: bulkTipeNilaiId || null,
                 nama_tugas: bulkNamaTugas,
                 materi: bulkMateri || null,
-                bab: bulkBab || null,
+                bab: bulkBabText ? bulkBabText.split(',').map((b) => b.trim()).filter(Boolean) : null,
                 nilai_asli: bulkScores[s.id] !== undefined && bulkScores[s.id] !== null ? bulkScores[s.id] : null,
                 dicatat_oleh: profile?.id ?? null,
                 tanggal: bulkTanggal ? format(bulkTanggal, 'yyyy-MM-dd') : null,
+                bank_soal_id: bulkBankSoal || null,
               }))
               bulkCreateMutation.mutate(payload)
             }}
             className="space-y-4"
           >
             {/* Meta Data Fields */}
-            <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-4">
+            <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-5">
+              <div className="space-y-1">
+                <Label>Tanggal</Label>
+                <DatePicker value={bulkTanggal} onChange={(d) => setBulkTanggal(d ?? new Date())} />
+              </div>
+
+              <div className="space-y-1">
+                <Label>Semester</Label>
+                <Select value={bulkSemesterId} onValueChange={setBulkSemesterId}>
+                  <SelectTrigger><SelectValue placeholder="Pilih Semester" /></SelectTrigger>
+                  <SelectContent>
+                    {semesterList.map((s) => (
+                      <SelectItem key={s.id} value={s.id}>
+                        Smt {s.nomor_semester} — {s.tahun_pelajaran?.nama}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
               <div className="space-y-1">
                 <Label>Kelas</Label>
                 <Select value={bulkKelas} onValueChange={setBulkKelas}>
@@ -990,29 +1181,63 @@ export default function NilaiHarianPage() {
               </div>
 
               <div className="space-y-1">
-                <Label>Tipe Nilai</Label>
-                <Select value={bulkTipeNilai} onValueChange={(v) => setBulkTipeNilai(v as 'Formatif' | 'Sumatif')}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                <Label>Judul/Nama Bank Soal</Label>
+                <Select
+                  value={bulkBankSoal || 'none'}
+                  onValueChange={(v) => setBulkBankSoal(v === 'none' ? '' : v)}
+                  disabled={!bulkSemesterId || !bulkMapel}
+                >
+                  <SelectTrigger><SelectValue placeholder="Pilih Bank Soal..." /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="Formatif">Formatif</SelectItem>
-                    <SelectItem value="Sumatif">Sumatif</SelectItem>
+                    <SelectItem value="none">-- Input Manual (Tanpa Bank Soal) --</SelectItem>
+                    {filteredBulkBankSoals.map((bs) => (
+                      <SelectItem key={bs.id} value={bs.id}>
+                        {bs.judul}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3">
+              <div className="space-y-1">
+                <Label>Tipe Nilai</Label>
+                <Select
+                  value={bulkTipeNilaiId}
+                  onValueChange={setBulkTipeNilaiId}
+                  disabled={isAutoFilled}
+                >
+                  <SelectTrigger><SelectValue placeholder="Pilih Tipe Nilai" /></SelectTrigger>
+                  <SelectContent>
+                    {tipeNilaiList
+                      .filter((t) => t.jenis_nilai !== 'Ujian Akhir Semester')
+                      .map((t) => (
+                        <SelectItem key={t.id} value={t.id}>
+                          {t.nama_tipe} ({t.jenis_nilai})
+                        </SelectItem>
+                      ))}
                   </SelectContent>
                 </Select>
               </div>
 
               <div className="space-y-1">
-                <Label>Tanggal</Label>
-                <DatePicker value={bulkTanggal} onChange={(d) => setBulkTanggal(d ?? new Date())} />
+                <Label>Tipe Soal (Pilihan Ganda/Essai)</Label>
+                <Input
+                  value={bulkTipeSoal}
+                  onChange={(e) => setBulkTipeSoal(e.target.value)}
+                  placeholder="Contoh: Pilihan Ganda"
+                  disabled={isAutoFilled}
+                />
               </div>
-            </div>
 
-            <div className="grid gap-4 sm:grid-cols-3">
               <div className="space-y-1">
                 <Label>Nama Tugas</Label>
                 <Input
                   value={bulkNamaTugas}
                   onChange={(e) => setBulkNamaTugas(e.target.value)}
                   placeholder="Contoh: Ulangan Bab 1"
+                  disabled={isAutoFilled}
                   required
                 />
               </div>
@@ -1023,29 +1248,19 @@ export default function NilaiHarianPage() {
                   value={bulkMateri}
                   onChange={(e) => setBulkMateri(e.target.value)}
                   placeholder="Nama materi/topik"
+                  disabled={isAutoFilled}
                 />
               </div>
 
-              <div className="space-y-1">
-                <Label>Bab (opsional)</Label>
+              <div className="space-y-1 md:col-span-2">
+                <Label>Bab (opsional, pisahkan dengan koma)</Label>
                 <Input
-                  value={bulkBab}
-                  onChange={(e) => setBulkBab(e.target.value)}
-                  placeholder="Contoh: Bab 1"
+                  value={bulkBabText}
+                  onChange={(e) => setBulkBabText(e.target.value)}
+                  placeholder="Contoh: BAB 1, BAB 2"
+                  disabled={isAutoFilled}
                 />
               </div>
-            </div>
-
-            <div className="space-y-1 max-w-md">
-              <Label>Bank Soal (opsional)</Label>
-              <Combobox
-                options={bankSoalOptions}
-                value={bulkBankSoal}
-                onSelect={(v) => setBulkBankSoal(v || '')}
-                onSearch={setBankSoalSearch}
-                placeholder="Pilih bank soal..."
-                emptyMessage="Bank soal tidak ditemukan"
-              />
             </div>
 
             {/* Student List & Scores */}

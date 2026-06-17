@@ -11,6 +11,7 @@ import { Combobox } from '@/components/shared/combobox'
 import { ConfirmDialog } from '@/components/shared/confirm-dialog'
 import { DataTable } from '@/components/shared/data-table'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
   Dialog,
   DialogContent,
@@ -46,6 +47,7 @@ import {
   type BankSoalEntry,
   type MataKuliah,
 } from '@/lib/queries/diknas'
+import { getTipeNilai } from '@/lib/queries/tipe-nilai'
 import { GuruMapelGate } from '../_components/guru-mapel-gate'
 
 // ─── Konstanta ────────────────────────────────────────────────────────────────
@@ -58,8 +60,11 @@ const TIPE_SOAL_OPTIONS = ['Pilihan Ganda', 'Essai'] as const
 const bankSoalSchema = z.object({
   judul: z.string().min(1, 'Judul wajib diisi'),
   tipe: z.enum(TIPE_SOAL_OPTIONS),
-  mata_pelajaran_id: z.string().nullable(),
+  mata_pelajaran_id: z.string().min(1, 'Mata pelajaran wajib dipilih').nullable(),
   semester_id: z.string().nullable(),
+  tipe_nilai_id: z.string().uuid('Pilih tipe nilai'),
+  materi: z.string().min(1, 'Materi wajib diisi'),
+  bab: z.array(z.string()).min(1, 'Pilih minimal satu BAB'),
 })
 
 type BankSoalFormValues = z.infer<typeof bankSoalSchema>
@@ -104,33 +109,61 @@ export default function BankSoalPage() {
     queryFn: () => getMataKuliah(),
   })
 
-  const isSingleMapel = useMemo(() => {
-    return profile?.role === 'user' && mapelList.length === 1
+  const filteredMapels = useMemo(() => {
+    if (profile?.role === 'user') {
+      const allowedIds = profile.mapel_ids || []
+      return mapelList.filter((m: MataKuliah) => allowedIds.includes(m.id))
+    }
+    return mapelList
   }, [profile, mapelList])
 
-  const singleMapelId = useMemo(() => {
-    return isSingleMapel ? mapelList[0]?.id ?? null : null
-  }, [isSingleMapel, mapelList])
+  const shouldDisableMapelSelect = useMemo(() => {
+    return filteredMapels.length === 1
+  }, [filteredMapels])
 
+  const singleMapelIdVal = useMemo(() => {
+    return shouldDisableMapelSelect ? filteredMapels[0].id : null
+  }, [shouldDisableMapelSelect, filteredMapels])
   const form = useForm<BankSoalFormValues>({
     resolver: zodResolver(bankSoalSchema),
     defaultValues: {
       judul: '',
       tipe: 'Pilihan Ganda',
-      mata_pelajaran_id: singleMapelId ?? null,
+      mata_pelajaran_id: singleMapelIdVal ?? null,
       semester_id: null,
+      tipe_nilai_id: '',
+      materi: '',
+      bab: [],
     },
   })
 
   // Sync mapel lock
   useEffect(() => {
-    if (singleMapelId) {
-      setFilterMapel(singleMapelId)
-      form.setValue('mata_pelajaran_id', singleMapelId)
+    if (singleMapelIdVal) {
+      setFilterMapel(singleMapelIdVal)
+      form.setValue('mata_pelajaran_id', singleMapelIdVal)
     }
-  }, [singleMapelId, form])
+  }, [singleMapelIdVal, form])
 
   const isFormOpen = isAddOpen || isEditOpen
+
+  // Reset Form & State via Modal Lifecycle
+  useEffect(() => {
+    if (!isFormOpen) {
+      setIsUploading(false)
+      setSelectedFile(null)
+      setPreviewUrl(null)
+      form.reset({
+        judul: '',
+        tipe: 'Pilihan Ganda',
+        mata_pelajaran_id: shouldDisableMapelSelect ? singleMapelIdVal : null,
+        semester_id: null,
+        tipe_nilai_id: '',
+        materi: '',
+        bab: [],
+      })
+    }
+  }, [isFormOpen, shouldDisableMapelSelect, singleMapelIdVal, form])
 
   // ─── Queries ────────────────────────────────────────────────────────────────
 
@@ -143,6 +176,16 @@ export default function BankSoalPage() {
     queryKey: ['semester-options'],
     queryFn: getSemesterOptions,
   })
+
+  const { data: tipeNilaiList = [] } = useQuery({
+    queryKey: ['tipe-nilai-list'],
+    queryFn: getTipeNilai,
+  })
+
+  const selectedTipeNilaiId = form.watch('tipe_nilai_id')
+  const selectedTipeNilai = useMemo(() => {
+    return tipeNilaiList.find((t) => t.id === selectedTipeNilaiId)
+  }, [selectedTipeNilaiId, tipeNilaiList])
 
 
 
@@ -172,13 +215,13 @@ export default function BankSoalPage() {
   const { data: searchedMapels = [] } = useQuery({
     queryKey: ['mapel-search-bank', debouncedMapelSearch],
     queryFn: () => searchMataKuliah(debouncedMapelSearch),
-    enabled: isFormOpen && !isSingleMapel,
+    enabled: isFormOpen && !shouldDisableMapelSelect,
   })
 
   const mapelOptions = useMemo<ComboboxOption[]>(() => {
-    if (isSingleMapel && singleMapelId && mapelList.length > 0) {
-      const singleMapel = mapelList.find((m: MataKuliah) => m.id === singleMapelId)
-      return singleMapel ? [{ value: singleMapel.id, label: singleMapel.nama_mapel }] : []
+    if (shouldDisableMapelSelect && singleMapelIdVal && filteredMapels.length > 0) {
+      const singleMapel = filteredMapels[0]
+      return [{ value: singleMapel.id, label: `${singleMapel.nama_mapel} - ${singleMapel.unit || ''}` }]
     }
 
     const options: ComboboxOption[] = []
@@ -186,18 +229,29 @@ export default function BankSoalPage() {
     if (isEditOpen && editingItem?.mata_pelajaran) {
       options.push({
         value: editingItem.mata_pelajaran_id!,
-        label: editingItem.mata_pelajaran.nama_mapel,
+        label: `${editingItem.mata_pelajaran.nama_mapel} - ${editingItem.mata_pelajaran.unit || ''}`,
       })
     }
 
-    searchedMapels.forEach((m) => {
+    const allowedIds = profile?.mapel_ids || []
+    const filteredSearch = profile?.role === 'user'
+      ? searchedMapels.filter((m) => allowedIds.includes(m.id))
+      : searchedMapels
+
+    filteredSearch.forEach((m) => {
       if (!options.some((opt) => opt.value === m.id)) {
-        options.push({ value: m.id, label: m.nama_mapel })
+        options.push({ value: m.id, label: `${m.nama_mapel} - ${m.unit || ''}` })
+      }
+    })
+
+    filteredMapels.forEach((m) => {
+      if (!options.some((opt) => opt.value === m.id)) {
+        options.push({ value: m.id, label: `${m.nama_mapel} - ${m.unit || ''}` })
       }
     })
 
     return options
-  }, [isSingleMapel, singleMapelId, mapelList, isEditOpen, editingItem, searchedMapels])
+  }, [shouldDisableMapelSelect, singleMapelIdVal, filteredMapels, profile, searchedMapels, isEditOpen, editingItem])
 
   // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -216,8 +270,11 @@ export default function BankSoalPage() {
     form.reset({
       judul: '',
       tipe: 'Pilihan Ganda',
-      mata_pelajaran_id: singleMapelId ?? null,
+      mata_pelajaran_id: shouldDisableMapelSelect ? singleMapelIdVal : null,
       semester_id: null,
+      tipe_nilai_id: '',
+      materi: '',
+      bab: [],
     })
   }
 
@@ -232,10 +289,12 @@ export default function BankSoalPage() {
       tipe: item.tipe,
       mata_pelajaran_id: item.mata_pelajaran_id,
       semester_id: item.semester_id,
+      tipe_nilai_id: item.tipe_nilai_id || '',
+      materi: item.materi || '',
+      bab: item.bab || [],
     })
     setIsEditOpen(true)
   }
-
   const createMutation = useMutation({
     mutationFn: (values: BankSoalFormValues & { pdf_url: string }) => {
       if (!profile?.id) throw new Error('Sesi pengguna tidak valid')
@@ -247,6 +306,9 @@ export default function BankSoalPage() {
         semester_id: values.semester_id ?? activeSemester?.id ?? null,
         konten: { pdf_url: values.pdf_url },
         dibuat_oleh: profile.id,
+        tipe_nilai_id: values.tipe_nilai_id,
+        materi: values.materi,
+        bab: values.bab,
       })
     },
     onSuccess: async (result) => {
@@ -268,6 +330,9 @@ export default function BankSoalPage() {
         mata_pelajaran_id: values.mata_pelajaran_id,
         semester_id: values.semester_id ?? activeSemester?.id ?? null,
         konten: { pdf_url: values.pdf_url },
+        tipe_nilai_id: values.tipe_nilai_id,
+        materi: values.materi,
+        bab: values.bab,
       }),
     onSuccess: async (result) => {
       const userId = getUserId()
@@ -332,6 +397,21 @@ export default function BankSoalPage() {
       },
       { accessorKey: 'tipe', header: 'Tipe' },
       {
+        id: 'tipe_nilai',
+        header: 'Tipe Nilai',
+        cell: ({ row }) => row.original.tipe_nilai?.nama_tipe || '-',
+      },
+      {
+        id: 'materi',
+        header: 'Materi',
+        cell: ({ row }) => row.original.materi || '-',
+      },
+      {
+        id: 'bab',
+        header: 'Bab',
+        cell: ({ row }) => row.original.bab?.join(', ') || '-',
+      },
+      {
         id: 'mapel',
         header: 'Mapel',
         cell: ({ row }) => row.original.mata_pelajaran?.nama_mapel ?? '-',
@@ -395,12 +475,11 @@ export default function BankSoalPage() {
           description: 'Anda harus memilih berkas PDF soal.',
           variant: 'destructive',
         })
-        setIsUploading(false)
         return
       }
 
       if (isEditOpen && editingItem) {
-        updateMutation.mutate({
+        await updateMutation.mutateAsync({
           id: editingItem.id,
           values: {
             ...values,
@@ -408,17 +487,18 @@ export default function BankSoalPage() {
           },
         })
       } else {
-        createMutation.mutate({
+        await createMutation.mutateAsync({
           ...values,
           pdf_url: finalPdfUrl,
         })
       }
     } catch (e: any) {
       toast({
-        title: 'Gagal mengunggah file',
+        title: 'Gagal menyimpan data',
         description: e.message,
         variant: 'destructive',
       })
+    } finally {
       setIsUploading(false)
     }
   }
@@ -441,12 +521,12 @@ export default function BankSoalPage() {
             className="pl-9"
           />
         </div>
-        <Select value={filterMapel} onValueChange={(v) => { setFilterMapel(v); setPage(1) }} disabled={isSingleMapel}>
+        <Select value={filterMapel} onValueChange={(v) => { setFilterMapel(v); setPage(1) }} disabled={shouldDisableMapelSelect}>
           <SelectTrigger className="w-48"><SelectValue placeholder="Mapel" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Semua Mapel</SelectItem>
-            {mapelList.map((m: MataKuliah) => (
-              <SelectItem key={m.id} value={m.id}>{m.nama_mapel} ({m.unit})</SelectItem>
+            {filteredMapels.map((m: MataKuliah) => (
+              <SelectItem key={m.id} value={m.id}>{m.nama_mapel} - {m.unit}</SelectItem>
             ))}
           </SelectContent>
         </Select>
@@ -548,7 +628,7 @@ export default function BankSoalPage() {
                   onSearch={setMapelSearch}
                   placeholder="Cari mapel..."
                   emptyMessage="Mapel tidak ditemukan"
-                  disabled={isSingleMapel}
+                  disabled={shouldDisableMapelSelect}
                 />
               </div>
             </div>
@@ -568,6 +648,78 @@ export default function BankSoalPage() {
                 </SelectContent>
               </Select>
             </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-1">
+                <Label>Tipe Nilai</Label>
+                <Select
+                  value={form.watch('tipe_nilai_id') ?? ''}
+                  onValueChange={(v) => form.setValue('tipe_nilai_id', v || '')}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Pilih Tipe Nilai" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {tipeNilaiList.map((t) => (
+                      <SelectItem key={t.id} value={t.id}>
+                        {t.nama_tipe} ({t.jenis_nilai})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {selectedTipeNilai && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Jenis: <span className="font-semibold text-primary">{selectedTipeNilai.jenis_nilai}</span>
+                  </p>
+                )}
+                {form.formState.errors.tipe_nilai_id && (
+                  <p className="text-xs text-destructive">{form.formState.errors.tipe_nilai_id.message}</p>
+                )}
+              </div>
+              <div className="space-y-1">
+                <Label>Materi</Label>
+                <Input
+                  {...form.register('materi')}
+                  placeholder="Contoh: Aljabar Linear, Fotosintesis"
+                />
+                {form.formState.errors.materi && (
+                  <p className="text-xs text-destructive">{form.formState.errors.materi.message}</p>
+                )}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Bab (Pilih Bab yang Tercakup)</Label>
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                {Array.from({ length: 8 }).map((_, idx) => {
+                  const babName = `BAB ${idx + 1}`
+                  const currentBab = form.watch('bab') || []
+                  const isChecked = currentBab.includes(babName)
+                  return (
+                    <div key={babName} className="flex items-center space-x-2">
+                      <Checkbox
+                        id={`bab-${babName}`}
+                        checked={isChecked}
+                        onCheckedChange={(checked) => {
+                          if (checked) {
+                            form.setValue('bab', [...currentBab, babName])
+                          } else {
+                            form.setValue('bab', currentBab.filter((b) => b !== babName))
+                          }
+                        }}
+                      />
+                      <Label htmlFor={`bab-${babName}`} className="text-sm font-normal cursor-pointer select-none">
+                        {babName}
+                      </Label>
+                    </div>
+                  )
+                })}
+              </div>
+              {form.formState.errors.bab && (
+                <p className="text-xs text-destructive">{form.formState.errors.bab.message}</p>
+              )}
+            </div>
+
             <div className="space-y-1">
               <Label>Berkas Soal (PDF)</Label>
               <Input

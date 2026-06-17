@@ -3,10 +3,12 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { type ColumnDef } from '@tanstack/react-table'
+import { format, parseISO } from 'date-fns'
 import { CheckCircle2, Edit, Plus, Search, Trash2 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
+import { DatePicker } from '@/components/shared/date-picker'
 import { Combobox } from '@/components/shared/combobox'
 import { ConfirmDialog } from '@/components/shared/confirm-dialog'
 import { DataTable } from '@/components/shared/data-table'
@@ -47,12 +49,17 @@ import {
   getSemesterOptions,
   searchMataKuliah,
   updateNilaiUAS,
+  getBankSoalForAutoFill,
+  getBankSoalOptions,
+  searchBankSoal,
   type MataKuliah,
   type NilaiUASEntry,
 } from '@/lib/queries/diknas'
 import { searchStudents } from '@/lib/queries/students'
 import type { Unit } from '@/lib/supabase/types'
 import { GuruMapelGate } from '../_components/guru-mapel-gate'
+import { getTipeNilai } from '@/lib/queries/tipe-nilai'
+import { Checkbox } from '@/components/ui/checkbox'
 
 // ─── Konstanta ────────────────────────────────────────────────────────────────
 
@@ -65,7 +72,12 @@ const nilaiUASSchema = z.object({
   siswa_id: z.string().min(1, 'Pilih siswa'),
   mata_pelajaran_id: z.string().min(1, 'Pilih mata pelajaran'),
   semester_id: z.string().nullable(),
+  tipe_nilai_id: z.string().nullable(),
+  materi: z.string().nullable(),
+  bab: z.string().nullable(),
   nilai_asli: z.number().min(0).max(100).nullable(),
+  bank_soal_id: z.string().nullable(),
+  tipe_soal: z.string().nullable(),
 })
 
 type NilaiUASFormValues = z.infer<typeof nilaiUASSchema>
@@ -107,16 +119,27 @@ export default function NilaiUASPage() {
   // Bulk input states
   const [bulkKelas, setBulkKelas] = useState('')
   const [bulkMapel, setBulkMapel] = useState('')
+  const [bulkSemesterId, setBulkSemesterId] = useState('')
+  const [bulkTanggal, setBulkTanggal] = useState<Date>(new Date())
+  const [bulkTipeNilaiId, setBulkTipeNilaiId] = useState('')
+  const [isAutoFilled, setIsAutoFilled] = useState(false)
+  const [bulkMateri, setBulkMateri] = useState('')
+  const [bulkBabText, setBulkBabText] = useState('')
+  const [bulkTipeSoal, setBulkTipeSoal] = useState('')
+  const [bulkBankSoal, setBulkBankSoal] = useState('')
   const [bulkScores, setBulkScores] = useState<Record<string, number | null>>({})
 
   const [siswaSearch, setSiswaSearch] = useState('')
   const [mapelSearch, setMapelSearch] = useState('')
+  const [bankSoalSearch, setBankSoalSearch] = useState('')
   const [siswaOptions, setSiswaOptions] = useState<ComboboxOption[]>([])
   const [mapelOptions, setMapelOptions] = useState<ComboboxOption[]>([])
+  const [bankSoalOptions, setBankSoalOptions] = useState<ComboboxOption[]>([])
 
   const debouncedSearch = useDebounce(search, 300)
   const debouncedSiswaSearch = useDebounce(siswaSearch, 300)
   const debouncedMapelSearch = useDebounce(mapelSearch, 300)
+  const debouncedBankSoalSearch = useDebounce(bankSoalSearch, 300)
 
   const { data: mapelList = [] } = useQuery({
     queryKey: ['mapel-list', activeUnit],
@@ -131,13 +154,35 @@ export default function NilaiUASPage() {
     return isSingleMapel ? mapelList[0]?.id ?? null : null
   }, [isSingleMapel, mapelList])
 
+  // ─── Queries ────────────────────────────────────────────────────────────────
+
+  const { data: activeSemester } = useQuery({
+    queryKey: ['active-semester-diknas'],
+    queryFn: getActiveSemesterDiknas,
+  })
+
+  const { data: semesterList = [] } = useQuery({
+    queryKey: ['semester-options'],
+    queryFn: getSemesterOptions,
+  })
+
+  const { data: tipeNilaiList = [] } = useQuery({
+    queryKey: ['tipe-nilai-list'],
+    queryFn: getTipeNilai,
+  })
+
   const form = useForm<NilaiUASFormValues>({
     resolver: zodResolver(nilaiUASSchema),
     defaultValues: {
       siswa_id: '',
       mata_pelajaran_id: singleMapelId ?? '',
       semester_id: null,
+      tipe_nilai_id: null,
+      materi: null,
+      bab: '',
       nilai_asli: null,
+      bank_soal_id: null,
+      tipe_soal: null,
     },
   })
 
@@ -150,19 +195,97 @@ export default function NilaiUASPage() {
     }
   }, [singleMapelId, form])
 
+  useEffect(() => {
+    if (activeSemester?.id && !bulkSemesterId) {
+      setBulkSemesterId(activeSemester.id)
+    }
+  }, [activeSemester, bulkSemesterId])
+
+  // Fetch bank soal options for bulk input
+  const { data: bulkBankSoalOptions = [] } = useQuery({
+    queryKey: ['bank-soal-options-bulk', bulkSemesterId, bulkMapel],
+    queryFn: () => getBankSoalOptions(bulkSemesterId, bulkMapel),
+    enabled: Boolean(bulkSemesterId && bulkMapel),
+  })
+
+  const filteredBulkBankSoals = useMemo(() => {
+    return bulkBankSoalOptions.filter((bs) => bs.tipe_nilai?.jenis_nilai === 'Ujian Akhir Semester')
+  }, [bulkBankSoalOptions])
+
+  // Monitor changes to bulkBankSoal state
+  useEffect(() => {
+    if (bulkBankSoal) {
+      const selectedBs = filteredBulkBankSoals.find((b) => b.id === bulkBankSoal)
+      if (selectedBs) {
+        setBulkTipeSoal(selectedBs.tipe || '')
+        setBulkMateri(selectedBs.materi || '')
+        setBulkBabText(selectedBs.bab ? selectedBs.bab.join(', ') : '')
+        setBulkTipeNilaiId(selectedBs.tipe_nilai_id || '')
+        setIsAutoFilled(true)
+      }
+    } else {
+      setBulkTipeSoal('')
+      setBulkMateri('')
+      setBulkBabText('')
+      setBulkTipeNilaiId('')
+      setIsAutoFilled(false)
+    }
+  }, [bulkBankSoal, filteredBulkBankSoals])
+
   const isFormOpen = isEditOpen
 
-  // ─── Queries ────────────────────────────────────────────────────────────────
+  const editSemesterId = form.watch('semester_id')
+  const editMapelId = form.watch('mata_pelajaran_id')
 
-  const { data: activeSemester } = useQuery({
-    queryKey: ['active-semester-diknas'],
-    queryFn: getActiveSemesterDiknas,
+  const { data: editBankSoalOptions = [] } = useQuery({
+    queryKey: ['bank-soal-options-edit', editSemesterId, editMapelId],
+    queryFn: () => getBankSoalOptions(editSemesterId!, editMapelId!),
+    enabled: Boolean(editSemesterId && editMapelId && (isEditOpen || isFormOpen)),
   })
 
-  const { data: semesterList = [] } = useQuery({
-    queryKey: ['semester-options'],
-    queryFn: getSemesterOptions,
-  })
+  const filteredEditBankSoals = useMemo(() => {
+    return editBankSoalOptions.filter((bs) => bs.tipe_nilai?.jenis_nilai === 'Ujian Akhir Semester')
+  }, [editBankSoalOptions])
+
+  const bankSoalComboboxOptions = useMemo(() => {
+    const list = filteredEditBankSoals.map((b) => ({ value: b.id, label: b.judul }))
+    if (editingItem?.bank_soal && !list.some(opt => opt.value === editingItem.bank_soal_id)) {
+      list.push({ value: editingItem.bank_soal_id!, label: editingItem.bank_soal.judul })
+    }
+    return list
+  }, [filteredEditBankSoals, editingItem])
+
+  const watchedBankSoalId = form.watch('bank_soal_id')
+  const [prevBankSoalId, setPrevBankSoalId] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (isEditOpen) {
+      setPrevBankSoalId(editingItem?.bank_soal_id || null)
+    } else {
+      setPrevBankSoalId(null)
+    }
+  }, [isEditOpen, editingItem])
+
+  useEffect(() => {
+    if (watchedBankSoalId === prevBankSoalId) return
+
+    if (watchedBankSoalId) {
+      const selectedBs = filteredEditBankSoals.find((b) => b.id === watchedBankSoalId)
+      if (selectedBs) {
+        form.setValue('tipe_soal', selectedBs.tipe || '')
+        form.setValue('materi', selectedBs.materi || '')
+        form.setValue('bab', selectedBs.bab ? selectedBs.bab.join(', ') : '')
+        form.setValue('tipe_nilai_id', selectedBs.tipe_nilai_id || null)
+        setPrevBankSoalId(watchedBankSoalId)
+      }
+    } else {
+      form.setValue('tipe_soal', '')
+      form.setValue('materi', '')
+      form.setValue('bab', '')
+      form.setValue('tipe_nilai_id', null)
+      setPrevBankSoalId(null)
+    }
+  }, [watchedBankSoalId, prevBankSoalId, filteredEditBankSoals])
 
   const resolvedSemesterId = useMemo(() => {
     if (filterSemester === 'aktif') return activeSemester?.id ?? undefined
@@ -228,6 +351,16 @@ export default function NilaiUASPage() {
     enabled: isFormOpen || isAddOpen,
   })
 
+  useQuery({
+    queryKey: ['bank-soal-search', debouncedBankSoalSearch],
+    queryFn: async () => {
+      const results = await searchBankSoal(debouncedBankSoalSearch)
+      setBankSoalOptions(results.map((b) => ({ value: b.id, label: b.judul })))
+      return results
+    },
+    enabled: isFormOpen || isAddOpen,
+  })
+
   // ─── Helpers ────────────────────────────────────────────────────────────────
 
   const getUserId = () => profile?.id ?? null
@@ -246,10 +379,16 @@ export default function NilaiUASPage() {
       siswa_id: '',
       mata_pelajaran_id: singleMapelId ?? '',
       semester_id: null,
+      tipe_nilai_id: null,
+      materi: null,
+      bab: '',
       nilai_asli: null,
+      bank_soal_id: null,
+      tipe_soal: null,
     })
     setSiswaOptions([])
     setMapelOptions([])
+    setBankSoalOptions([])
   }
 
   const openEditDialog = (item: NilaiUASEntry) => {
@@ -264,26 +403,42 @@ export default function NilaiUASPage() {
         ? [{ value: item.mata_pelajaran_id, label: item.mata_pelajaran.nama_mapel }]
         : []
     )
+    setBankSoalOptions(
+      item.bank_soal
+        ? [{ value: item.bank_soal_id!, label: item.bank_soal.judul }]
+        : []
+    )
     form.reset({
       siswa_id: item.siswa_id,
       mata_pelajaran_id: item.mata_pelajaran_id,
       semester_id: item.semester_id,
+      tipe_nilai_id: item.tipe_nilai_id || null,
+      materi: item.materi,
+      bab: item.bab ? item.bab.join(', ') : '',
       nilai_asli: item.nilai_asli,
+      bank_soal_id: item.bank_soal_id,
+      tipe_soal: item.bank_soal?.tipe || null,
     })
     setIsEditOpen(true)
   }
 
+  type NilaiUASPayload = Omit<NilaiUASFormValues, 'bab'> & { bab: string[] | null }
+
   // ─── Mutations ──────────────────────────────────────────────────────────────
 
   const createMutation = useMutation({
-    mutationFn: (values: NilaiUASFormValues) => {
+    mutationFn: (values: NilaiUASPayload) => {
       if (!profile?.id) throw new Error('Sesi pengguna tidak valid')
       if (!(values.semester_id ?? activeSemester?.id)) throw new Error('Semester aktif tidak ditemukan')
       return createNilaiUAS({
         siswa_id: values.siswa_id,
         mata_pelajaran_id: values.mata_pelajaran_id,
         semester_id: values.semester_id ?? activeSemester?.id ?? null,
+        tipe_nilai_id: values.tipe_nilai_id,
+        materi: values.materi,
+        bab: values.bab,
         nilai_asli: values.nilai_asli,
+        bank_soal_id: values.bank_soal_id,
         dicatat_oleh: profile.id,
       })
     },
@@ -299,9 +454,13 @@ export default function NilaiUASPage() {
   })
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, values }: { id: string; values: NilaiUASFormValues }) =>
+    mutationFn: ({ id, values }: { id: string; values: NilaiUASPayload }) =>
       updateNilaiUAS(id, {
+        tipe_nilai_id: values.tipe_nilai_id,
+        materi: values.materi,
+        bab: values.bab,
         nilai_asli: values.nilai_asli,
+        bank_soal_id: values.bank_soal_id,
         is_approved: false,
         approved_at: null,
         approved_by: null,
@@ -401,7 +560,7 @@ export default function NilaiUASPage() {
   })
 
   const bulkCreateMutation = useMutation({
-    mutationFn: (payload: any[]) => bulkCreateNilaiUAS(payload),
+    mutationFn: (payload: Parameters<typeof bulkCreateNilaiUAS>[0]) => bulkCreateNilaiUAS(payload),
     onSuccess: async (results) => {
       const userId = getUserId()
       if (userId) {
@@ -414,6 +573,12 @@ export default function NilaiUASPage() {
       setIsAddOpen(false)
       setBulkKelas('')
       setBulkScores({})
+      setBulkMateri('')
+      setBulkBabText('')
+      setBulkTipeSoal('')
+      setBulkBankSoal('')
+      setBulkTipeNilaiId('')
+      setIsAutoFilled(false)
     },
     onError: (e: Error) =>
       toast({ title: 'Gagal menyimpan nilai UAS massal', description: e.message, variant: 'destructive' }),
@@ -443,6 +608,18 @@ export default function NilaiUASPage() {
         id: 'mapel',
         header: 'Mapel',
         cell: ({ row }) => row.original.mata_pelajaran?.nama_mapel ?? '-',
+      },
+      {
+        id: 'tipe',
+        header: 'Tipe',
+        cell: ({ row }) => {
+          const rel = row.original.tipe_nilai_rel
+          return rel ? (
+            <Badge variant="default">
+              {rel.nama_tipe}
+            </Badge>
+          ) : '-'
+        },
       },
       {
         id: 'semester',
@@ -555,10 +732,14 @@ export default function NilaiUASPage() {
       toast({ title: 'Semester aktif tidak ditemukan', variant: 'destructive' })
       return
     }
+    const mappedValues: NilaiUASPayload = {
+      ...values,
+      bab: values.bab ? values.bab.split(',').map((s) => s.trim()).filter(Boolean) : null,
+    }
     if (isEditOpen && editingItem) {
-      updateMutation.mutate({ id: editingItem.id, values })
+      updateMutation.mutate({ id: editingItem.id, values: mappedValues })
     } else {
-      createMutation.mutate(values)
+      createMutation.mutate(mappedValues)
     }
   }
 
@@ -655,6 +836,12 @@ export default function NilaiUASPage() {
             onClick={() => {
               setBulkKelas('')
               setBulkScores({})
+              setBulkMateri('')
+              setBulkBabText('')
+              setBulkTipeSoal('')
+              setBulkBankSoal('')
+              setBulkTipeNilaiId('')
+              setIsAutoFilled(false)
               if (singleMapelId) {
                 setBulkMapel(singleMapelId)
               } else {
@@ -697,46 +884,133 @@ export default function NilaiUASPage() {
 
       {/* Edit Dialog */}
       <Dialog open={isFormOpen} onOpenChange={(o) => { if (!o) closeDialog() }}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Edit Nilai UAS</DialogTitle>
           </DialogHeader>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-            <div className="space-y-1">
-              <Label>Siswa</Label>
-              <Combobox
-                options={siswaOptions}
-                value={form.watch('siswa_id')}
-                onSelect={(v) => form.setValue('siswa_id', v)}
-                onSearch={setSiswaSearch}
-                placeholder="Cari nama siswa..."
-                emptyMessage="Siswa tidak ditemukan"
-                disabled
-              />
+            <div className="grid gap-4 sm:grid-cols-2">
+              {/* Siswa */}
+              <div className="space-y-1">
+                <Label>Siswa</Label>
+                <Combobox
+                  options={siswaOptions}
+                  value={form.watch('siswa_id')}
+                  onSelect={(v) => form.setValue('siswa_id', v)}
+                  onSearch={setSiswaSearch}
+                  placeholder="Cari nama siswa..."
+                  emptyMessage="Siswa tidak ditemukan"
+                  disabled
+                />
+              </div>
+
+              {/* Mapel */}
+              <div className="space-y-1">
+                <Label>Mata Pelajaran</Label>
+                <Combobox
+                  options={mapelOptions}
+                  value={form.watch('mata_pelajaran_id')}
+                  onSelect={(v) => form.setValue('mata_pelajaran_id', v)}
+                  onSearch={setMapelSearch}
+                  placeholder="Cari mata pelajaran..."
+                  emptyMessage="Mapel tidak ditemukan"
+                  disabled
+                />
+              </div>
             </div>
-            <div className="space-y-1">
-              <Label>Mata Pelajaran</Label>
-              <Combobox
-                options={mapelOptions}
-                value={form.watch('mata_pelajaran_id')}
-                onSelect={(v) => form.setValue('mata_pelajaran_id', v)}
-                onSearch={setMapelSearch}
-                placeholder="Cari mata pelajaran..."
-                emptyMessage="Mapel tidak ditemukan"
-                disabled
-              />
-            </div>
-            <div className="space-y-1">
-              <Label>Nilai Asli</Label>
-              <Input
-                type="number"
-                min={0}
-                max={100}
-                step={0.01}
-                value={form.watch('nilai_asli') ?? ''}
-                onChange={(e) => form.setValue('nilai_asli', e.target.value === '' ? null : parseFloat(e.target.value))}
-                placeholder="0–100"
-              />
+
+            {(() => {
+              const isSingleAutoFilled = Boolean(form.watch('bank_soal_id'))
+              return (
+                <>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    {/* Tipe Nilai */}
+                    <div className="space-y-1">
+                      <Label>Tipe Nilai</Label>
+                      <Select
+                        value={form.watch('tipe_nilai_id') ?? ''}
+                        onValueChange={(v) => form.setValue('tipe_nilai_id', v || null)}
+                        disabled={isSingleAutoFilled}
+                      >
+                        <SelectTrigger><SelectValue placeholder="Pilih Tipe Nilai" /></SelectTrigger>
+                        <SelectContent>
+                          {tipeNilaiList
+                            .filter((t) => t.jenis_nilai === 'Ujian Akhir Semester')
+                            .map((t) => (
+                              <SelectItem key={t.id} value={t.id}>
+                                {t.nama_tipe} ({t.jenis_nilai})
+                              </SelectItem>
+                            ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {/* Bank Soal Selector */}
+                    <div className="space-y-1">
+                      <Label>Bank Soal (opsional)</Label>
+                      <Select
+                        value={form.watch('bank_soal_id') ?? 'none'}
+                        onValueChange={(v) => form.setValue('bank_soal_id', v === 'none' ? null : v)}
+                      >
+                        <SelectTrigger><SelectValue placeholder="Pilih Bank Soal..." /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">-- Input Manual (Tanpa Bank Soal) --</SelectItem>
+                          {bankSoalComboboxOptions.map((opt) => (
+                            <SelectItem key={opt.value} value={opt.value}>
+                              {opt.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-4 sm:grid-cols-3">
+                    {/* Tipe Soal */}
+                    <div className="space-y-1">
+                      <Label>Tipe Soal (Pilihan Ganda/Essai)</Label>
+                      <Input
+                        {...form.register('tipe_soal')}
+                        placeholder="Contoh: Pilihan Ganda"
+                        disabled={isSingleAutoFilled}
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <Label>Materi (opsional)</Label>
+                      <Input
+                        {...form.register('materi')}
+                        placeholder="Nama materi/topik"
+                        disabled={isSingleAutoFilled}
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <Label>Bab (opsional, pisahkan dengan koma)</Label>
+                      <Input
+                        {...form.register('bab')}
+                        placeholder="Contoh: BAB 1, BAB 2"
+                        disabled={isSingleAutoFilled}
+                      />
+                    </div>
+                  </div>
+                </>
+              )
+            })()}
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-1">
+                <Label>Nilai Asli</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  max={100}
+                  step={0.01}
+                  value={form.watch('nilai_asli') ?? ''}
+                  onChange={(e) => form.setValue('nilai_asli', e.target.value === '' ? null : parseFloat(e.target.value))}
+                  placeholder="0–100"
+                />
+              </div>
             </div>
 
             <DialogFooter>
@@ -766,19 +1040,46 @@ export default function NilaiUASPage() {
                 toast({ title: 'Pilih mata pelajaran terlebih dahulu', variant: 'destructive' })
                 return
               }
+              if (!bulkTipeNilaiId) {
+                toast({ title: 'Pilih tipe nilai terlebih dahulu', variant: 'destructive' })
+                return
+              }
               const payload = siswaPerKelas.map((s) => ({
                 siswa_id: s.id,
                 mata_pelajaran_id: bulkMapel,
-                semester_id: activeSemester?.id ?? null,
+                semester_id: bulkSemesterId || activeSemester?.id || null,
+                tipe_nilai_id: bulkTipeNilaiId || null,
+                materi: bulkMateri || null,
+                bab: bulkBabText ? bulkBabText.split(',').map((b) => b.trim()).filter(Boolean) : null,
                 nilai_asli: bulkScores[s.id] !== undefined && bulkScores[s.id] !== null ? bulkScores[s.id] : null,
                 dicatat_oleh: profile?.id ?? null,
+                bank_soal_id: bulkBankSoal || null,
               }))
               bulkCreateMutation.mutate(payload)
             }}
             className="space-y-4"
           >
             {/* Meta Data Fields */}
-            <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3">
+            <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-5">
+              <div className="space-y-1">
+                <Label>Tanggal</Label>
+                <DatePicker value={bulkTanggal} onChange={(d) => setBulkTanggal(d ?? new Date())} />
+              </div>
+
+              <div className="space-y-1">
+                <Label>Semester</Label>
+                <Select value={bulkSemesterId} onValueChange={setBulkSemesterId}>
+                  <SelectTrigger><SelectValue placeholder="Pilih Semester" /></SelectTrigger>
+                  <SelectContent>
+                    {semesterList.map((s) => (
+                      <SelectItem key={s.id} value={s.id}>
+                        Smt {s.nomor_semester} — {s.tahun_pelajaran?.nama}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
               <div className="space-y-1">
                 <Label>Kelas</Label>
                 <Select value={bulkKelas} onValueChange={setBulkKelas}>
@@ -800,8 +1101,74 @@ export default function NilaiUASPage() {
               </div>
 
               <div className="space-y-1">
-                <Label>Semester</Label>
-                <Input value={activeSemester ? `Smt ${activeSemester.nomor_semester} — ${activeSemester.tahun_pelajaran?.nama}` : 'Tidak Aktif'} disabled />
+                <Label>Judul/Nama Bank Soal</Label>
+                <Select
+                  value={bulkBankSoal || 'none'}
+                  onValueChange={(v) => setBulkBankSoal(v === 'none' ? '' : v)}
+                  disabled={!bulkSemesterId || !bulkMapel}
+                >
+                  <SelectTrigger><SelectValue placeholder="Pilih Bank Soal..." /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">-- Input Manual (Tanpa Bank Soal) --</SelectItem>
+                    {filteredBulkBankSoals.map((bs) => (
+                      <SelectItem key={bs.id} value={bs.id}>
+                        {bs.judul}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-4">
+              <div className="space-y-1">
+                <Label>Tipe Nilai</Label>
+                <Select
+                  value={bulkTipeNilaiId}
+                  onValueChange={setBulkTipeNilaiId}
+                  disabled={isAutoFilled}
+                >
+                  <SelectTrigger><SelectValue placeholder="Pilih Tipe Nilai" /></SelectTrigger>
+                  <SelectContent>
+                    {tipeNilaiList
+                      .filter((t) => t.jenis_nilai === 'Ujian Akhir Semester')
+                      .map((t) => (
+                        <SelectItem key={t.id} value={t.id}>
+                          {t.nama_tipe} ({t.jenis_nilai})
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1">
+                <Label>Tipe Soal (Pilihan Ganda/Essai)</Label>
+                <Input
+                  value={bulkTipeSoal}
+                  onChange={(e) => setBulkTipeSoal(e.target.value)}
+                  placeholder="Contoh: Pilihan Ganda"
+                  disabled={isAutoFilled}
+                />
+              </div>
+
+              <div className="space-y-1">
+                <Label>Materi (opsional)</Label>
+                <Input
+                  value={bulkMateri}
+                  onChange={(e) => setBulkMateri(e.target.value)}
+                  placeholder="Nama materi/topik"
+                  disabled={isAutoFilled}
+                />
+              </div>
+
+              <div className="space-y-1">
+                <Label>Bab (opsional, pisahkan dengan koma)</Label>
+                <Input
+                  value={bulkBabText}
+                  onChange={(e) => setBulkBabText(e.target.value)}
+                  placeholder="Contoh: BAB 1, BAB 2"
+                  disabled={isAutoFilled}
+                />
               </div>
             </div>
 

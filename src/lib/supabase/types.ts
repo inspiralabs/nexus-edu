@@ -276,6 +276,14 @@ export interface Presensi {
   created_at: string
 }
 
+export interface TipeNilaiDb {
+  id: string
+  nama_tipe: string
+  jenis_nilai: 'Harian' | 'Ujian Akhir Bab' | 'Ujian Akhir Semester'
+  deskripsi: string | null
+  created_at: string
+}
+
 export interface NilaiHarian {
   id: string
   siswa_id: string
@@ -284,12 +292,13 @@ export interface NilaiHarian {
   tipe_nilai: TipeNilai
   nama_tugas: string
   materi: string | null
-  bab: string | null
+  bab: string[] | null
   nilai_asli: number | null
   nilai_remedial: number | null
   nilai_final: number | null
   tipe_remedial: string | null
   bank_soal_id: string | null
+  tipe_nilai_id: string | null
   is_approved: boolean
   approved_at: string | null
   approved_by: string | null
@@ -308,6 +317,9 @@ export interface NilaiUAS {
   nilai_final: number | null
   tipe_remedial: string | null
   bank_soal_id: string | null
+  tipe_nilai_id: string | null
+  materi: string | null
+  bab: string[] | null
   is_approved: boolean
   approved_at: string | null
   approved_by: string | null
@@ -323,6 +335,9 @@ export interface BankSoal {
   semester_id: string | null
   konten: Record<string, unknown> | null
   dibuat_oleh: string | null
+  tipe_nilai_id: string | null
+  materi: string | null
+  bab: string[] | null
   created_at: string
 }
 

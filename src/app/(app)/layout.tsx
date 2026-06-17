@@ -40,6 +40,7 @@ const PATH_TITLES: Record<string, string> = {
   '/admin/mapel': 'Mata Pelajaran',
   '/admin/kamar': 'Data Kamar',
   '/admin/semester': 'Semester & Tahun Pelajaran',
+  '/admin/tipe-nilai': 'Tipe Nilai',
   '/admin/announcements': 'Pengumuman',
   '/superadmin': 'Super Dashboard',
   '/superadmin/roles': 'Role Management',
