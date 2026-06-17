@@ -33,7 +33,8 @@ import {
 import { getMissingMutabaahDates } from '@/lib/queries/kepesantrenan'
 import { getActiveSemester } from '@/lib/queries/semester'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { useRouter } from 'next/navigation'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog'
 import { Badge } from '@/components/ui/badge'
 
 // ─── Konstanta Tampilan ───────────────────────────────────────────────────────
@@ -96,11 +97,13 @@ interface RowDef {
 export default function InputHarianPage() {
   const { profile, isAdmin } = useAuth()
   const queryClient = useQueryClient()
+  const router = useRouter()
 
   const [selectedDate, setSelectedDate] = useState<Date>(new Date())
   const [selectedKamar, setSelectedKamar] = useState<string>('')
   const [mutabaahData, setMutabaahData] = useState<MutabaahMap>(new Map())
   const [isSaving, setIsSaving] = useState(false)
+  const [showSuccessDialog, setShowSuccessDialog] = useState(false)
   const [activeTab, setActiveTab] = useState<'SD' | 'SMP' | 'SMA'>('SD')
   const [isLiburDialogOpen, setIsLiburDialogOpen] = useState(false)
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false)
@@ -476,15 +479,9 @@ export default function InputHarianPage() {
       queryClient.invalidateQueries({ queryKey: ['mutabaah-harian', tanggalStr, selectedKamar] })
       queryClient.invalidateQueries({ queryKey: ['missing-mutabaah-dates'] })
 
-      const isSudahDiinputBeforeSave = !isDateMissing
-
-      toast({
-        title: 'Berhasil',
-        description: `Berhasil ${isSudahDiinputBeforeSave ? 'memperbarui' : 'menyimpan'} ${payloadSiapSimpan.length} data presensi.`,
-      })
-
       setLastSaved(new Date())
       setIsSuccessTimer(true)
+      setShowSuccessDialog(true)
       setTimeout(() => {
         setIsSuccessTimer(false)
       }, 2000)
@@ -851,6 +848,43 @@ export default function InputHarianPage() {
         }}
         isLoading={false}
       />
+
+      {/* ── Dialog Sukses Simpan ── */}
+      <Dialog open={showSuccessDialog} onOpenChange={setShowSuccessDialog}>
+        <DialogContent className="max-w-md bg-[var(--surface)] border border-[var(--border)] shadow-lg backdrop-blur-md text-center">
+          <DialogHeader className="flex flex-col items-center pt-6">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-green-100 dark:bg-green-950/30 text-green-600 dark:text-green-400 mb-4 animate-bounce">
+              <CheckCheck className="h-6 w-6" />
+            </div>
+            <DialogTitle className="text-lg font-bold text-[var(--text-primary)]">
+              Berhasil Disimpan!
+            </DialogTitle>
+            <DialogDescription className="text-center text-sm text-[var(--text-secondary)] mt-2 px-4 leading-relaxed">
+              Data presensi berhasil disimpan. Apa yang ingin Anda lakukan selanjutnya?
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex items-center justify-center gap-3 mt-6 pb-4">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setShowSuccessDialog(false)}
+              className="px-5"
+            >
+              Tutup
+            </Button>
+            <Button
+              type="button"
+              onClick={() => {
+                setShowSuccessDialog(false)
+                router.push(`/mutabaah/rekap?unit=${activeTab}&kamar=${selectedKamar}`)
+              }}
+              className="bg-primary hover:bg-primary-hover text-white font-semibold px-5"
+            >
+              Cek / Review Rekap
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* ── Dialog Konfirmasi Hapus Presensi ── */}
       <Dialog open={isDeleteConfirmOpen} onOpenChange={setIsDeleteConfirmOpen}>

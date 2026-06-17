@@ -18,6 +18,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/hooks/use-auth'
 import { useDebounce } from '@/hooks/use-debounce'
+import { useSearchParams } from 'next/navigation'
 import {
   getKamar,
   getKamarByMusyrif,
@@ -433,9 +434,19 @@ function RekapDetailDialog({
 
 export default function RekapKegiatanPage() {
   const { profile, isAdmin } = useAuth()
+  const searchParams = useSearchParams()
+  const queryUnit = searchParams.get('unit')
+  const queryKamar = searchParams.get('kamar')
 
-  const [activeTab, setActiveTab] = useState<'SD' | 'SMP' | 'SMA'>('SD')
-  const [selectedKamar, setSelectedKamar] = useState<string>('all')
+  const [activeTab, setActiveTab] = useState<'SD' | 'SMP' | 'SMA'>(() => {
+    if (queryUnit === 'SD' || queryUnit === 'SMP' || queryUnit === 'SMA') {
+      return queryUnit
+    }
+    return 'SD'
+  })
+  const [selectedKamar, setSelectedKamar] = useState<string>(() => {
+    return queryKamar ?? 'all'
+  })
   const [tanggalDari, setTanggalDari] = useState<Date>(() => {
     const d = new Date()
     d.setDate(1)
@@ -449,6 +460,16 @@ export default function RekapKegiatanPage() {
   const [detailTarget, setDetailTarget] = useState<SiswaDetailTarget | null>(null)
 
   const tabInitialized = useRef(false)
+
+  // Sync state if query params change
+  useEffect(() => {
+    if (queryUnit === 'SD' || queryUnit === 'SMP' || queryUnit === 'SMA') {
+      setActiveTab(queryUnit)
+    }
+    if (queryKamar) {
+      setSelectedKamar(queryKamar)
+    }
+  }, [queryUnit, queryKamar])
 
   // ── Query Kamar ──
   const { data: kamarList = [], isLoading: loadingKamar } = useQuery({
@@ -471,6 +492,10 @@ export default function RekapKegiatanPage() {
 
   // Auto-set activeTab HANYA SEKALI
   useEffect(() => {
+    if (queryUnit) {
+      tabInitialized.current = true
+      return
+    }
     if (!tabInitialized.current && kamarList.length > 0) {
       const hasSD = kamarList.some((k) => k.unit === 'SD')
       if (!hasSD) {
@@ -478,21 +503,21 @@ export default function RekapKegiatanPage() {
       }
       tabInitialized.current = true
     }
-  }, [kamarList])
+  }, [kamarList, queryUnit])
 
   const filteredKamarList = useMemo(() => {
     return kamarList.filter((k) => k.unit === activeTab)
   }, [kamarList, activeTab])
 
   useEffect(() => {
-    if (selectedKamar !== 'all') {
+    if (!loadingKamar && selectedKamar !== 'all') {
       const exists = filteredKamarList.some((k) => k.nama_kamar === selectedKamar)
       if (!exists) {
         setSelectedKamar('all')
         setPage(1)
       }
     }
-  }, [filteredKamarList, selectedKamar])
+  }, [filteredKamarList, selectedKamar, loadingKamar])
 
   // ── Query Rekap ──
   const tanggalDariStr = format(tanggalDari, 'yyyy-MM-dd')
