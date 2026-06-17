@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import { toast } from '@/components/ui/use-toast'
+import { cn } from '@/lib/utils'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ConfirmDialog } from '@/components/shared/confirm-dialog'
 import { useAuth } from '@/hooks/use-auth'
@@ -106,6 +107,14 @@ export default function InputHarianPage() {
 
   const [missingDates, setMissingDates] = useState<Date[]>([])
   const [isMissingDatesDialogOpen, setIsMissingDatesDialogOpen] = useState(false)
+  const [isSuccessTimer, setIsSuccessTimer] = useState(false)
+  const [lastSaved, setLastSaved] = useState<Date | null>(null)
+
+  // Reset success feedback and timestamp when date or room changes
+  useEffect(() => {
+    setLastSaved(null)
+    setIsSuccessTimer(false)
+  }, [selectedDate, selectedKamar])
 
   // Flag agar tab default SD tidak dioverride oleh useEffect kamar
   const tabInitialized = useRef(false)
@@ -377,6 +386,7 @@ export default function InputHarianPage() {
         })
         return next
       })
+      setLastSaved(null)
       setIsDeleteConfirmOpen(false)
       toast({
         title: 'Berhasil menghapus',
@@ -466,10 +476,18 @@ export default function InputHarianPage() {
       queryClient.invalidateQueries({ queryKey: ['mutabaah-harian', tanggalStr, selectedKamar] })
       queryClient.invalidateQueries({ queryKey: ['missing-mutabaah-dates'] })
 
+      const isSudahDiinputBeforeSave = !isDateMissing
+
       toast({
         title: 'Berhasil',
-        description: `Checklist mutabaah ${format(selectedDate, 'dd MMMM yyyy', { locale: idLocale })} berhasil disimpan`,
+        description: `Berhasil ${isSudahDiinputBeforeSave ? 'memperbarui' : 'menyimpan'} ${payloadSiapSimpan.length} data presensi.`,
       })
+
+      setLastSaved(new Date())
+      setIsSuccessTimer(true)
+      setTimeout(() => {
+        setIsSuccessTimer(false)
+      }, 2000)
     } catch (err) {
       toast({
         title: 'Gagal menyimpan',
@@ -504,6 +522,11 @@ export default function InputHarianPage() {
         description="Catat kehadiran kegiatan pesantren per tanggal — kegiatan (baris) × siswa (kolom)"
         actions={
           <div className="flex flex-wrap items-center gap-2 justify-end">
+            {lastSaved && (
+              <span className="text-xs text-muted-foreground mr-2">
+                🕒 Terakhir disimpan pada {format(lastSaved, 'HH:mm')} WIB
+              </span>
+            )}
             {!isDateMissing && selectedKamar && siswaList.length > 0 && (
               <Button
                 id="btn-hapus-presensi"
@@ -530,10 +553,24 @@ export default function InputHarianPage() {
               onClick={handleSimpan}
               isLoading={isSaving}
               disabled={isSaving || !selectedKamar || siswaList.length === 0}
-              className="shrink-0"
+              className={cn(
+                'shrink-0',
+                isSuccessTimer && 'bg-green-600 hover:bg-green-700 text-white border-transparent'
+              )}
             >
-              <Save className="mr-2 h-4 w-4" />
-              Simpan Checklist
+              {isSaving ? (
+                'Menyimpan...'
+              ) : isSuccessTimer ? (
+                <>
+                  <CheckCheck className="mr-2 h-4 w-4" />
+                  Berhasil Disimpan!
+                </>
+              ) : (
+                <>
+                  <Save className="mr-2 h-4 w-4" />
+                  {!isDateMissing ? 'Perbarui Checklist' : 'Simpan Checklist'}
+                </>
+              )}
             </Button>
           </div>
         }
