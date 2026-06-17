@@ -854,18 +854,18 @@ export async function getMutabaahRekap(
     const item = rekapMap.get(key)!
     item.total_hari++
 
-    if (r.is_libur || r.status === 'L') {
-      item.total_libur++
-    } else if (r.status === 'Hadir') {
+    if (r.status === 'Hadir') {
       item.total_hadir++
-    } else if (r.status === 'Izin') {
-      item.total_izin++
     } else if (r.status === 'Sakit') {
       item.total_sakit++
+    } else if (r.status === 'Izin') {
+      item.total_izin++
     } else if (r.status === 'Alpha') {
       item.total_alpha++
     } else if (r.status === 'Terlambat' || r.status === 'Terlambat Sekali') {
       item.total_terlambat++
+    } else if (r.status === 'L' || r.is_libur) {
+      item.total_libur++
     }
   }
 

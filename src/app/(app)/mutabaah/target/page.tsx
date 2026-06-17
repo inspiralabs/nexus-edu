@@ -302,7 +302,18 @@ function TargetDetailDialog({
 
                           {/* Kehadiran */}
                           <td className="px-4 py-3 text-center text-sm font-semibold text-[var(--text-primary)] font-mono">
-                            {parentItem ? `${parentItem.total_hadir} / ${parentItem.target}` : '—'}
+                            {(() => {
+                              const isParent = kegiatan.sub_kegiatan && kegiatan.sub_kegiatan.length > 0
+                              if (isParent) {
+                                const displayHadir = (kegiatan.sub_kegiatan ?? []).reduce((acc, sub) => {
+                                  const childItem = getChildProgress(kegiatan.id, sub.id)
+                                  return acc + (childItem?.total_hadir ?? 0)
+                                }, 0)
+                                const displayPoin = (kegiatan.sub_kegiatan ?? []).reduce((acc, sub) => acc + (sub.poin_target || 0), 0)
+                                return `${displayHadir} / ${displayPoin}`
+                              }
+                              return parentItem ? `${parentItem.total_hadir} / ${parentItem.target}` : '—'
+                            })()}
                           </td>
 
                           {/* Persentase */}
@@ -712,11 +723,11 @@ export default function TargetMutabaahPage() {
             <thead>
               <tr className="border-b border-[var(--border)] bg-[var(--surface-2)]">
                 {/* Kolom No */}
-                <th className="sticky left-0 z-20 w-10 border-r border-[var(--border)] bg-[var(--surface-2)] px-2 py-2.5 text-center text-xs font-semibold text-[var(--text-secondary)]">
+                <th className="sticky left-0 z-20 w-10 border-r border-[var(--border)] bg-white dark:bg-background px-2 py-2.5 text-center text-xs font-semibold text-[var(--text-secondary)] shadow-[inset_-1px_0_0_0_theme(colors.border)]">
                   No
                 </th>
                 {/* Kolom Nama Kegiatan */}
-                <th className="sticky left-10 z-20 min-w-[180px] border-r border-[var(--border)] bg-[var(--surface-2)] px-3 py-2.5 text-left text-xs font-semibold text-[var(--text-secondary)]">
+                <th className="sticky left-10 z-20 min-w-[180px] border-r border-[var(--border)] bg-white dark:bg-background px-3 py-2.5 text-left text-xs font-semibold text-[var(--text-secondary)] shadow-[inset_-1px_0_0_0_theme(colors.border)]">
                   Nama Kegiatan
                 </th>
                 {/* Kolom per Siswa */}
@@ -766,11 +777,11 @@ export default function TargetMutabaahPage() {
                       className={`border-b border-[var(--border)] hover:bg-[var(--surface-2)]/40 transition-colors ${parentBg}`}
                     >
                       {/* No */}
-                      <td className={`sticky left-0 z-10 border-r border-[var(--border)] px-2 py-2 text-center text-xs text-[var(--text-tertiary)] ${parentBg}`}>
+                      <td className="sticky left-0 z-10 border-r border-[var(--border)] px-2 py-2 text-center text-xs text-[var(--text-tertiary)] bg-white dark:bg-background shadow-[inset_-1px_0_0_0_theme(colors.border)]">
                         {parentNo}
                       </td>
                       {/* Nama Kegiatan */}
-                      <td className={`sticky left-10 z-10 border-r border-[var(--border)] px-3 py-2 ${parentBg}`}>
+                      <td className="sticky left-10 z-10 border-r border-[var(--border)] px-3 py-2 bg-white dark:bg-background shadow-[inset_-1px_0_0_0_theme(colors.border)]">
                         <div
                           className={cn(
                             "flex items-center gap-1.5",
@@ -817,11 +828,11 @@ export default function TargetMutabaahPage() {
                           className="border-b border-[var(--border)] bg-[var(--surface-2)]/20 hover:bg-[var(--surface-2)]/40 transition-colors"
                         >
                           {/* No */}
-                          <td className={`sticky left-0 z-10 border-r border-[var(--border)] px-2 py-2 text-center text-xs text-[var(--text-tertiary)] ${childBg}`}>
+                          <td className="sticky left-0 z-10 border-r border-[var(--border)] px-2 py-2 text-center text-xs text-[var(--text-tertiary)] bg-white dark:bg-background shadow-[inset_-1px_0_0_0_theme(colors.border)]">
                             {childNo}
                           </td>
                           {/* Nama Sub */}
-                          <td className={`sticky left-10 z-10 border-r border-[var(--border)] px-3 py-2 ${childBg}`}>
+                          <td className="sticky left-10 z-10 border-r border-[var(--border)] px-3 py-2 bg-white dark:bg-background shadow-[inset_-1px_0_0_0_theme(colors.border)]">
                             <div className="pl-6 flex items-center gap-1">
                               <span className="text-xs text-[var(--text-secondary)] font-medium truncate" title={sub.nama_sub}>
                                 ↳ {sub.nama_sub}

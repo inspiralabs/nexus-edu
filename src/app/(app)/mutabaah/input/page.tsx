@@ -616,13 +616,13 @@ export default function InputHarianPage() {
                 <tr className="border-b border-[var(--border)] bg-[var(--surface-2)]">
                   {/* Kolom No — sticky */}
                   <th
-                    className="sticky left-0 z-20 w-10 border-r border-[var(--border)] bg-[var(--surface-2)] px-2 py-2 text-center text-xs font-semibold text-[var(--text-secondary)]"
+                    className="sticky left-0 z-20 w-10 border-r border-[var(--border)] bg-white dark:bg-background px-2 py-2 text-center text-xs font-semibold text-[var(--text-secondary)] shadow-[inset_-1px_0_0_0_theme(colors.border)]"
                   >
                     No
                   </th>
                   {/* Kolom Nama Kegiatan — sticky */}
                   <th
-                    className="sticky left-10 z-20 min-w-[180px] border-r border-[var(--border)] bg-[var(--surface-2)] px-3 py-2 text-left text-xs font-semibold text-[var(--text-secondary)]"
+                    className="sticky left-10 z-20 min-w-[180px] border-r border-[var(--border)] bg-white dark:bg-background px-3 py-2 text-left text-xs font-semibold text-[var(--text-secondary)] shadow-[inset_-1px_0_0_0_theme(colors.border)]"
                   >
                     Nama Kegiatan
                   </th>
@@ -663,7 +663,7 @@ export default function InputHarianPage() {
                   return (
                     <tr key={`${row.kegiatanId}-${row.subId ?? 'main'}-${rowIdx}`} className={`border-b border-[var(--border)] ${rowBg}`}>
                       {/* Kolom No */}
-                      <td className={`sticky left-0 z-10 border-r border-[var(--border)] px-2 py-2 text-center text-xs text-[var(--text-tertiary)] ${rowBg}`}>
+                      <td className="sticky left-0 z-10 border-r border-[var(--border)] px-2 py-2 text-center text-xs text-[var(--text-tertiary)] bg-white dark:bg-background shadow-[inset_-1px_0_0_0_theme(colors.border)]">
                         {row.isGroupHeader ? '' : (
                           // Hitung nomor urut baris kegiatan (excludes group headers)
                           rows.slice(0, rowIdx + 1).filter((r) => !r.isGroupHeader).length
@@ -671,7 +671,7 @@ export default function InputHarianPage() {
                       </td>
 
                       {/* Kolom Nama Kegiatan */}
-                      <td className={`sticky left-10 z-10 border-r border-[var(--border)] px-3 py-2 ${rowBg}`}>
+                      <td className="sticky left-10 z-10 border-r border-[var(--border)] px-3 py-2 bg-white dark:bg-background shadow-[inset_-1px_0_0_0_theme(colors.border)]">
                         {row.isGroupHeader ? (
                           <span className="text-xs font-bold text-[var(--text-primary)] uppercase tracking-wide">
                             {row.namaKegiatan}

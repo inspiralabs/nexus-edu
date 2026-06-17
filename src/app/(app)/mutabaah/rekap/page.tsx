@@ -206,20 +206,20 @@ function RekapDetailDialog({
               <thead>
                 <tr className="bg-[var(--surface-2)]" style={{ position: 'sticky', top: 0, zIndex: 20 }}>
                   <th
-                    className="w-[40px] min-w-[40px] border-b border-r border-[var(--border)] bg-[var(--surface-2)] px-2 py-2.5 text-center font-semibold text-[var(--text-secondary)]"
-                    style={{ position: 'sticky', left: 0, zIndex: 30 }}
+                    className="sticky w-[40px] min-w-[40px] border-b border-r border-[var(--border)] bg-white dark:bg-background z-20 px-2 py-2.5 text-center font-semibold text-[var(--text-secondary)] shadow-[inset_-1px_0_0_0_theme(colors.border)]"
+                    style={{ position: 'sticky', left: 0, zIndex: 20 }}
                   >
                     No
                   </th>
                   <th
-                    className="w-[208px] min-w-[208px] border-b border-r border-[var(--border)] bg-[var(--surface-2)] px-3 py-2.5 text-left font-semibold text-[var(--text-secondary)]"
-                    style={{ position: 'sticky', left: 40, zIndex: 30 }}
+                    className="sticky w-[208px] min-w-[208px] border-b border-r border-[var(--border)] bg-white dark:bg-background z-20 px-3 py-2.5 text-left font-semibold text-[var(--text-secondary)] shadow-[inset_-1px_0_0_0_theme(colors.border)]"
+                    style={{ position: 'sticky', left: 40, zIndex: 20 }}
                   >
                     Nama Kegiatan / Sub
                   </th>
                   <th
-                    className="w-[96px] min-w-[96px] border-b border-r border-[var(--border)] bg-[var(--surface-2)] px-3 py-2.5 text-center font-semibold text-[var(--text-secondary)]"
-                    style={{ position: 'sticky', left: 248, zIndex: 30 }}
+                    className="sticky w-[96px] min-w-[96px] border-b border-r border-[var(--border)] bg-white dark:bg-background z-20 px-3 py-2.5 text-center font-semibold text-[var(--text-secondary)] shadow-[inset_-1px_0_0_0_theme(colors.border)]"
+                    style={{ position: 'sticky', left: 248, zIndex: 20 }}
                   >
                     Total Hadir
                   </th>
@@ -284,19 +284,13 @@ function RekapDetailDialog({
                           className={`border-b border-[var(--border)] hover:bg-[var(--surface-2)]/40 transition-colors ${parentBg}`}
                         >
                           <td
-                            className={cn(
-                              "border-r border-[var(--border)] px-2 py-2.5 text-center font-mono text-xs w-[40px] min-w-[40px] text-[var(--text-secondary)]",
-                              parentBg
-                            )}
+                            className="sticky border-r border-[var(--border)] px-2 py-2.5 text-center font-mono text-xs w-[40px] min-w-[40px] text-[var(--text-secondary)] bg-white dark:bg-background z-10 shadow-[inset_-1px_0_0_0_theme(colors.border)]"
                             style={{ position: 'sticky', left: 0, zIndex: 10 }}
                           >
                             {parentNo}
                           </td>
                           <td
-                            className={cn(
-                              "border-r border-[var(--border)] px-3 py-2.5 font-semibold text-[var(--text-primary)] w-[208px] min-w-[208px]",
-                              parentBg
-                            )}
+                            className="sticky border-r border-[var(--border)] px-3 py-2.5 font-semibold text-[var(--text-primary)] w-[208px] min-w-[208px] bg-white dark:bg-background z-10 shadow-[inset_-1px_0_0_0_theme(colors.border)]"
                             style={{ position: 'sticky', left: 40, zIndex: 10 }}
                           >
                             <div 
@@ -321,10 +315,7 @@ function RekapDetailDialog({
                             </div>
                           </td>
                           <td
-                            className={cn(
-                              "border-r border-[var(--border)] px-3 py-2 text-center font-mono font-bold text-primary w-[96px] min-w-[96px]",
-                              parentBg
-                            )}
+                            className="sticky border-r border-[var(--border)] px-3 py-2 text-center font-mono font-bold text-primary w-[96px] min-w-[96px] bg-white dark:bg-background z-10 shadow-[inset_-1px_0_0_0_theme(colors.border)]"
                             style={{ position: 'sticky', left: 248, zIndex: 10 }}
                           >
                             {totalHadir}
@@ -384,19 +375,13 @@ function RekapDetailDialog({
                               className="border-b border-[var(--border)] bg-[var(--surface-2)]/20 hover:bg-[var(--surface-2)]/40 transition-colors"
                             >
                               <td
-                                className={cn(
-                                  "border-r border-[var(--border)] px-2 py-2 text-center font-mono text-xs w-[40px] min-w-[40px] text-[var(--text-tertiary)]",
-                                  childBg
-                                )}
+                                className="sticky border-r border-[var(--border)] px-2 py-2 text-center font-mono text-xs w-[40px] min-w-[40px] text-[var(--text-tertiary)] bg-white dark:bg-background z-10 shadow-[inset_-1px_0_0_0_theme(colors.border)]"
                                 style={{ position: 'sticky', left: 0, zIndex: 10 }}
                               >
                                 {childNo}
                               </td>
                               <td
-                                className={cn(
-                                  "border-r border-[var(--border)] px-3 py-2 w-[208px] min-w-[208px]",
-                                  childBg
-                                )}
+                                className="sticky border-r border-[var(--border)] px-3 py-2 w-[208px] min-w-[208px] bg-white dark:bg-background z-10 shadow-[inset_-1px_0_0_0_theme(colors.border)]"
                                 style={{ position: 'sticky', left: 40, zIndex: 10 }}
                               >
                                 <div className="pl-6 flex items-center gap-1.5">
@@ -406,10 +391,7 @@ function RekapDetailDialog({
                                 </div>
                               </td>
                               <td
-                                className={cn(
-                                  "border-r border-[var(--border)] px-3 py-2 text-center font-mono font-medium text-[var(--text-secondary)] w-[96px] min-w-[96px]",
-                                  childBg
-                                )}
+                                className="sticky border-r border-[var(--border)] px-3 py-2 text-center font-mono font-medium text-[var(--text-secondary)] w-[96px] min-w-[96px] bg-white dark:bg-background z-10 shadow-[inset_-1px_0_0_0_theme(colors.border)]"
                                 style={{ position: 'sticky', left: 248, zIndex: 10 }}
                               >
                                 {subTotalHadir}
@@ -566,23 +548,26 @@ export default function RekapKegiatanPage() {
       .sort((a, b) => a.urutan - b.urutan)
   }, [kegiatanList, rekapList])
 
-  const getSiswaParentRecord = (siswaRecords: MutabaahRekapItem[], kegiatan: KegiatanItem) => {
+  const getSiswaParentRecord = (siswaRecords: MutabaahRekapItem[], kegiatan: KegiatanItem, siswaId: string) => {
+    const studentRecords = siswaRecords.filter(
+      (r) => r.siswa_id === siswaId && r.kegiatan_id === kegiatan.id
+    )
     const subs = kegiatan.sub_kegiatan ?? []
     if (subs.length === 0) {
-      return siswaRecords.find(
-        (r) => r.kegiatan_id === kegiatan.id && r.sub_kegiatan_id === null
+      return studentRecords.find(
+        (r) => r.sub_kegiatan_id === null
       )
     }
 
     const subKeys = new Set(subs.map(s => `${kegiatan.id}__${s.id}`))
-    const relevantRecords = siswaRecords.filter(
-      r => r.kegiatan_id === kegiatan.id && r.sub_kegiatan_id && subKeys.has(`${kegiatan.id}__${r.sub_kegiatan_id}`)
+    const relevantRecords = studentRecords.filter(
+      r => r.sub_kegiatan_id && subKeys.has(`${kegiatan.id}__${r.sub_kegiatan_id}`)
     )
 
     if (relevantRecords.length === 0) return null
 
     return {
-      siswa_id: relevantRecords[0].siswa_id,
+      siswa_id: siswaId,
       nama: relevantRecords[0].nama,
       kelas: relevantRecords[0].kelas,
       kegiatan_id: kegiatan.id,
@@ -705,11 +690,11 @@ export default function RekapKegiatanPage() {
             <thead>
               <tr className="border-b border-[var(--border)] bg-[var(--surface-2)]">
                 {/* Kolom No */}
-                <th className="sticky left-0 z-20 w-10 border-r border-[var(--border)] bg-[var(--surface-2)] px-2 py-2.5 text-center text-xs font-semibold text-[var(--text-secondary)]">
+                <th className="sticky left-0 z-20 w-10 border-r border-[var(--border)] bg-white dark:bg-background px-2 py-2.5 text-center text-xs font-semibold text-[var(--text-secondary)] shadow-[inset_-1px_0_0_0_theme(colors.border)]">
                   No
                 </th>
                 {/* Kolom Nama Kegiatan */}
-                <th className="sticky left-10 z-20 min-w-[180px] border-r border-[var(--border)] bg-[var(--surface-2)] px-3 py-2.5 text-left text-xs font-semibold text-[var(--text-secondary)]">
+                <th className="sticky left-10 z-20 min-w-[180px] border-r border-[var(--border)] bg-white dark:bg-background px-3 py-2.5 text-left text-xs font-semibold text-[var(--text-secondary)] shadow-[inset_-1px_0_0_0_theme(colors.border)]">
                   Nama Kegiatan
                 </th>
                 {/* Kolom per Siswa */}
@@ -753,11 +738,11 @@ export default function RekapKegiatanPage() {
                       className={`border-b border-[var(--border)] hover:bg-[var(--surface-2)]/40 transition-colors ${parentBg}`}
                     >
                       {/* No */}
-                      <td className={`sticky left-0 z-10 border-r border-[var(--border)] px-2 py-2 text-center text-xs text-[var(--text-tertiary)] ${parentBg}`}>
+                      <td className="sticky left-0 z-10 border-r border-[var(--border)] px-2 py-2 text-center text-xs text-[var(--text-tertiary)] bg-white dark:bg-background shadow-[inset_-1px_0_0_0_theme(colors.border)]">
                         {parentNo}
                       </td>
                       {/* Nama Kegiatan */}
-                      <td className={`sticky left-10 z-10 border-r border-[var(--border)] px-3 py-2 ${parentBg}`}>
+                      <td className="sticky left-10 z-10 border-r border-[var(--border)] px-3 py-2 bg-white dark:bg-background shadow-[inset_-1px_0_0_0_theme(colors.border)]">
                         <div 
                           className={cn(
                             "flex items-center gap-1.5",
@@ -781,7 +766,7 @@ export default function RekapKegiatanPage() {
                       </td>
                       {/* Sel per Siswa */}
                       {siswaGrouped.map(({ siswaId, records }, colIdx) => {
-                        const rec = getSiswaParentRecord(records, kegiatan)
+                        const rec = getSiswaParentRecord(records, kegiatan, siswaId)
                         return (
                           <td
                             key={`${siswaId}-${kegiatan.id}-parent-${colIdx}`}
@@ -815,11 +800,11 @@ export default function RekapKegiatanPage() {
                           className="border-b border-[var(--border)] bg-[var(--surface-2)]/20 hover:bg-[var(--surface-2)]/40 transition-colors"
                         >
                           {/* No */}
-                          <td className={`sticky left-0 z-10 border-r border-[var(--border)] px-2 py-2 text-center text-xs text-[var(--text-tertiary)] ${childBg}`}>
+                          <td className="sticky left-0 z-10 border-r border-[var(--border)] px-2 py-2 text-center text-xs text-[var(--text-tertiary)] bg-white dark:bg-background shadow-[inset_-1px_0_0_0_theme(colors.border)]">
                             {childNo}
                           </td>
                           {/* Nama Sub */}
-                          <td className={`sticky left-10 z-10 border-r border-[var(--border)] px-3 py-2 ${childBg}`}>
+                          <td className="sticky left-10 z-10 border-r border-[var(--border)] px-3 py-2 bg-white dark:bg-background shadow-[inset_-1px_0_0_0_theme(colors.border)]">
                             <div className="pl-6 flex items-center gap-1">
                               <span className="text-xs text-[var(--text-secondary)] font-medium truncate" title={sub.nama_sub}>
                                 ↳ {sub.nama_sub}
@@ -828,9 +813,8 @@ export default function RekapKegiatanPage() {
                           </td>
                           {/* Sel per Siswa */}
                           {siswaGrouped.map(({ siswaId, records }, colIdx) => {
-                            const key = `${kegiatan.id}__${sub.id}`
                             const rec = records.find(
-                              (r) => `${r.kegiatan_id}__${r.sub_kegiatan_id ?? 'null'}` === key
+                              (r) => r.siswa_id === siswaId && r.kegiatan_id === kegiatan.id && r.sub_kegiatan_id === sub.id
                             )
                             return (
                               <td
