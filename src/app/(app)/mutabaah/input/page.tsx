@@ -339,11 +339,11 @@ export default function InputHarianPage() {
   // ── Libur Massal Mutation ──
   const setLiburMassalMutation = useMutation({
     mutationFn: async () => {
-      if (!profile || !selectedKamar) return
+      if (!profile || !selectedKamar || !musyrifId) return
       const siswaIds = siswaList.map((s) => s.id)
       const kegiatanIds = kegiatanList.map((k) => k.id)
-      await setAllLiburOnDate(tanggalStr, siswaIds, kegiatanIds, profile.id)
-      await logAudit(profile.id, 'CREATE', 'mutabaah', tanggalStr, null, {
+      await setAllLiburOnDate(tanggalStr, siswaIds, kegiatanIds, musyrifId)
+      await logAudit(musyrifId, 'CREATE', 'mutabaah', tanggalStr, null, {
         tanggal: tanggalStr,
         kamar: selectedKamar,
         action: 'set_libur_massal',
@@ -369,7 +369,7 @@ export default function InputHarianPage() {
 
   // ── Simpan ──
   const handleSimpan = async () => {
-    if (!profile || !selectedKamar) return
+    if (!profile || !selectedKamar || !musyrifId) return
     setIsSaving(true)
 
     try {
@@ -385,16 +385,30 @@ export default function InputHarianPage() {
           tanggal: tanggalStr,
           status,
           is_libur: status === 'L',
-          dicatat_oleh: profile.id,
+          dicatat_oleh: musyrifId,
         })
       })
 
-      await upsertMutabaah(entries)
+      // Filter out 'Tidak Ada Program' ('-') status entries to avoid check constraint violation in DB
+      const payloadSiapSimpan = entries.filter(
+        (item) => item.status && item.status !== '-' && !item.status.includes('Tidak Ada Program')
+      )
 
-      await logAudit(profile.id, 'CREATE', 'mutabaah', tanggalStr, null, {
+      if (payloadSiapSimpan.length === 0) {
+        toast({
+          title: 'Disimpan',
+          description: 'Tidak ada kegiatan yang perlu dicatat',
+        })
+        setIsSaving(false)
+        return
+      }
+
+      await upsertMutabaah(payloadSiapSimpan)
+
+      await logAudit(musyrifId, 'CREATE', 'mutabaah', tanggalStr, null, {
         tanggal: tanggalStr,
         kamar: selectedKamar,
-        total_entries: entries.length,
+        total_entries: payloadSiapSimpan.length,
       })
 
       queryClient.invalidateQueries({ queryKey: ['mutabaah-harian', tanggalStr, selectedKamar] })
@@ -430,15 +444,6 @@ export default function InputHarianPage() {
       </div>
     )
   }
-
-  console.log('DEBUG MUTABAAH INPUT:', {
-    activeSemester,
-    semesterId,
-    musyrifId,
-    tanggalMulai,
-    tanggalSelesai,
-    missingDates,
-  })
 
   return (
     <div className="space-y-4">
