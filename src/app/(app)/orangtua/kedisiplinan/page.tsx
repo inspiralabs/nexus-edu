@@ -6,12 +6,14 @@ import { Gavel, Info, Printer } from 'lucide-react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useEffect, useMemo, useState } from 'react'
 import {
+  Bar,
+  BarChart,
+  CartesianGrid,
   Cell,
-  Legend,
-  Pie,
-  PieChart,
   ResponsiveContainer,
   Tooltip,
+  XAxis,
+  YAxis,
 } from 'recharts'
 import { PageHeader } from '@/components/layout/page-header'
 import { DatePicker } from '@/components/shared/date-picker'
@@ -117,32 +119,34 @@ export default function OrangTuaKedisiplinanPage() {
     enabled: !!selectedSiswaId,
   })
 
-  // Perhitungan total poin pelanggaran aktif (HANYA status = 'Sudah Diproses')
-  const totalPoints = useMemo(() => {
+  // Perhitungan total poin berdasarkan kategori (HANYA status = 'Sudah Diproses')
+  const totalPoinPrestasi = useMemo(() => {
     return kedisiplinan
-      .filter((k: any) => k.status === 'Sudah Diproses')
+      .filter((k: any) => k.status === 'Sudah Diproses' && k.kategori_disiplin?.nama_kategori?.toLowerCase().includes('prestasi'))
       .reduce((sum: number, k: any) => sum + (k.pasal?.poin ?? 0), 0)
   }, [kedisiplinan])
 
-  // Process data for Pie Chart
-  const pieData = useMemo(() => {
-    const counts: Record<string, number> = {
-      'Belum Diproses': 0,
-      Pending: 0,
-      'Sudah Diproses': 0,
-    }
-    kedisiplinan.forEach((item: any) => {
-      if (counts[item.status] !== undefined) {
-        counts[item.status]++
-      }
-    })
-    return Object.entries(counts)
-      .filter(([_, value]) => value > 0)
-      .map(([name, value]) => ({
-        name,
-        value,
-      }))
+  const totalPoinPelanggaran = useMemo(() => {
+    return kedisiplinan
+      .filter((k: any) => k.status === 'Sudah Diproses' && (k.kategori_disiplin?.nama_kategori?.toLowerCase().includes('pelanggaran') || !k.kategori_disiplin?.nama_kategori?.toLowerCase().includes('prestasi')))
+      .reduce((sum: number, k: any) => sum + (k.pasal?.poin ?? 0), 0)
   }, [kedisiplinan])
+
+  // Data untuk Grafik Perbandingan Prestasi vs Pelanggaran
+  const comparisonData = useMemo(() => {
+    return [
+      {
+        name: 'Prestasi',
+        Poin: totalPoinPrestasi,
+        fill: CHART_GREEN,
+      },
+      {
+        name: 'Pelanggaran',
+        Poin: totalPoinPelanggaran,
+        fill: CHART_RED,
+      },
+    ]
+  }, [totalPoinPrestasi, totalPoinPelanggaran])
 
   // Handler pergantian anak
   const handleSiswaChange = (id: string) => {
@@ -190,7 +194,8 @@ export default function OrangTuaKedisiplinanPage() {
           <p><strong>Kelas:</strong> {activeStudent?.kelas} ({activeStudent?.unit})</p>
           <p><strong>Tanggal Cetak:</strong> {format(new Date(), 'dd/MM/yyyy')}</p>
           <p><strong>Dicetak Oleh:</strong> {profile?.nama_lengkap ?? 'Orang Tua'}</p>
-          <p><strong>Total Poin Pelanggaran Aktif:</strong> {totalPoints} Poin</p>
+          <p><strong>Total Poin Prestasi:</strong> {totalPoinPrestasi} Poin</p>
+          <p><strong>Total Poin Pelanggaran Aktif:</strong> {totalPoinPelanggaran} Poin</p>
         </div>
       </div>
 
@@ -198,7 +203,7 @@ export default function OrangTuaKedisiplinanPage() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between no-print">
         <PageHeader
           title="Kedisiplinan Anak"
-          description={`Histori kedisiplinan dan akumulasi poin pelanggaran dari ${activeStudent?.nama || ''}`}
+          description={`Histori kedisiplinan, poin prestasi, dan poin pelanggaran dari ${activeStudent?.nama || ''}`}
         />
         
         {anakList.length > 1 && (
@@ -240,65 +245,79 @@ export default function OrangTuaKedisiplinanPage() {
       </Card>
 
       {/* Stats Cards & Chart Grid */}
-      <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
-        {/* Total Poin Card */}
-        <Card className="flex flex-col justify-center items-center p-6 text-center">
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+        {/* Total Poin Prestasi Card */}
+        <Card className="flex flex-col justify-center items-center p-6 text-center border-t-4 border-status-green">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-semibold text-[var(--text-secondary)] uppercase">
-              Total Poin Pelanggaran Aktif
+              Total Poin Prestasi
             </CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col items-center justify-center gap-2">
-            <Badge className="text-3xl font-extrabold px-6 py-3 rounded-full bg-status-red hover:bg-status-red text-white shadow-sm">
-              {totalPoints}
-            </Badge>
+            <span className="text-4xl font-extrabold text-green-600">
+              {totalPoinPrestasi}
+            </span>
             <p className="text-[10px] text-[var(--text-tertiary)] italic mt-2">
               *Hanya poin status &apos;Sudah Diproses&apos; yang diakumulasikan
             </p>
           </CardContent>
         </Card>
 
-        {/* Pie Chart */}
-        <Card className="md:col-span-2 no-print">
-          <CardHeader>
-            <CardTitle className="text-base font-semibold">Persentase Status Tindakan</CardTitle>
+        {/* Total Poin Pelanggaran Card */}
+        <Card className="flex flex-col justify-center items-center p-6 text-center border-t-4 border-status-red">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-semibold text-[var(--text-secondary)] uppercase">
+              Total Poin Pelanggaran Aktif
+            </CardTitle>
           </CardHeader>
-          <CardContent className="flex justify-center">
-            {kedisiplinanLoading ? (
-              <div className="h-[200px] flex items-center justify-center"><LoadingSpinner /></div>
-            ) : pieData.length === 0 ? (
-              <EmptyState
-                title="Tidak Ada Data Status"
-                description="Status sebaran data pelanggaran kosong."
-                className="py-6"
-              />
-            ) : (
-              <div className="h-[200px] w-full max-w-md">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={pieData}
-                      dataKey="value"
-                      nameKey="name"
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={45}
-                      outerRadius={70}
-                      paddingAngle={3}
-                    >
-                      {pieData.map((entry) => (
-                        <Cell key={entry.name} fill={STATUS_COLORS[entry.name] || '#1C1C1A'} />
-                      ))}
-                    </Pie>
-                    <Tooltip />
-                    <Legend />
-                  </PieChart>
-                </ResponsiveContainer>
-              </div>
-            )}
+          <CardContent className="flex flex-col items-center justify-center gap-2">
+            <span className="text-4xl font-extrabold text-red-600">
+              {totalPoinPelanggaran}
+            </span>
+            <p className="text-[10px] text-[var(--text-tertiary)] italic mt-2">
+              *Hanya poin status &apos;Sudah Diproses&apos; yang diakumulasikan
+            </p>
           </CardContent>
         </Card>
       </div>
+
+      {/* Comparison Chart */}
+      <Card className="no-print">
+        <CardHeader>
+          <CardTitle className="text-base font-semibold">
+            Perbandingan Prestasi vs Pelanggaran
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="flex justify-center">
+          {kedisiplinanLoading ? (
+            <div className="h-[240px] flex items-center justify-center">
+              <LoadingSpinner />
+            </div>
+          ) : totalPoinPrestasi === 0 && totalPoinPelanggaran === 0 ? (
+            <EmptyState
+              title="Tidak Ada Data Poin"
+              description="Belum ada data poin prestasi maupun pelanggaran untuk perbandingan."
+              className="py-12"
+            />
+          ) : (
+            <div className="h-[240px] w-full max-w-md">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={comparisonData}>
+                  <CartesianGrid strokeDasharray="3 3" className="stroke-[var(--border)]" />
+                  <XAxis dataKey="name" tick={{ fill: 'var(--text-secondary)' }} />
+                  <YAxis tick={{ fill: 'var(--text-secondary)' }} />
+                  <Tooltip cursor={{ fill: 'transparent' }} />
+                  <Bar dataKey="Poin" radius={[4, 4, 0, 0]} maxBarSize={60}>
+                    {comparisonData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.fill} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Histori Pelanggaran Table */}
       <Card>

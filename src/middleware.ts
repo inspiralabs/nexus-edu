@@ -10,6 +10,9 @@ const PROTECTED_PREFIXES = [
   '/superadmin',
   '/account',
   '/orangtua',
+  '/mutabaah',
+  '/diknas',
+  '/about',
 ] as const
 
 const PUBLIC_ROUTES = ['/', '/login', '/signup'] as const
