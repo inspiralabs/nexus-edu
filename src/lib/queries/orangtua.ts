@@ -42,7 +42,7 @@ export async function getAnakSaya(profileId: string): Promise<Student[]> {
 export async function getDashboardOrangTua(siswaId: string): Promise<{
   kehadiranBulanIni: number
   rataNilai: number
-  totalPrestasi: number
+  totalPoinPrestasi: number
   totalPoinPelanggaran: number
   skorMutabaah: number
 }> {
@@ -89,29 +89,32 @@ export async function getDashboardOrangTua(siswaId: string): Promise<{
 
   const rataNilai = allGrades.length > 0 ? Math.round(allGrades.reduce((sum, v) => sum + v, 0) / allGrades.length) : 0
 
-  // 3. Total Prestasi
-  const { count: totalPrestasi, error: prError } = await supabase
-    .from('prestasi')
-    .select('*', { count: 'exact', head: true })
-    .eq('siswa_id', siswaId)
-
-  if (prError) throw new Error(prError.message)
-
-  // 4. Total Poin Pelanggaran (status = 'Sudah Diproses')
+  // 3. Total Poin Kedisiplinan (status = 'Sudah Diproses')
   const { data: kedisiplinan, error: kdError } = await supabase
     .from('kedisiplinan')
-    .select('pasal(poin)')
+    .select('pasal(poin), kategori_disiplin(nama_kategori)')
     .eq('siswa_id', siswaId)
     .eq('status', 'Sudah Diproses')
 
   if (kdError) throw new Error(kdError.message)
 
-  const totalPoinPelanggaran = (kedisiplinan ?? []).reduce((sum, row: any) => {
-    const p = unwrapRelation(row.pasal)
-    return sum + (p?.poin ?? 0)
-  }, 0)
+  let totalPoinPrestasi = 0
+  let totalPoinPelanggaran = 0
 
-  // 5. Skor Mutabaah Bulan Ini
+  for (const row of kedisiplinan ?? []) {
+    const p = unwrapRelation(row.pasal)
+    const k = unwrapRelation(row.kategori_disiplin)
+    const poin = p?.poin ?? 0
+    const namaKategori = k?.nama_kategori ?? ''
+
+    if (namaKategori.toLowerCase().includes('prestasi')) {
+      totalPoinPrestasi += poin
+    } else {
+      totalPoinPelanggaran += poin
+    }
+  }
+
+  // 4. Skor Mutabaah Bulan Ini
   const { data: mutabaahData, error: mutError } = await supabase
     .from('mutabaah')
     .select('status')
@@ -127,7 +130,7 @@ export async function getDashboardOrangTua(siswaId: string): Promise<{
   return {
     kehadiranBulanIni,
     rataNilai,
-    totalPrestasi: totalPrestasi ?? 0,
+    totalPoinPrestasi,
     totalPoinPelanggaran,
     skorMutabaah,
   }

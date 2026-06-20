@@ -194,13 +194,13 @@ export default function OrangTuaDashboardPage() {
             variant="secondary"
           />
           <StatCard
-            title="Total Prestasi"
-            value={rekap?.totalPrestasi ?? 0}
+            title="Total Poin Prestasi"
+            value={rekap?.totalPoinPrestasi ?? 0}
             icon={Trophy}
             variant="primary"
           />
           <StatCard
-            title="Pelanggaran Aktif"
+            title="Total Poin Pelanggaran"
             value={rekap?.totalPoinPelanggaran ?? 0}
             icon={ShieldAlert}
             variant="default"
