@@ -49,6 +49,7 @@ const kamarSchema = z.object({
   nama_kamar: z.string().min(2, 'Nama kamar minimal 2 karakter'),
   unit: z.enum(['SD', 'SMP', 'SMA'], { message: 'Pilih unit' }),
   musyrif_id: z.string().uuid().nullable().optional().or(z.literal('')),
+  jenis_kelamin: z.enum(['Laki-laki', 'Perempuan'], { message: 'Pilih jenis kamar' }),
 })
 
 type KamarFormValues = z.infer<typeof kamarSchema>
@@ -59,6 +60,7 @@ function kamarToRecord(item: Kamar): Record<string, unknown> {
     nama_kamar: item.nama_kamar,
     musyrif_id: item.musyrif_id,
     unit: item.unit,
+    jenis_kelamin: item.jenis_kelamin,
     created_at: item.created_at,
   }
 }
@@ -82,7 +84,7 @@ export default function KamarPage() {
 
   const form = useForm<KamarFormValues>({
     resolver: zodResolver(kamarSchema),
-    defaultValues: { nama_kamar: '', unit: 'SD', musyrif_id: '' },
+    defaultValues: { nama_kamar: '', unit: 'SD', musyrif_id: '', jenis_kelamin: 'Laki-laki' },
   })
 
   const queryFilters = useMemo(
@@ -113,12 +115,12 @@ export default function KamarPage() {
     setIsAddOpen(false)
     setIsEditOpen(false)
     setEditingItem(null)
-    form.reset({ nama_kamar: '', unit: activeUnit, musyrif_id: '' })
+    form.reset({ nama_kamar: '', unit: activeUnit, musyrif_id: '', jenis_kelamin: 'Laki-laki' })
   }
 
   const openAddDialog = () => {
     setEditingItem(null)
-    form.reset({ nama_kamar: '', unit: activeUnit, musyrif_id: '' })
+    form.reset({ nama_kamar: '', unit: activeUnit, musyrif_id: '', jenis_kelamin: 'Laki-laki' })
     setIsAddOpen(true)
   }
 
@@ -128,6 +130,7 @@ export default function KamarPage() {
       nama_kamar: item.nama_kamar,
       unit: item.unit,
       musyrif_id: item.musyrif_id ?? '',
+      jenis_kelamin: item.jenis_kelamin,
     })
     setIsEditOpen(true)
   }
@@ -199,6 +202,7 @@ export default function KamarPage() {
       nama_kamar: values.nama_kamar,
       unit: values.unit,
       musyrif_id: values.musyrif_id && values.musyrif_id !== '' ? values.musyrif_id : null,
+      jenis_kelamin: values.jenis_kelamin,
     }
 
     if (isEditOpen && editingItem) {
@@ -245,6 +249,11 @@ export default function KamarPage() {
             <span className="text-xs text-[var(--text-tertiary)] italic">Belum ada musyrif</span>
           )
         },
+      },
+      {
+        accessorKey: 'jenis_kelamin',
+        header: 'Jenis Kamar',
+        cell: ({ row }) => row.original.jenis_kelamin,
       },
       {
         accessorKey: 'unit',
@@ -386,6 +395,32 @@ export default function KamarPage() {
               </Select>
               {form.formState.errors.unit && (
                 <p className="text-xs text-status-red">{form.formState.errors.unit.message}</p>
+              )}
+            </div>
+
+            {/* Jenis Kamar */}
+            <div className="space-y-2">
+              <Label htmlFor="jenis_kelamin">Jenis Kamar</Label>
+              <Select
+                value={form.watch('jenis_kelamin')}
+                onValueChange={(value) =>
+                  form.setValue('jenis_kelamin', value as 'Laki-laki' | 'Perempuan', {
+                    shouldValidate: true,
+                  })
+                }
+              >
+                <SelectTrigger id="jenis_kelamin">
+                  <SelectValue placeholder="Pilih jenis kamar" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Laki-laki">Laki-laki</SelectItem>
+                  <SelectItem value="Perempuan">Perempuan</SelectItem>
+                </SelectContent>
+              </Select>
+              {form.formState.errors.jenis_kelamin && (
+                <p className="text-xs text-status-red">
+                  {form.formState.errors.jenis_kelamin.message}
+                </p>
               )}
             </div>
 

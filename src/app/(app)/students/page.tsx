@@ -171,16 +171,7 @@ export default function StudentsPage() {
     enabled: !isAlumniTab,
   })
 
-  const filteredKamar = useMemo(() => {
-    if (!kamarSearch) return kamarData
-    return kamarData.filter((k) =>
-      k.nama_kamar.toLowerCase().includes(kamarSearch.toLowerCase())
-    )
-  }, [kamarData, kamarSearch])
 
-  const kamarOptions = useMemo(() => {
-    return filteredKamar.map((k) => ({ value: k.id, label: k.nama_kamar }))
-  }, [filteredKamar])
 
   // Load Orang Tua Options
   const { data: orangTuaData = [], isLoading: isOrangTuaLoading } = useQuery({
@@ -257,6 +248,46 @@ export default function StudentsPage() {
       orangtua_id: null,
     },
   })
+
+  const watchJkAdd = addForm.watch('jenis_kelamin')
+  const watchJkEdit = editForm.watch('jenis_kelamin')
+
+  const addKamarOptions = useMemo(() => {
+    if (!watchJkAdd) return []
+    const mappedGender = watchJkAdd === 'L' ? 'Laki-laki' : 'Perempuan'
+    let list = kamarData.filter((k) => k.jenis_kelamin === mappedGender)
+    if (kamarSearch) {
+      list = list.filter((k) =>
+        k.nama_kamar.toLowerCase().includes(kamarSearch.toLowerCase())
+      )
+    }
+    return list.map((k) => ({ value: k.id, label: k.nama_kamar }))
+  }, [kamarData, watchJkAdd, kamarSearch])
+
+  const editKamarOptions = useMemo(() => {
+    if (!watchJkEdit) return []
+    const mappedGender = watchJkEdit === 'L' ? 'Laki-laki' : 'Perempuan'
+    let list = kamarData.filter((k) => k.jenis_kelamin === mappedGender)
+    if (kamarSearch) {
+      list = list.filter((k) =>
+        k.nama_kamar.toLowerCase().includes(kamarSearch.toLowerCase())
+      )
+    }
+    return list.map((k) => ({ value: k.id, label: k.nama_kamar }))
+  }, [kamarData, watchJkEdit, kamarSearch])
+
+  const bulkEditKamarOptions = useMemo(() => {
+    const jk = bulkEditData.jenis_kelamin
+    if (!jk) return []
+    const mappedGender = jk === 'L' ? 'Laki-laki' : 'Perempuan'
+    let list = kamarData.filter((k) => k.jenis_kelamin === mappedGender)
+    if (kamarSearch) {
+      list = list.filter((k) =>
+        k.nama_kamar.toLowerCase().includes(kamarSearch.toLowerCase())
+      )
+    }
+    return list.map((k) => ({ value: k.id, label: k.nama_kamar }))
+  }, [kamarData, bulkEditData.jenis_kelamin, kamarSearch])
 
   const invalidateStudents = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: ['students'] })
@@ -764,9 +795,13 @@ export default function StudentsPage() {
         <Label>Jenis Kelamin</Label>
         <RadioGroup
           value={addForm.watch('jenis_kelamin')}
-          onValueChange={(value) =>
+          onValueChange={(value) => {
+            const currentKamarId = addForm.getValues('kamar_id')
+            if (currentKamarId) {
+              addForm.setValue('kamar_id', null, { shouldValidate: true })
+            }
             addForm.setValue('jenis_kelamin', value as JenisKelamin, { shouldValidate: true })
-          }
+          }}
           className="flex gap-4"
         >
           <div className="flex items-center gap-2">
@@ -789,18 +824,21 @@ export default function StudentsPage() {
           Kamar Pesantren <span className="text-[var(--text-tertiary)]">(opsional)</span>
         </Label>
         <Combobox
-          options={kamarOptions}
+          options={addKamarOptions}
           value={addForm.watch('kamar_id') || ''}
           onSelect={(val) => {
             addForm.setValue('kamar_id', val || null, { shouldValidate: true })
           }}
           onSearch={setKamarSearch}
-          placeholder="Pilih Kamar..."
+          placeholder={watchJkAdd ? "Pilih Kamar..." : "Pilih jenis kelamin terlebih dahulu"}
+          disabled={!watchJkAdd}
           isLoading={isKamarLoading}
           emptyMessage={
-            kamarSearch
+            !watchJkAdd
+              ? 'Pilih jenis kelamin terlebih dahulu'
+              : kamarSearch
               ? 'Kamar tidak ditemukan'
-              : 'Belum ada kamar untuk unit yang dipilih'
+              : 'Belum ada kamar untuk unit/jenis kelamin yang dipilih'
           }
         />
       </div>
@@ -1058,9 +1096,13 @@ export default function StudentsPage() {
               <Label>Jenis Kelamin</Label>
               <RadioGroup
                 value={editForm.watch('jenis_kelamin')}
-                onValueChange={(value) =>
+                onValueChange={(value) => {
+                  const currentKamarId = editForm.getValues('kamar_id')
+                  if (currentKamarId) {
+                    editForm.setValue('kamar_id', null, { shouldValidate: true })
+                  }
                   editForm.setValue('jenis_kelamin', value as JenisKelamin, { shouldValidate: true })
-                }
+                }}
                 className="flex gap-4"
               >
                 <div className="flex items-center gap-2">
@@ -1081,18 +1123,21 @@ export default function StudentsPage() {
             <div className="space-y-2">
               <Label htmlFor="edit-kamar">Kamar Pesantren <span className="text-[var(--text-tertiary)]">(opsional)</span></Label>
               <Combobox
-                options={kamarOptions}
+                options={editKamarOptions}
                 value={editForm.watch('kamar_id') || ''}
                 onSelect={(val) => {
                   editForm.setValue('kamar_id', val || null, { shouldValidate: true })
                 }}
                 onSearch={setKamarSearch}
-                placeholder="Pilih Kamar..."
+                placeholder={watchJkEdit ? "Pilih Kamar..." : "Pilih jenis kelamin terlebih dahulu"}
+                disabled={!watchJkEdit}
                 isLoading={isKamarLoading}
                 emptyMessage={
-                  kamarSearch
+                  !watchJkEdit
+                    ? 'Pilih jenis kelamin terlebih dahulu'
+                    : kamarSearch
                     ? 'Kamar tidak ditemukan'
-                    : 'Belum ada kamar untuk unit yang dipilih'
+                    : 'Belum ada kamar untuk unit/jenis kelamin yang dipilih'
                 }
               />
             </div>
@@ -1241,7 +1286,16 @@ export default function StudentsPage() {
               <Label>Jenis Kelamin <span className="text-[var(--text-tertiary)]">(opsional)</span></Label>
               <RadioGroup
                 value={bulkEditData.jenis_kelamin}
-                onValueChange={(v) => setBulkEditData((prev) => ({ ...prev, jenis_kelamin: v as JenisKelamin | '' }))}
+                onValueChange={(v) =>
+                  setBulkEditData((prev) => {
+                    const nextJk = v as JenisKelamin | ''
+                    return {
+                      ...prev,
+                      jenis_kelamin: nextJk,
+                      kamar_id: prev.kamar_id ? null : prev.kamar_id,
+                    }
+                  })
+                }
                 className="flex gap-4"
               >
                 <div className="flex items-center gap-2">
@@ -1263,16 +1317,19 @@ export default function StudentsPage() {
             <div className="space-y-2">
               <Label htmlFor="bulk-edit-kamar">Kamar Pesantren <span className="text-[var(--text-tertiary)]">(opsional)</span></Label>
               <Combobox
-                options={kamarOptions}
+                options={bulkEditKamarOptions}
                 value={bulkEditData.kamar_id || ''}
                 onSelect={(val) => setBulkEditData((prev) => ({ ...prev, kamar_id: val || null }))}
                 onSearch={setKamarSearch}
-                placeholder="Pilih Kamar..."
+                placeholder={bulkEditData.jenis_kelamin ? "Pilih Kamar..." : "Pilih jenis kelamin terlebih dahulu"}
+                disabled={!bulkEditData.jenis_kelamin}
                 isLoading={isKamarLoading}
                 emptyMessage={
-                  kamarSearch
+                  !bulkEditData.jenis_kelamin
+                    ? 'Pilih jenis kelamin terlebih dahulu'
+                    : kamarSearch
                     ? 'Kamar tidak ditemukan'
-                    : 'Belum ada kamar untuk unit yang dipilih'
+                    : 'Belum ada kamar untuk unit/jenis kelamin yang dipilih'
                 }
               />
             </div>

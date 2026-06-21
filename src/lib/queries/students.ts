@@ -523,13 +523,13 @@ export async function searchStudents(
   return (data ?? []) as Student[]
 }
 
-export async function getKamarOptions(units?: string[]): Promise<{ id: string; nama_kamar: string; unit?: string }[]> {
+export async function getKamarOptions(units?: string[]): Promise<{ id: string; nama_kamar: string; unit?: string; jenis_kelamin?: string }[]> {
   const supabase = createClient()
   if (units && units.length === 0) return []
 
   let query = supabase
     .from('kamar')
-    .select('id, nama_kamar, unit')
+    .select('id, nama_kamar, unit, jenis_kelamin')
     .order('nama_kamar', { ascending: true })
 
   if (units && units.length > 0) {
@@ -539,7 +539,7 @@ export async function getKamarOptions(units?: string[]): Promise<{ id: string; n
   const { data, error } = await query
 
   if (error) throw new Error(error.message)
-  return (data ?? []) as { id: string; nama_kamar: string; unit?: string }[]
+  return (data ?? []) as { id: string; nama_kamar: string; unit?: string; jenis_kelamin?: string }[]
 }
 
 export async function getMataKuliah(units: string[]): Promise<MataPelajaran[]> {

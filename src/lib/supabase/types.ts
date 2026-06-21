@@ -222,6 +222,7 @@ export interface Kamar {
   nama_kamar: string
   musyrif_id: string | null
   unit: Unit
+  jenis_kelamin: 'Laki-laki' | 'Perempuan'
   created_at: string
   profiles?: Profile
 }

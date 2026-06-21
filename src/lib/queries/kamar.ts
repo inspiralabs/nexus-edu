@@ -12,12 +12,14 @@ export interface CreateKamarInput {
   nama_kamar: string
   unit: Unit
   musyrif_id: string | null
+  jenis_kelamin: 'Laki-laki' | 'Perempuan'
 }
 
 export interface UpdateKamarInput {
   nama_kamar?: string
   unit?: Unit
   musyrif_id?: string | null
+  jenis_kelamin?: 'Laki-laki' | 'Perempuan'
 }
 
 export async function getKamar(
