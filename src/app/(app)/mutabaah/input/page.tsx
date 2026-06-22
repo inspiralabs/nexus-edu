@@ -138,7 +138,7 @@ export default function InputHarianPage() {
 
   // ── Query Tanggal Mutabaah Belum Diisi ──
   const { data: fetchedMissingDates } = useQuery({
-    queryKey: ['missing-mutabaah-dates', semesterId, musyrifId, tanggalMulai, tanggalSelesai],
+    queryKey: ['missing-mutabaah-dates', semesterId, musyrifId, tanggalMulai, tanggalSelesai, selectedKamar, filterKategori],
     queryFn: async () => {
       if (!semesterId || !musyrifId || !tanggalMulai || !tanggalSelesai) return []
       
@@ -150,7 +150,7 @@ export default function InputHarianPage() {
         ? tanggalSelesai.split('T')[0]
         : format(new Date(tanggalSelesai), 'yyyy-MM-dd')
 
-      return getMissingMutabaahDates(semesterId, musyrifId, startStr, endStr)
+      return getMissingMutabaahDates(semesterId, musyrifId, startStr, endStr, selectedKamar)
     },
     enabled: !!semesterId && !!musyrifId && !!tanggalMulai && !!tanggalSelesai,
   })
