@@ -19,6 +19,9 @@ interface DatePickerProps {
   disabled?: boolean
   minDate?: Date
   maxDate?: Date
+  fromDate?: Date
+  toDate?: Date
+  defaultMonth?: Date
   modifiers?: Record<string, any>
   modifiersStyles?: Record<string, React.CSSProperties>
   modifiersClassNames?: Record<string, string>
@@ -31,18 +34,23 @@ function DatePicker({
   disabled = false,
   minDate,
   maxDate,
+  fromDate,
+  toDate,
+  defaultMonth,
   modifiers,
   modifiersStyles,
   modifiersClassNames,
 }: DatePickerProps) {
   const [open, setOpen] = React.useState(false)
-  const [month, setMonth] = React.useState<Date | undefined>(value)
+  const [month, setMonth] = React.useState<Date | undefined>(value || defaultMonth)
 
   React.useEffect(() => {
     if (value) {
       setMonth(value)
+    } else if (defaultMonth) {
+      setMonth(defaultMonth)
     }
-  }, [value])
+  }, [value, defaultMonth])
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -62,6 +70,7 @@ function DatePicker({
       </PopoverTrigger>
       <PopoverContent className="w-auto p-0" align="start">
         <Calendar
+          showOutsideDays={true}
           mode="single"
           selected={value}
           onSelect={(date) => {
@@ -70,11 +79,16 @@ function DatePicker({
           }}
           month={month}
           onMonthChange={setMonth}
-          startMonth={minDate}
-          endMonth={maxDate}
+          startMonth={minDate || fromDate}
+          endMonth={maxDate || toDate}
+          fromDate={fromDate}
+          toDate={toDate}
+          defaultMonth={defaultMonth}
           disabled={(date) => {
-            if (minDate && date < minDate) return true
-            if (maxDate && date > maxDate) return true
+            const min = minDate || fromDate
+            const max = maxDate || toDate
+            if (min && date < min) return true
+            if (max && date > max) return true
             return false
           }}
           modifiers={modifiers}

@@ -433,6 +433,7 @@ export default function TargetMutabaahPage() {
 
   const [activeTab, setActiveTab] = useState<'SD' | 'SMP' | 'SMA'>('SD')
   const [selectedSemesterId, setSelectedSemesterId] = useState<string>('')
+  const [filterKategori, setFilterKategori] = useState<string>('all')
   const [selectedKamar, setSelectedKamar] = useState<string>('')
   const [search, setSearch] = useState('')
   const debouncedSearch = useDebounce(search, 300)
@@ -477,8 +478,12 @@ export default function TargetMutabaahPage() {
   }, [kamarList])
 
   const filteredKamarList = useMemo(() => {
-    return kamarList.filter((k) => k.unit === activeTab)
-  }, [kamarList, activeTab])
+    let result = kamarList.filter((k) => k.unit === activeTab)
+    if (filterKategori !== 'all') {
+      result = result.filter((k) => k.jenis_kelamin === filterKategori)
+    }
+    return result
+  }, [kamarList, activeTab, filterKategori])
 
   useEffect(() => {
     if (filteredKamarList.length > 0) {
@@ -659,6 +664,26 @@ export default function TargetMutabaahPage() {
                   </SelectItem>
                 )
               })}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <label className="text-xs font-medium text-[var(--text-secondary)]">Kategori</label>
+          <Select
+            value={filterKategori}
+            onValueChange={(v) => {
+              setFilterKategori(v)
+              setSelectedKamar('')
+              setPage(1)
+            }}
+          >
+            <SelectTrigger className="w-36">
+              <SelectValue placeholder="Kategori" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Semua Kategori</SelectItem>
+              <SelectItem value="Laki-laki">Ikhwan</SelectItem>
+              <SelectItem value="Perempuan">Akhwat</SelectItem>
             </SelectContent>
           </Select>
         </div>

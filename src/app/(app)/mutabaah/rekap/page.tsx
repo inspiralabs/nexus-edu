@@ -444,6 +444,7 @@ export default function RekapKegiatanPage() {
     }
     return 'SD'
   })
+  const [filterKategori, setFilterKategori] = useState<string>('all')
   const [selectedKamar, setSelectedKamar] = useState<string>(() => {
     return queryKamar ?? 'all'
   })
@@ -506,8 +507,12 @@ export default function RekapKegiatanPage() {
   }, [kamarList, queryUnit])
 
   const filteredKamarList = useMemo(() => {
-    return kamarList.filter((k) => k.unit === activeTab)
-  }, [kamarList, activeTab])
+    let result = kamarList.filter((k) => k.unit === activeTab)
+    if (filterKategori !== 'all') {
+      result = result.filter((k) => k.jenis_kelamin === filterKategori)
+    }
+    return result
+  }, [kamarList, activeTab, filterKategori])
 
   useEffect(() => {
     if (!loadingKamar && selectedKamar !== 'all') {
@@ -524,11 +529,12 @@ export default function RekapKegiatanPage() {
   const tanggalSampaiStr = format(tanggalSampai, 'yyyy-MM-dd')
 
   const { data: rekapList = [], isLoading: loadingRekap } = useQuery({
-    queryKey: ['mutabaah-rekap', selectedKamar, activeTab, tanggalDariStr, tanggalSampaiStr],
+    queryKey: ['mutabaah-rekap', selectedKamar, activeTab, tanggalDariStr, tanggalSampaiStr, filterKategori],
     queryFn: () =>
       getMutabaahRekap({
         kamarNama: selectedKamar === 'all' ? undefined : selectedKamar,
         unit: selectedKamar === 'all' ? activeTab : undefined,
+        kategori: filterKategori !== 'all' ? filterKategori : undefined,
         tanggalDari: tanggalDariStr,
         tanggalSampai: tanggalSampaiStr,
       }),
@@ -656,6 +662,26 @@ export default function RekapKegiatanPage() {
 
       {/* ── Filter Bar ── */}
       <div className="flex flex-wrap items-end gap-3 rounded-lg border border-[var(--border)] bg-[var(--surface)] p-4">
+        <div className="flex flex-col gap-1.5">
+          <label className="text-xs font-medium text-[var(--text-secondary)]">Kategori</label>
+          <Select
+            value={filterKategori}
+            onValueChange={(v) => {
+              setFilterKategori(v)
+              setSelectedKamar('all')
+              setPage(1)
+            }}
+          >
+            <SelectTrigger className="w-36">
+              <SelectValue placeholder="Kategori" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Semua Kategori</SelectItem>
+              <SelectItem value="Laki-laki">Ikhwan</SelectItem>
+              <SelectItem value="Perempuan">Akhwat</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
         <div className="flex flex-col gap-1.5">
           <label className="text-xs font-medium text-[var(--text-secondary)]">Kamar</label>
           <Select value={selectedKamar} onValueChange={(v) => { setSelectedKamar(v); setPage(1) }}>

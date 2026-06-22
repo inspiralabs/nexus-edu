@@ -222,15 +222,15 @@ export default function PresensiPage() {
     return monthOptions.find((m) => m.value === bulkBulan)
   }, [monthOptions, bulkBulan])
 
-  const bulkMonthRange = useMemo(() => {
-    if (!bulkBulan) return null
+  const { startDate, endDate } = useMemo(() => {
+    if (!bulkBulan) return { startDate: undefined, endDate: undefined }
     const [yearStr, monthStr] = bulkBulan.split('-')
     const year = parseInt(yearStr, 10)
     const month = parseInt(monthStr, 10)
-    if (isNaN(year) || isNaN(month)) return null
+    if (isNaN(year) || isNaN(month)) return { startDate: undefined, endDate: undefined }
     return {
-      minDate: new Date(year, month - 1, 1, 0, 0, 0),
-      maxDate: new Date(year, month, 0, 23, 59, 59, 999),
+      startDate: new Date(year, month - 1, 1),
+      endDate: new Date(year, month, 0, 23, 59, 59, 999),
     }
   }, [bulkBulan])
 
@@ -706,8 +706,9 @@ export default function PresensiPage() {
                 key={bulkBulan || 'none'}
                 value={bulkTanggal}
                 onChange={(d) => d && setBulkTanggal(d)}
-                minDate={bulkMonthRange?.minDate}
-                maxDate={bulkMonthRange?.maxDate}
+                fromDate={startDate}
+                toDate={endDate}
+                defaultMonth={startDate}
                 disabled={!bulkBulan}
               />
             </div>

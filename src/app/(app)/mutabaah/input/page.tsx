@@ -100,6 +100,7 @@ export default function InputHarianPage() {
   const router = useRouter()
 
   const [selectedDate, setSelectedDate] = useState<Date>(new Date())
+  const [filterKategori, setFilterKategori] = useState<string>('all')
   const [selectedKamar, setSelectedKamar] = useState<string>('')
   const [mutabaahData, setMutabaahData] = useState<MutabaahMap>(new Map())
   const [isSaving, setIsSaving] = useState(false)
@@ -187,10 +188,14 @@ export default function InputHarianPage() {
     }
   }, [kamarList])
 
-  // Filter Kamar berdasarkan tab unit
+  // Filter Kamar berdasarkan tab unit & kategori
   const filteredKamarList = useMemo(() => {
-    return kamarList.filter((k) => k.unit === activeTab)
-  }, [kamarList, activeTab])
+    let result = kamarList.filter((k) => k.unit === activeTab)
+    if (filterKategori !== 'all') {
+      result = result.filter((k) => k.jenis_kelamin === filterKategori)
+    }
+    return result
+  }, [kamarList, activeTab, filterKategori])
 
   // Auto-pilih kamar pertama dari list terfilter
   useEffect(() => {
@@ -626,6 +631,25 @@ export default function InputHarianPage() {
                 'relative after:absolute after:bottom-1 after:left-1/2 after:-translate-x-1/2 after:h-1 after:w-1 after:rounded-full after:bg-red-500',
             }}
           />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <label className="text-xs font-medium text-[var(--text-secondary)]">Kategori</label>
+          <Select
+            value={filterKategori}
+            onValueChange={(v) => {
+              setFilterKategori(v)
+              setSelectedKamar('')
+            }}
+          >
+            <SelectTrigger className="w-36">
+              <SelectValue placeholder="Kategori" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Semua Kategori</SelectItem>
+              <SelectItem value="Laki-laki">Ikhwan</SelectItem>
+              <SelectItem value="Perempuan">Akhwat</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
         <div className="flex flex-col gap-1.5">
           <label className="text-xs font-medium text-[var(--text-secondary)]">Kamar</label>

@@ -10,18 +10,51 @@ import {
 import { buttonVariants } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
+export type CalendarProps = DayPickerProps & {
+  fromDate?: Date
+  toDate?: Date
+  defaultMonth?: Date
+}
+
 function Calendar({
   className,
   classNames,
   showOutsideDays = true,
+  fromDate,
+  toDate,
+  defaultMonth,
   ...props
-}: DayPickerProps) {
+}: CalendarProps) {
   const defaultClassNames = getDefaultClassNames()
+
+  const disabledMatchers = React.useMemo(() => {
+    const matchers: any[] = []
+    if (props.disabled) {
+      if (Array.isArray(props.disabled)) {
+        matchers.push(...props.disabled)
+      } else {
+        matchers.push(props.disabled)
+      }
+    }
+    if (fromDate) {
+      matchers.push({ before: fromDate })
+    }
+    if (toDate) {
+      matchers.push({ after: toDate })
+    }
+    return matchers.length > 0 ? matchers : undefined
+  }, [props.disabled, fromDate, toDate])
+
+  const resolvedMonth = props.month || defaultMonth
 
   return (
     <DayPicker
       showOutsideDays={showOutsideDays}
       className={cn('p-3', className)}
+      startMonth={fromDate || props.startMonth}
+      endMonth={toDate || props.endMonth}
+      disabled={disabledMatchers}
+      month={resolvedMonth}
       classNames={{
         root: cn('w-fit', defaultClassNames.root),
         months: cn(

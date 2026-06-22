@@ -119,6 +119,7 @@ export interface KamarItem {
   nama_kamar: string
   unit: string | null
   musyrif_id: string | null
+  jenis_kelamin?: 'Laki-laki' | 'Perempuan' | null
 }
 
 export interface TargetMutabaah {
@@ -448,13 +449,13 @@ export async function deleteSubKegiatan(id: string): Promise<void> {
 
 // ─── Kamar ────────────────────────────────────────────────────────────────────
 
-/** Ambil semua kamar diurutkan by nama_kamar */
+// Ambil semua kamar diurutkan by nama_kamar
 export async function getKamar(): Promise<KamarItem[]> {
   const supabase = createClient()
 
   const { data, error } = await supabase
     .from('kamar')
-    .select('id, nama_kamar, unit, musyrif_id')
+    .select('id, nama_kamar, unit, musyrif_id, jenis_kelamin')
     .order('nama_kamar', { ascending: true })
 
   if (error) throw new Error(error.message)
@@ -468,7 +469,7 @@ export async function getKamarByMusyrif(musyrifId: string): Promise<KamarItem[]>
 
   const { data, error } = await supabase
     .from('kamar')
-    .select('id, nama_kamar, unit, musyrif_id')
+    .select('id, nama_kamar, unit, musyrif_id, jenis_kelamin')
     .eq('musyrif_id', musyrifId)
     .order('nama_kamar', { ascending: true })
 
@@ -769,10 +770,40 @@ export interface MutabaahRekapItem {
   total_hari: number
 }
 
+/** Helper to resolve student IDs by Kamar name, Unit, and Category (Ikhwan/Akhwat) */
+async function resolveSiswaIds(
+  kamarNama?: string,
+  unit?: string,
+  kategori?: string
+): Promise<string[]> {
+  const supabase = createClient()
+  let q = supabase
+    .from('students')
+    .select('id')
+    .eq('is_alumni', false)
+
+  if (kamarNama) {
+    q = q.eq('kamar', kamarNama)
+  } else if (unit && unit !== 'all') {
+    q = q.eq('unit', unit)
+  }
+
+  if (kategori === 'Laki-laki') {
+    q = q.eq('jenis_kelamin', 'L')
+  } else if (kategori === 'Perempuan') {
+    q = q.eq('jenis_kelamin', 'P')
+  }
+
+  const { data, error } = await q
+  if (error) throw new Error(error.message)
+  return (data ?? []).map((s: { id: string }) => s.id)
+}
+
 export interface MutabaahRekapOptions {
   siswaId?: string
   kamarNama?: string
   unit?: string
+  kategori?: string
   tanggalDari: string
   tanggalSampai: string
 }
@@ -782,32 +813,15 @@ export async function getMutabaahRekap(
   options: MutabaahRekapOptions
 ): Promise<MutabaahRekapItem[]> {
   const supabase = createClient()
-  const { siswaId, kamarNama, unit, tanggalDari, tanggalSampai } = options
+  const { siswaId, kamarNama, unit, kategori, tanggalDari, tanggalSampai } = options
 
   // Resolusi siswa_ids berdasarkan filter
   let siswaIds: string[] | null = null
 
   if (siswaId) {
     siswaIds = [siswaId]
-  } else if (kamarNama) {
-    const { data: siswaData, error: siswaError } = await supabase
-      .from('students')
-      .select('id')
-      .eq('kamar', kamarNama)
-      .eq('is_alumni', false)
-
-    if (siswaError) throw new Error(siswaError.message)
-    siswaIds = (siswaData ?? []).map((s: { id: string }) => s.id)
-    if (siswaIds.length === 0) return []
-  } else if (unit) {
-    const { data: siswaData, error: siswaError } = await supabase
-      .from('students')
-      .select('id')
-      .eq('unit', unit)
-      .eq('is_alumni', false)
-
-    if (siswaError) throw new Error(siswaError.message)
-    siswaIds = (siswaData ?? []).map((s: { id: string }) => s.id)
+  } else if (kamarNama || unit || kategori) {
+    siswaIds = await resolveSiswaIds(kamarNama, unit, kategori)
     if (siswaIds.length === 0) return []
   }
 
@@ -1131,7 +1145,8 @@ export interface TrendHarianItem {
 export async function getMutabaahDashboardStats(
   kamarNama?: string,
   bulan?: string,
-  unit?: string
+  unit?: string,
+  kategori?: string
 ): Promise<DashboardMutabaahStats> {
   const supabase = createClient()
 
@@ -1142,43 +1157,7 @@ export async function getMutabaahDashboardStats(
   const lastDay = new Date(yr, mo, 0).getDate()
   const tglSelesai = `${targetBulan}-${String(lastDay).padStart(2, '0')}`
 
-  let siswaIds: string[]
-  if (kamarNama) {
-    const { data: siswaData, error: siswaErr } = await supabase
-      .from('students')
-      .select('id')
-      .eq('kamar', kamarNama)
-      .eq('is_alumni', false)
-
-    if (siswaErr) throw new Error(siswaErr.message)
-    siswaIds = (siswaData ?? []).map((s: { id: string }) => s.id)
-  } else if (unit && unit !== 'all') {
-    const { data: kamarData, error: kamarErr } = await supabase
-      .from('kamar')
-      .select('nama_kamar')
-      .eq('unit', unit)
-    if (kamarErr) throw new Error(kamarErr.message)
-    const kamarNames = (kamarData ?? []).map((k) => k.nama_kamar)
-    if (kamarNames.length > 0) {
-      const { data: siswaData, error: siswaErr } = await supabase
-        .from('students')
-        .select('id')
-        .in('kamar', kamarNames)
-        .eq('is_alumni', false)
-      if (siswaErr) throw new Error(siswaErr.message)
-      siswaIds = (siswaData ?? []).map((s) => s.id)
-    } else {
-      siswaIds = []
-    }
-  } else {
-    const { data: allSiswa, error: allErr } = await supabase
-      .from('students')
-      .select('id')
-      .eq('is_alumni', false)
-
-    if (allErr) throw new Error(allErr.message)
-    siswaIds = (allSiswa ?? []).map((s: { id: string }) => s.id)
-  }
+  const siswaIds = await resolveSiswaIds(kamarNama, unit, kategori)
 
   const totalSiswaAktif = siswaIds.length
 
@@ -1225,7 +1204,8 @@ export async function getKehadiranPerKegiatan(
   kamarNama?: string,
   bulan?: string,
   topN = 5,
-  unit?: string
+  unit?: string,
+  kategori?: string
 ): Promise<KehadiranPerKegiatanItem[]> {
   const supabase = createClient()
 
@@ -1237,34 +1217,8 @@ export async function getKehadiranPerKegiatan(
   const tglSelesai = `${targetBulan}-${String(lastDay).padStart(2, '0')}`
 
   let siswaIds: string[] | null = null
-  if (kamarNama) {
-    const { data: siswaData, error: siswaErr } = await supabase
-      .from('students')
-      .select('id')
-      .eq('kamar', kamarNama)
-      .eq('is_alumni', false)
-
-    if (siswaErr) throw new Error(siswaErr.message)
-    siswaIds = (siswaData ?? []).map((s: { id: string }) => s.id)
-    if (siswaIds.length === 0) return []
-  } else if (unit && unit !== 'all') {
-    const { data: kamarData, error: kamarErr } = await supabase
-      .from('kamar')
-      .select('nama_kamar')
-      .eq('unit', unit)
-    if (kamarErr) throw new Error(kamarErr.message)
-    const kamarNames = (kamarData ?? []).map((k) => k.nama_kamar)
-    if (kamarNames.length > 0) {
-      const { data: siswaData, error: siswaErr } = await supabase
-        .from('students')
-        .select('id')
-        .in('kamar', kamarNames)
-        .eq('is_alumni', false)
-      if (siswaErr) throw new Error(siswaErr.message)
-      siswaIds = (siswaData ?? []).map((s) => s.id)
-    } else {
-      siswaIds = []
-    }
+  if (kamarNama || (unit && unit !== 'all') || kategori) {
+    siswaIds = await resolveSiswaIds(kamarNama, unit, kategori)
     if (siswaIds.length === 0) return []
   }
 
@@ -1317,7 +1271,8 @@ export async function getKehadiranPerKegiatan(
 export async function getTrendKehadiranHarian(
   kamarNama?: string,
   bulan?: string,
-  unit?: string
+  unit?: string,
+  kategori?: string
 ): Promise<TrendHarianItem[]> {
   const supabase = createClient()
 
@@ -1329,34 +1284,8 @@ export async function getTrendKehadiranHarian(
   const tglSelesai = `${targetBulan}-${String(lastDay).padStart(2, '0')}`
 
   let siswaIds: string[] | null = null
-  if (kamarNama) {
-    const { data: siswaData, error: siswaErr } = await supabase
-      .from('students')
-      .select('id')
-      .eq('kamar', kamarNama)
-      .eq('is_alumni', false)
-
-    if (siswaErr) throw new Error(siswaErr.message)
-    siswaIds = (siswaData ?? []).map((s: { id: string }) => s.id)
-    if (siswaIds.length === 0) return []
-  } else if (unit && unit !== 'all') {
-    const { data: kamarData, error: kamarErr } = await supabase
-      .from('kamar')
-      .select('nama_kamar')
-      .eq('unit', unit)
-    if (kamarErr) throw new Error(kamarErr.message)
-    const kamarNames = (kamarData ?? []).map((k) => k.nama_kamar)
-    if (kamarNames.length > 0) {
-      const { data: siswaData, error: siswaErr } = await supabase
-        .from('students')
-        .select('id')
-        .in('kamar', kamarNames)
-        .eq('is_alumni', false)
-      if (siswaErr) throw new Error(siswaErr.message)
-      siswaIds = (siswaData ?? []).map((s) => s.id)
-    } else {
-      siswaIds = []
-    }
+  if (kamarNama || (unit && unit !== 'all') || kategori) {
+    siswaIds = await resolveSiswaIds(kamarNama, unit, kategori)
     if (siswaIds.length === 0) return []
   }
 

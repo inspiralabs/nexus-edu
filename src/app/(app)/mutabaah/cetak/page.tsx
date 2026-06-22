@@ -68,6 +68,7 @@ export default function CetakMutabaahPage() {
   const { profile, isAdmin } = useAuth()
 
   const [activeTab, setActiveTab] = useState<'SD' | 'SMP' | 'SMA'>('SD')
+  const [filterKategori, setFilterKategori] = useState<string>('all')
   const [selectedKamar, setSelectedKamar] = useState<string>('')
   const [selectedSiswaId, setSelectedSiswaId] = useState<string>('')
   const [tanggalDari, setTanggalDari] = useState<Date>(() => {
@@ -112,10 +113,14 @@ export default function CetakMutabaahPage() {
     }
   }, [kamarList])
 
-  // Filter Kamar berdasarkan unit tab aktif
+  // Filter Kamar berdasarkan unit tab aktif & kategori
   const filteredKamarList = useMemo(() => {
-    return kamarList.filter((k) => k.unit === activeTab)
-  }, [kamarList, activeTab])
+    let result = kamarList.filter((k) => k.unit === activeTab)
+    if (filterKategori !== 'all') {
+      result = result.filter((k) => k.jenis_kelamin === filterKategori)
+    }
+    return result
+  }, [kamarList, activeTab, filterKategori])
 
   // Auto-reset atau filter select kamar berdasarkan unit tab aktif
   useEffect(() => {
@@ -283,6 +288,27 @@ export default function CetakMutabaahPage() {
 
         {/* Filter */}
         <div className="mt-4 flex flex-wrap items-end gap-3 rounded-lg border border-[var(--border)] bg-[var(--surface)] p-4">
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-medium text-[var(--text-secondary)]">Kategori</label>
+            <Select
+              value={filterKategori}
+              onValueChange={(v) => {
+                setFilterKategori(v)
+                setSelectedKamar('')
+                setSelectedSiswaId('')
+                setSearchSiswa('')
+              }}
+            >
+              <SelectTrigger className="w-36">
+                <SelectValue placeholder="Kategori" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Semua Kategori</SelectItem>
+                <SelectItem value="Laki-laki">Ikhwan</SelectItem>
+                <SelectItem value="Perempuan">Akhwat</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
           <div className="flex flex-col gap-1.5">
             <label className="text-xs font-medium text-[var(--text-secondary)]">Kamar</label>
             <Select

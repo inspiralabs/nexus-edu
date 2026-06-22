@@ -360,6 +360,7 @@ export default function DashboardMutabaahPage() {
   const defaultBulan = format(now, 'yyyy-MM')
 
   const [selectedUnit, setSelectedUnit] = useState<string>('all')
+  const [filterKategori, setFilterKategori] = useState<string>('all')
   const [selectedKamar, setSelectedKamar] = useState<string>('all')
   const [selectedBulan, setSelectedBulan] = useState<string>(defaultBulan)
 
@@ -387,9 +388,15 @@ export default function DashboardMutabaahPage() {
   })
 
   const filteredKamarList = useMemo(() => {
-    if (selectedUnit === 'all') return kamarList
-    return kamarList.filter((k) => k.unit === selectedUnit)
-  }, [kamarList, selectedUnit])
+    let result = kamarList
+    if (selectedUnit !== 'all') {
+      result = result.filter((k) => k.unit === selectedUnit)
+    }
+    if (filterKategori !== 'all') {
+      result = result.filter((k) => k.jenis_kelamin === filterKategori)
+    }
+    return result
+  }, [kamarList, selectedUnit, filterKategori])
 
   useEffect(() => {
     if (selectedKamar !== 'all') {
@@ -402,20 +409,20 @@ export default function DashboardMutabaahPage() {
 
   // ── Query Stats ──
   const { data: stats, isLoading: loadingStats } = useQuery({
-    queryKey: ['mutabaah-dashboard-stats', kamarFilter, selectedBulan, selectedUnit],
-    queryFn: () => getMutabaahDashboardStats(kamarFilter, selectedBulan, selectedUnit),
+    queryKey: ['mutabaah-dashboard-stats', kamarFilter, selectedBulan, selectedUnit, filterKategori],
+    queryFn: () => getMutabaahDashboardStats(kamarFilter, selectedBulan, selectedUnit, filterKategori),
   })
 
   // ── Query Kehadiran Per Kegiatan ──
   const { data: kehadiranPerKegiatan = [], isLoading: loadingBar } = useQuery({
-    queryKey: ['mutabaah-kehadiran-per-kegiatan', kamarFilter, selectedBulan, selectedUnit],
-    queryFn: () => getKehadiranPerKegiatan(kamarFilter, selectedBulan, 5, selectedUnit),
+    queryKey: ['mutabaah-kehadiran-per-kegiatan', kamarFilter, selectedBulan, selectedUnit, filterKategori],
+    queryFn: () => getKehadiranPerKegiatan(kamarFilter, selectedBulan, 5, selectedUnit, filterKategori),
   })
 
   // ── Query Tren Harian ──
   const { data: trendHarian = [], isLoading: loadingLine } = useQuery({
-    queryKey: ['mutabaah-trend-harian', kamarFilter, selectedBulan, selectedUnit],
-    queryFn: () => getTrendKehadiranHarian(kamarFilter, selectedBulan, selectedUnit),
+    queryKey: ['mutabaah-trend-harian', kamarFilter, selectedBulan, selectedUnit, filterKategori],
+    queryFn: () => getTrendKehadiranHarian(kamarFilter, selectedBulan, selectedUnit, filterKategori),
   })
 
   // Format data untuk chart
@@ -453,6 +460,25 @@ export default function DashboardMutabaahPage() {
               <SelectItem value="SD">SD</SelectItem>
               <SelectItem value="SMP">SMP</SelectItem>
               <SelectItem value="SMA">SMA</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <label className="text-xs font-medium text-[var(--text-secondary)]">Kategori</label>
+          <Select
+            value={filterKategori}
+            onValueChange={(v) => {
+              setFilterKategori(v)
+              setSelectedKamar('all')
+            }}
+          >
+            <SelectTrigger className="w-36">
+              <SelectValue placeholder="Kategori" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Semua Kategori</SelectItem>
+              <SelectItem value="Laki-laki">Ikhwan</SelectItem>
+              <SelectItem value="Perempuan">Akhwat</SelectItem>
             </SelectContent>
           </Select>
         </div>
