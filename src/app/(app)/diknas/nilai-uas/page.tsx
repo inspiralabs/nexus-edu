@@ -311,7 +311,7 @@ export default function NilaiUASPage() {
     queryFn: () => getNilaiUAS(queryFilters),
   })
 
-  // Siswa untuk bulk input
+  // Siswa untuk bulk input — kini menggunakan kelas_id (UUID)
   const { data: siswaPerKelas = [], isLoading: siswaLoading } = useQuery({
     queryKey: ['siswa-kelas-uas', bulkKelas, activeUnit],
     queryFn: async () => {
@@ -320,13 +320,17 @@ export default function NilaiUASPage() {
       const supabase = createClient()
       const { data: rows, error } = await supabase
          .from('students')
-         .select('id, nama, kelas')
-         .eq('kelas', bulkKelas)
+         .select('id, nama, kelas_id, kelas(nama_kelas)')
+         .eq('kelas_id', bulkKelas)
          .eq('unit', activeUnit)
          .eq('is_alumni', false)
          .order('nama')
       if (error) throw new Error(error.message)
-      return rows as { id: string; nama: string; kelas: string }[]
+      return (rows ?? []).map((r: any) => ({
+        id: r.id as string,
+        nama: r.nama as string,
+        nama_kelas: (Array.isArray(r.kelas) ? r.kelas[0]?.nama_kelas : r.kelas?.nama_kelas) ?? '-',
+      }))
     },
     enabled: isAddOpen && Boolean(bulkKelas),
   })
@@ -761,7 +765,7 @@ export default function NilaiUASPage() {
 
   // Reset filter kelas jika tidak valid saat unit berubah
   useEffect(() => {
-    if (filterKelas !== 'all' && kelasList.length > 0 && !kelasList.includes(filterKelas)) {
+    if (filterKelas !== 'all' && kelasList.length > 0 && !kelasList.some((k) => k.id === filterKelas)) {
       setFilterKelas('all')
     }
   }, [activeUnit, kelasList, filterKelas])
@@ -801,7 +805,7 @@ export default function NilaiUASPage() {
           <SelectTrigger className="w-32"><SelectValue placeholder="Kelas" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Semua Kelas</SelectItem>
-            {kelasList.map((k) => <SelectItem key={k} value={k}>{k}</SelectItem>)}
+            {kelasList.map((k) => <SelectItem key={k.id} value={k.id}>{k.nama_kelas}</SelectItem>)}
           </SelectContent>
         </Select>
         <Select value={filterMapel} onValueChange={(v) => { setFilterMapel(v); setPage(1) }} disabled={isSingleMapel}>
@@ -1110,7 +1114,7 @@ export default function NilaiUASPage() {
                 <Select value={bulkKelas} onValueChange={setBulkKelas}>
                   <SelectTrigger><SelectValue placeholder="Pilih Kelas" /></SelectTrigger>
                   <SelectContent>
-                    {kelasList.map((k) => <SelectItem key={k} value={k}>{k}</SelectItem>)}
+                    {kelasList.map((k) => <SelectItem key={k.id} value={k.id}>{k.nama_kelas}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>

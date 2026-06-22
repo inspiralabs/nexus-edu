@@ -211,7 +211,7 @@ export default function DiknasDashboardPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Semua Kelas</SelectItem>
-                  {rankingKelasList.map((k: string) => <SelectItem key={k} value={k}>{k}</SelectItem>)}
+                  {rankingKelasList.map((k: { id: string; nama_kelas: string }) => <SelectItem key={k.id} value={k.id}>{k.nama_kelas}</SelectItem>)}
                 </SelectContent>
               </Select>
             )}

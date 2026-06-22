@@ -83,7 +83,7 @@ type PresensiFormValues = z.infer<typeof presensiSchema>
 interface BulkPresensiItem {
   siswa_id: string
   nama: string
-  kelas: string
+  nama_kelas: string
   status: string
   keterangan: string | null
 }
@@ -248,7 +248,7 @@ export default function PresensiPage() {
     queryFn: () => getPresensi(queryFilters),
   })
 
-  // Siswa untuk bulk input
+  // Siswa untuk bulk input — kini menggunakan kelas_id (UUID)
   const { data: siswaPerKelas = [], isLoading: siswaLoading } = useQuery({
     queryKey: ['siswa-kelas', bulkKelas, activeUnit],
     queryFn: async () => {
@@ -257,13 +257,17 @@ export default function PresensiPage() {
       const supabase = createClient()
       const { data: rows, error } = await supabase
         .from('students')
-        .select('id, nama, kelas')
-        .eq('kelas', bulkKelas)
+        .select('id, nama, kelas_id, kelas(nama_kelas)')
+        .eq('kelas_id', bulkKelas)
         .eq('unit', activeUnit)
         .eq('is_alumni', false)
         .order('nama')
       if (error) throw new Error(error.message)
-      return rows as { id: string; nama: string; kelas: string }[]
+      return (rows ?? []).map((r: any) => ({
+        id: r.id as string,
+        nama: r.nama as string,
+        nama_kelas: (Array.isArray(r.kelas) ? r.kelas[0]?.nama_kelas : r.kelas?.nama_kelas) ?? '-',
+      }))
     },
     enabled: inputMode === 'massal' && Boolean(bulkKelas),
   })
@@ -275,7 +279,7 @@ export default function PresensiPage() {
         siswaPerKelas.map((s) => ({
           siswa_id: s.id,
           nama: s.nama,
-          kelas: s.kelas,
+          nama_kelas: s.nama_kelas,
           status: 'Hadir',
           keterangan: null,
         }))
@@ -583,14 +587,14 @@ export default function PresensiPage() {
 
   // Reset filter/bulk kelas jika tidak valid saat unit berubah
   useEffect(() => {
-    if (bulkKelas && kelasList.length > 0 && !kelasList.includes(bulkKelas)) {
+    if (bulkKelas && kelasList.length > 0 && !kelasList.some((k) => k.id === bulkKelas)) {
       setBulkKelas('')
       setBulkItems([])
     }
   }, [activeUnit, kelasList, bulkKelas])
 
   useEffect(() => {
-    if (filterKelas !== 'all' && kelasList.length > 0 && !kelasList.includes(filterKelas)) {
+    if (filterKelas !== 'all' && kelasList.length > 0 && !kelasList.some((k) => k.id === filterKelas)) {
       setFilterKelas('all')
     }
   }, [activeUnit, kelasList, filterKelas])
@@ -667,7 +671,7 @@ export default function PresensiPage() {
                 </SelectTrigger>
                 <SelectContent>
                   {kelasList.map((k) => (
-                    <SelectItem key={k} value={k}>{k}</SelectItem>
+                    <SelectItem key={k.id} value={k.id}>{k.nama_kelas}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -728,7 +732,7 @@ export default function PresensiPage() {
                     {bulkItems.map((item, idx) => (
                       <tr key={item.siswa_id} className="border-b border-[var(--border)] last:border-0">
                         <td className="px-4 py-2 text-[var(--text-primary)]">{item.nama}</td>
-                        <td className="px-4 py-2 text-[var(--text-secondary)]">{item.kelas}</td>
+                        <td className="px-4 py-2 text-[var(--text-secondary)]">{item.nama_kelas}</td>
                         <td className="px-4 py-2">
                           <Select
                             value={item.status}
@@ -801,7 +805,7 @@ export default function PresensiPage() {
               <SelectContent>
                 <SelectItem value="all">Semua Kelas</SelectItem>
                 {kelasList.map((k) => (
-                  <SelectItem key={k} value={k}>{k}</SelectItem>
+                  <SelectItem key={k.id} value={k.id}>{k.nama_kelas}</SelectItem>
                 ))}
               </SelectContent>
             </Select>

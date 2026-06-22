@@ -56,7 +56,7 @@ export interface KedisiplinanDashboardResult {
 
 const KEDISIPLINAN_SELECT = `
   *,
-  students(id,nama,kelas,unit),
+  students(id,nama,kelas_id,unit,kelas(nama_kelas)),
   kategori_disiplin(id,nama_kategori),
   divisi(id,nama_divisi,unit),
   pasal(id,nama_pasal,poin),
@@ -125,7 +125,9 @@ async function getFilteredStudentIds(
   }
 
   if (hasKelasFilter && filters?.kelas) {
-    query = query.in('kelas', filters.kelas)
+    // kelas_ids is array of kelas UUIDs — resolve nama_kelas to IDs if needed
+    const kelasIds = filters.kelas
+    query = query.in('kelas_id', kelasIds)
   }
 
   if (hasSearchFilter && filters?.search) {
@@ -754,7 +756,7 @@ export interface AntrianPoinItem {
   prestasi_id: string | null
   status: StatusKedisiplinan
   created_at: string
-  siswa: { id: string; nama: string; kelas: string; unit: Unit } | null
+  siswa: { id: string; nama: string; kelas_id: string | null; unit: Unit; kelas?: { nama_kelas: string } | null } | null
   pasal: { id: string; nama_pasal: string; poin: number } | null
   prestasi: {
     id: string

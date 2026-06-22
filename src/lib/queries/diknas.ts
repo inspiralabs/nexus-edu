@@ -900,9 +900,21 @@ export async function createNilaiHarian(data: {
   const access = await resolveMapelAccess()
   assertGuruMapelWriteAccess(access, data.mata_pelajaran_id)
 
+  let tipeNilai = data.tipe_nilai
+  if (data.tipe_nilai_id) {
+    const { data: tipeObj } = await supabase
+      .from('tipe_nilai')
+      .select('jenis_nilai')
+      .eq('id', data.tipe_nilai_id)
+      .single()
+    if (tipeObj) {
+      tipeNilai = tipeObj.jenis_nilai === 'Harian' ? 'Formatif' : 'Sumatif'
+    }
+  }
+
   const { data: result, error } = await supabase
     .from('nilai_harian')
-    .insert(data)
+    .insert({ ...data, tipe_nilai: tipeNilai })
     .select(NILAI_HARIAN_SELECT)
     .single()
 
@@ -946,9 +958,21 @@ export async function updateNilaiHarian(
     }
   }
 
+  let updatedData = { ...data }
+  if (data.tipe_nilai_id) {
+    const { data: tipeObj } = await supabase
+      .from('tipe_nilai')
+      .select('jenis_nilai')
+      .eq('id', data.tipe_nilai_id)
+      .single()
+    if (tipeObj) {
+      updatedData.tipe_nilai = tipeObj.jenis_nilai === 'Harian' ? 'Formatif' : 'Sumatif'
+    }
+  }
+
   const { data: result, error } = await supabase
     .from('nilai_harian')
-    .update(data)
+    .update(updatedData)
     .eq('id', id)
     .select(NILAI_HARIAN_SELECT)
     .single()
@@ -1045,9 +1069,29 @@ export async function bulkCreateNilaiHarian(
     )
   }
 
+  const finalData = [...data]
+  const tipeNilaiIds = Array.from(new Set(data.map((item) => item.tipe_nilai_id).filter(Boolean))) as string[]
+  if (tipeNilaiIds.length > 0) {
+    const { data: tipeList } = await supabase
+      .from('tipe_nilai')
+      .select('id, jenis_nilai')
+      .in('id', tipeNilaiIds)
+    if (tipeList && tipeList.length > 0) {
+      const tipeMap = new Map(tipeList.map((t) => [t.id, t.jenis_nilai]))
+      for (const item of finalData) {
+        if (item.tipe_nilai_id) {
+          const jenis = tipeMap.get(item.tipe_nilai_id)
+          if (jenis) {
+            item.tipe_nilai = jenis === 'Harian' ? 'Formatif' : 'Sumatif'
+          }
+        }
+      }
+    }
+  }
+
   const { data: results, error } = await supabase
     .from('nilai_harian')
-    .insert(data)
+    .insert(finalData)
     .select(NILAI_HARIAN_SELECT)
 
   if (error) throw new Error(error.message)
@@ -1679,6 +1723,7 @@ interface RaportNilaiHarianRow {
   siswa_id: string
   tipe_nilai: string
   nilai_final: number | null
+  tipe_nilai_rel?: any
 }
 
 interface RaportNilaiUASRow {
@@ -1743,7 +1788,7 @@ export async function getRaportSiswa(filters: {
   // 2. Ambil nilai harian semua siswa pada semester & mapel yang sesuai
   let nilaiHarianQ = supabase
     .from('nilai_harian')
-    .select('siswa_id, tipe_nilai, nilai_final')
+    .select('siswa_id, tipe_nilai, nilai_final, tipe_nilai_rel:tipe_nilai(jenis_nilai)')
     .eq('semester_id', filters.semesterId)
     .in('siswa_id', siswaIds)
 
@@ -1776,11 +1821,19 @@ export async function getRaportSiswa(filters: {
   return siswaList.map((siswa) => {
     const harianSiswa = nilaiHarianList.filter((n) => n.siswa_id === siswa.id)
     const formatifValues = harianSiswa
-      .filter((n) => n.tipe_nilai === 'Formatif')
+      .filter((n) => {
+        const rel = Array.isArray(n.tipe_nilai_rel) ? n.tipe_nilai_rel[0] : n.tipe_nilai_rel
+        const tipe = rel ? (rel.jenis_nilai === 'Harian' ? 'Formatif' : 'Sumatif') : n.tipe_nilai
+        return tipe === 'Formatif'
+      })
       .map((n) => n.nilai_final)
       .filter((v): v is number => v !== null && v !== undefined)
     const sumatifValues = harianSiswa
-      .filter((n) => n.tipe_nilai === 'Sumatif')
+      .filter((n) => {
+        const rel = Array.isArray(n.tipe_nilai_rel) ? n.tipe_nilai_rel[0] : n.tipe_nilai_rel
+        const tipe = rel ? (rel.jenis_nilai === 'Harian' ? 'Formatif' : 'Sumatif') : n.tipe_nilai
+        return tipe === 'Sumatif'
+      })
       .map((n) => n.nilai_final)
       .filter((v): v is number => v !== null && v !== undefined)
 
@@ -1946,27 +1999,17 @@ export async function getKehadiranPerKelas(
     .sort((a, b) => a.kelas.localeCompare(b.kelas))
 }
 
-export async function getKelasOptions(unit: string): Promise<string[]> {
+export async function getKelasOptions(unit: string): Promise<{ id: string; nama_kelas: string }[]> {
   const supabase = createClient()
   const { data, error } = await supabase
     .from('kelas')
-    .select('nama_kelas')
+    .select('id, nama_kelas')
     .eq('unit', unit)
+    .order('nama_kelas', { ascending: true })
 
   if (error) throw new Error(error.message)
 
-  const classes = [
-    ...new Set(
-      (data ?? [])
-        .map((row) => row.nama_kelas)
-        .filter(
-          (kelas): kelas is string =>
-            typeof kelas === 'string' && kelas.length > 0
-        )
-    ),
-  ]
-
-  return classes.sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }))
+  return (data ?? []) as { id: string; nama_kelas: string }[]
 }
 
 export async function uploadBankSoalPDF(file: File): Promise<string> {

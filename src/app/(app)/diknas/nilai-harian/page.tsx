@@ -296,6 +296,20 @@ export default function NilaiHarianPage() {
     }
   }, [watchedBankSoalId, prevBankSoalId, filteredEditBankSoals])
 
+  const watchedTipeNilaiId = form.watch('tipe_nilai_id')
+
+  useEffect(() => {
+    if (watchedTipeNilaiId) {
+      const selectedTipe = tipeNilaiList.find((t) => t.id === watchedTipeNilaiId)
+      if (selectedTipe) {
+        const type: 'Formatif' | 'Sumatif' = selectedTipe.nama_tipe.toLowerCase().includes('sumatif') ? 'Sumatif' : 'Formatif'
+        form.setValue('tipe_nilai', type)
+      }
+    } else {
+      form.setValue('tipe_nilai', 'Formatif')
+    }
+  }, [watchedTipeNilaiId, tipeNilaiList, form])
+
   const selectedTipeNilaiObj = useMemo(() => {
     return tipeNilaiList.find((t) => t.id === bulkTipeNilaiId)
   }, [bulkTipeNilaiId, tipeNilaiList])
@@ -324,7 +338,7 @@ export default function NilaiHarianPage() {
     queryFn: () => getNilaiHarian(queryFilters),
   })
 
-  // Siswa untuk bulk input
+  // Siswa untuk bulk input — kini menggunakan kelas_id (UUID)
   const { data: siswaPerKelas = [], isLoading: siswaLoading } = useQuery({
     queryKey: ['siswa-kelas-nilai', bulkKelas, activeUnit],
     queryFn: async () => {
@@ -333,13 +347,17 @@ export default function NilaiHarianPage() {
       const supabase = createClient()
       const { data: rows, error } = await supabase
         .from('students')
-        .select('id, nama, kelas')
-        .eq('kelas', bulkKelas)
+        .select('id, nama, kelas_id, kelas(nama_kelas)')
+        .eq('kelas_id', bulkKelas)
         .eq('unit', activeUnit)
         .eq('is_alumni', false)
         .order('nama')
       if (error) throw new Error(error.message)
-      return rows as { id: string; nama: string; kelas: string }[]
+      return (rows ?? []).map((r: any) => ({
+        id: r.id as string,
+        nama: r.nama as string,
+        nama_kelas: (Array.isArray(r.kelas) ? r.kelas[0]?.nama_kelas : r.kelas?.nama_kelas) ?? '-',
+      }))
     },
     enabled: isAddOpen && Boolean(bulkKelas),
   })
@@ -651,11 +669,14 @@ export default function NilaiHarianPage() {
       {
         accessorKey: 'tipe_nilai',
         header: 'Tipe',
-        cell: ({ row }) => (
-          <Badge variant={row.original.tipe_nilai === 'Formatif' ? 'secondary' : 'default'}>
-            {row.original.tipe_nilai}
-          </Badge>
-        ),
+        cell: ({ row }) => {
+          const tipe = row.original.tipe_nilai || 'Formatif';
+          return (
+            <Badge variant={tipe === 'Sumatif' ? 'default' : 'secondary'}>
+              {tipe}
+            </Badge>
+          )
+        },
       },
       {
         accessorKey: 'nama_tugas',
@@ -759,7 +780,7 @@ export default function NilaiHarianPage() {
         },
       },
     ],
-    [page, pageSize]
+    [page, pageSize, tipeNilaiList]
   )
 
   // ─── Submit ─────────────────────────────────────────────────────────────────
@@ -800,7 +821,7 @@ export default function NilaiHarianPage() {
 
   // Reset filter kelas jika tidak valid saat unit berubah
   useEffect(() => {
-    if (filterKelas !== 'all' && kelasList.length > 0 && !kelasList.includes(filterKelas)) {
+    if (filterKelas !== 'all' && kelasList.length > 0 && !kelasList.some((k) => k.id === filterKelas)) {
       setFilterKelas('all')
     }
   }, [activeUnit, kelasList, filterKelas])
@@ -843,7 +864,7 @@ export default function NilaiHarianPage() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Semua Kelas</SelectItem>
-            {kelasList.map((k) => <SelectItem key={k} value={k}>{k}</SelectItem>)}
+            {kelasList.map((k) => <SelectItem key={k.id} value={k.id}>{k.nama_kelas}</SelectItem>)}
           </SelectContent>
         </Select>
         <Select value={filterMapel} onValueChange={(v) => { setFilterMapel(v); setPage(1) }} disabled={isSingleMapel}>
@@ -1150,7 +1171,7 @@ export default function NilaiHarianPage() {
                 siswa_id: s.id,
                 mata_pelajaran_id: bulkMapel,
                 semester_id: bulkSemesterId || activeSemester?.id || null,
-                tipe_nilai: (selectedTipeNilaiObj ? (selectedTipeNilaiObj.jenis_nilai === 'Harian' ? 'Formatif' : 'Sumatif') : 'Formatif') as 'Formatif' | 'Sumatif',
+                tipe_nilai: (selectedTipeNilaiObj ? (selectedTipeNilaiObj.nama_tipe.toLowerCase().includes('sumatif') ? 'Sumatif' : 'Formatif') : 'Formatif') as 'Formatif' | 'Sumatif',
                 tipe_nilai_id: bulkTipeNilaiId || null,
                 nama_tugas: bulkNamaTugas,
                 materi: bulkMateri || null,
@@ -1190,7 +1211,7 @@ export default function NilaiHarianPage() {
                 <Select value={bulkKelas} onValueChange={setBulkKelas}>
                   <SelectTrigger><SelectValue placeholder="Pilih Kelas" /></SelectTrigger>
                   <SelectContent>
-                    {kelasList.map((k) => <SelectItem key={k} value={k}>{k}</SelectItem>)}
+                    {kelasList.map((k) => <SelectItem key={k.id} value={k.id}>{k.nama_kelas}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>

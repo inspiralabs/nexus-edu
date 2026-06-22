@@ -235,7 +235,7 @@ export default function RekapNilaiPage() {
 
   // Reset filter kelas jika tidak valid saat unit berubah
   useEffect(() => {
-    if (filterKelas !== 'all' && kelasList.length > 0 && !kelasList.includes(filterKelas)) {
+    if (filterKelas !== 'all' && kelasList.length > 0 && !kelasList.some((k) => k.id === filterKelas)) {
       setFilterKelas('all')
     }
   }, [activeUnit, kelasList, filterKelas])
@@ -286,7 +286,7 @@ export default function RekapNilaiPage() {
           <SelectTrigger className="w-32"><SelectValue placeholder="Kelas" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Semua Kelas</SelectItem>
-            {kelasList.map((k) => <SelectItem key={k} value={k}>{k}</SelectItem>)}
+            {kelasList.map((k) => <SelectItem key={k.id} value={k.id}>{k.nama_kelas}</SelectItem>)}
           </SelectContent>
         </Select>
         <Select value={filterMapel} onValueChange={(v) => { setFilterMapel(v); setPage(1) }}>

@@ -415,7 +415,12 @@ export default function OrangTuaDiknasPage() {
                           </TableCell>
                           <TableCell>{h.nama_tugas}</TableCell>
                           <TableCell>
-                            <Badge variant="outline">{h.tipe_nilai}</Badge>
+                            {(() => {
+                              const tipe = h.tipe_nilai_rel
+                                ? (h.tipe_nilai_rel.jenis_nilai === 'Harian' ? 'Formatif' : 'Sumatif')
+                                : h.tipe_nilai
+                              return <Badge variant="outline">{tipe}</Badge>
+                            })()}
                           </TableCell>
                           <TableCell className="text-[var(--text-secondary)]">
                             {h.nilai_asli}

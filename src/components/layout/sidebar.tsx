@@ -147,6 +147,13 @@ const menuItems: MenuItemConfig[] = [
         icon: TrendingUp,
         minRole: 'user',
       },
+      {
+        id: 'admin-laporan-bulanan',
+        label: 'Laporan Hasil Belajar',
+        href: '/admin/akademik/laporan-bulanan',
+        icon: Printer,
+        minRole: 'admin',
+      },
     ],
   },
   {

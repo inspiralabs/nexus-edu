@@ -154,7 +154,7 @@ export default function CatatanKelakuanPage() {
     queryFn: () => getCatatanKelakuan(queryFilters),
   })
 
-  // Siswa untuk bulk input
+  // Siswa untuk bulk input — kini menggunakan kelas_id (UUID)
   const { data: siswaPerKelas = [], isLoading: siswaLoading } = useQuery({
     queryKey: ['siswa-kelas-catatan', bulkKelas, activeUnit],
     queryFn: async () => {
@@ -163,13 +163,16 @@ export default function CatatanKelakuanPage() {
       const supabase = createClient()
       const { data: rows, error } = await supabase
         .from('students')
-        .select('id, nama, kelas')
-        .eq('kelas', bulkKelas)
+        .select('id, nama, kelas_id, kelas(nama_kelas)')
+        .eq('kelas_id', bulkKelas)
         .eq('unit', activeUnit)
         .eq('is_alumni', false)
         .order('nama')
       if (error) throw new Error(error.message)
-      return rows as { id: string; nama: string; kelas: string }[]
+      return (rows ?? []).map((r: any) => ({
+        id: r.id as string,
+        nama: r.nama as string,
+      }))
     },
     enabled: isAddOpen && Boolean(bulkKelas),
   })
@@ -433,7 +436,7 @@ export default function CatatanKelakuanPage() {
 
   // Reset filter kelas jika tidak valid saat unit berubah
   useEffect(() => {
-    if (filterKelas !== 'all' && kelasList.length > 0 && !kelasList.includes(filterKelas)) {
+    if (filterKelas !== 'all' && kelasList.length > 0 && !kelasList.some((k) => k.id === filterKelas)) {
       setFilterKelas('all')
     }
   }, [activeUnit, kelasList?.length, filterKelas])
@@ -470,7 +473,7 @@ export default function CatatanKelakuanPage() {
           <SelectTrigger className="w-32"><SelectValue placeholder="Kelas" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Semua Kelas</SelectItem>
-            {kelasList.map((k) => <SelectItem key={k} value={k}>{k}</SelectItem>)}
+            {kelasList.map((k) => <SelectItem key={k.id} value={k.id}>{k.nama_kelas}</SelectItem>)}
           </SelectContent>
         </Select>
         <Select value={filterSemester} onValueChange={(v) => { setFilterSemester(v); setPage(1) }}>
@@ -633,7 +636,7 @@ export default function CatatanKelakuanPage() {
                 <Select value={bulkKelas} onValueChange={setBulkKelas}>
                   <SelectTrigger><SelectValue placeholder="Pilih Kelas" /></SelectTrigger>
                   <SelectContent>
-                    {kelasList.map((k) => <SelectItem key={k} value={k}>{k}</SelectItem>)}
+                    {kelasList.map((k) => <SelectItem key={k.id} value={k.id}>{k.nama_kelas}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>

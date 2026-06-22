@@ -255,7 +255,12 @@ export default function OrangTuaDashboardPage() {
                       </TableCell>
                       <TableCell>{n.nama_tugas}</TableCell>
                       <TableCell>
-                        <Badge variant="outline">{n.tipe_nilai}</Badge>
+                        {(() => {
+                          const tipe = n.tipe_nilai_rel
+                            ? (n.tipe_nilai_rel.jenis_nilai === 'Harian' ? 'Formatif' : 'Sumatif')
+                            : n.tipe_nilai
+                          return <Badge variant="outline">{tipe}</Badge>
+                        })()}
                       </TableCell>
                       <TableCell className="text-right font-bold text-primary">
                         {n.nilai_final}

@@ -178,7 +178,7 @@ export async function getNilaiHarianAnak(
   const supabase = createClient()
   let query = supabase
     .from('nilai_harian')
-    .select('*, mata_pelajaran(nama_mapel)')
+    .select('*, mata_pelajaran(nama_mapel), tipe_nilai_rel:tipe_nilai!left(nama_tipe, jenis_nilai)')
     .eq('siswa_id', siswaId)
     .eq('is_approved', true)
     .order('tanggal', { ascending: false })
