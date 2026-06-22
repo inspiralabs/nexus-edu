@@ -339,6 +339,7 @@ export interface BankSoal {
   tipe_nilai_id: string | null
   materi: string | null
   bab: string[] | null
+  tujuan_pembelajaran?: string | null
   created_at: string
 }
 

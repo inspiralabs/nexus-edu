@@ -34,7 +34,7 @@ export interface PresensiEntry extends Presensi {
 export interface NilaiHarianEntry extends NilaiHarian {
   students?: { nama: string; kelas: string; unit: string } | null
   mata_pelajaran?: { nama_mapel: string } | null
-  bank_soal?: { judul: string; tipe: string } | null
+  bank_soal?: { judul: string; tipe: string; tujuan_pembelajaran?: string | null } | null
   profiles?: { nama_lengkap: string } | null
   tipe_nilai_rel?: { nama_tipe: string; jenis_nilai: string } | null
 }
@@ -42,7 +42,7 @@ export interface NilaiHarianEntry extends NilaiHarian {
 export interface NilaiUASEntry extends NilaiUAS {
   students?: { nama: string; kelas: string; unit: string } | null
   mata_pelajaran?: { nama_mapel: string } | null
-  bank_soal?: { judul: string; tipe: string } | null
+  bank_soal?: { judul: string; tipe: string; tujuan_pembelajaran?: string | null } | null
   profiles?: { nama_lengkap: string } | null
   tipe_nilai_rel?: { nama_tipe: string; jenis_nilai: string } | null
 }
@@ -107,13 +107,13 @@ const PRESENSI_SELECT =
   'id, siswa_id, mata_pelajaran_id, semester_id, tanggal, status, keterangan, dicatat_oleh, created_at, students!left(nama, kelas, unit), mata_pelajaran!left(nama_mapel, unit), profiles:dicatat_oleh!left(nama_lengkap)'
 
 const NILAI_HARIAN_SELECT =
-  'id, siswa_id, mata_pelajaran_id, semester_id, tipe_nilai, nama_tugas, materi, bab, nilai_asli, nilai_remedial, nilai_final, tipe_remedial, bank_soal_id, tipe_nilai_id, is_approved, approved_at, approved_by, dicatat_oleh, tanggal, created_at, students!left(nama, kelas, unit), mata_pelajaran!left(nama_mapel), bank_soal!left(judul, tipe), profiles:dicatat_oleh!left(nama_lengkap), tipe_nilai_rel:tipe_nilai!left(nama_tipe, jenis_nilai)'
+  'id, siswa_id, mata_pelajaran_id, semester_id, tipe_nilai, nama_tugas, materi, bab, nilai_asli, nilai_remedial, nilai_final, tipe_remedial, bank_soal_id, tipe_nilai_id, is_approved, approved_at, approved_by, dicatat_oleh, tanggal, created_at, students!left(nama, kelas, unit), mata_pelajaran!left(nama_mapel), bank_soal!left(judul, tipe, tujuan_pembelajaran), profiles:dicatat_oleh!left(nama_lengkap), tipe_nilai_rel:tipe_nilai!left(nama_tipe, jenis_nilai)'
 
 const NILAI_UAS_SELECT =
-  'id, siswa_id, mata_pelajaran_id, semester_id, nilai_asli, nilai_remedial, nilai_final, tipe_remedial, bank_soal_id, tipe_nilai_id, materi, bab, is_approved, approved_at, approved_by, dicatat_oleh, created_at, students!left(nama, kelas, unit), mata_pelajaran!left(nama_mapel), profiles:dicatat_oleh!left(nama_lengkap), bank_soal!left(judul, tipe), tipe_nilai_rel:tipe_nilai!left(nama_tipe, jenis_nilai)'
+  'id, siswa_id, mata_pelajaran_id, semester_id, nilai_asli, nilai_remedial, nilai_final, tipe_remedial, bank_soal_id, tipe_nilai_id, materi, bab, is_approved, approved_at, approved_by, dicatat_oleh, created_at, students!left(nama, kelas, unit), mata_pelajaran!left(nama_mapel), profiles:dicatat_oleh!left(nama_lengkap), bank_soal!left(judul, tipe, tujuan_pembelajaran), tipe_nilai_rel:tipe_nilai!left(nama_tipe, jenis_nilai)'
 
 const BANK_SOAL_SELECT =
-  'id, judul, tipe, mata_pelajaran_id, semester_id, konten, dibuat_oleh, tipe_nilai_id, materi, bab, created_at, mata_pelajaran!left(nama_mapel, unit), semester!left(nomor_semester, tahun_pelajaran(nama)), profiles:dibuat_oleh!left(nama_lengkap), tipe_nilai:tipe_nilai_id(nama_tipe, jenis_nilai)'
+  'id, judul, tipe, mata_pelajaran_id, semester_id, konten, dibuat_oleh, tipe_nilai_id, materi, bab, tujuan_pembelajaran, created_at, mata_pelajaran!left(nama_mapel, unit), semester!left(nomor_semester, tahun_pelajaran(nama)), profiles:dibuat_oleh!left(nama_lengkap), tipe_nilai:tipe_nilai_id(nama_tipe, jenis_nilai)'
 
 const CATATAN_KELAKUAN_SELECT =
   'id, siswa_id, semester_id, tipe, catatan, tanggal, dicatat_oleh, created_at, students!left(nama, kelas, unit), profiles:dicatat_oleh!left(nama_lengkap)'
@@ -137,7 +137,7 @@ type PresensiRow = Presensi & {
 type NilaiHarianRow = NilaiHarian & {
   students?: Relation<{ nama: string; kelas: string; unit: string }>
   mata_pelajaran?: Relation<{ nama_mapel: string }>
-  bank_soal?: Relation<{ judul: string; tipe: string }>
+  bank_soal?: Relation<{ judul: string; tipe: string; tujuan_pembelajaran?: string | null }>
   profiles?: Relation<{ nama_lengkap: string }>
   tipe_nilai_rel?: Relation<{ nama_tipe: string; jenis_nilai: string }>
 }
@@ -146,7 +146,7 @@ type NilaiUASRow = NilaiUAS & {
   students?: Relation<{ nama: string; kelas: string; unit: string }>
   mata_pelajaran?: Relation<{ nama_mapel: string }>
   profiles?: Relation<{ nama_lengkap: string }>
-  bank_soal?: Relation<{ judul: string; tipe: string }>
+  bank_soal?: Relation<{ judul: string; tipe: string; tujuan_pembelajaran?: string | null }>
   tipe_nilai_rel?: Relation<{ nama_tipe: string; jenis_nilai: string }>
 }
 
@@ -249,6 +249,7 @@ function mapBankSoal(row: unknown): BankSoalEntry {
     tipe_nilai_id: r.tipe_nilai_id,
     materi: r.materi,
     bab: r.bab,
+    tujuan_pembelajaran: r.tujuan_pembelajaran,
     created_at: r.created_at,
     mata_pelajaran: unwrapRelation(r.mata_pelajaran) ?? undefined,
     semester: unwrapRelation(r.semester) ?? undefined,
@@ -1375,6 +1376,7 @@ export async function createBankSoal(data: {
   tipe_nilai_id?: string | null
   materi?: string | null
   bab?: string[] | null
+  tujuan_pembelajaran?: string | null
 }): Promise<BankSoalEntry> {
   const supabase = createClient()
   const access = await resolveMapelAccess()
@@ -1408,6 +1410,7 @@ export async function updateBankSoal(
     tipe_nilai_id: string | null
     materi: string | null
     bab: string[] | null
+    tujuan_pembelajaran: string | null
   }>
 ): Promise<BankSoalEntry> {
   const supabase = createClient()

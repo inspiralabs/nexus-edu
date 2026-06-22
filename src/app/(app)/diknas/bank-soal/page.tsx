@@ -65,6 +65,7 @@ const bankSoalSchema = z.object({
   tipe_nilai_id: z.string().uuid('Pilih tipe nilai'),
   materi: z.string().min(1, 'Materi wajib diisi'),
   bab: z.array(z.string()).min(1, 'Pilih minimal satu BAB'),
+  tujuan_pembelajaran: z.string().optional(),
 })
 
 type BankSoalFormValues = z.infer<typeof bankSoalSchema>
@@ -134,6 +135,7 @@ export default function BankSoalPage() {
       tipe_nilai_id: '',
       materi: '',
       bab: [],
+      tujuan_pembelajaran: '',
     },
   })
 
@@ -161,6 +163,7 @@ export default function BankSoalPage() {
         tipe_nilai_id: '',
         materi: '',
         bab: [],
+        tujuan_pembelajaran: '',
       })
     }
   }, [isFormOpen, shouldDisableMapelSelect, singleMapelIdVal, form])
@@ -275,6 +278,7 @@ export default function BankSoalPage() {
       tipe_nilai_id: '',
       materi: '',
       bab: [],
+      tujuan_pembelajaran: '',
     })
   }
 
@@ -292,6 +296,7 @@ export default function BankSoalPage() {
       tipe_nilai_id: item.tipe_nilai_id || '',
       materi: item.materi || '',
       bab: item.bab || [],
+      tujuan_pembelajaran: item.tujuan_pembelajaran || '',
     })
     setIsEditOpen(true)
   }
@@ -309,6 +314,7 @@ export default function BankSoalPage() {
         tipe_nilai_id: values.tipe_nilai_id,
         materi: values.materi,
         bab: values.bab,
+        tujuan_pembelajaran: values.tujuan_pembelajaran || null,
       })
     },
     onSuccess: async (result) => {
@@ -333,6 +339,7 @@ export default function BankSoalPage() {
         tipe_nilai_id: values.tipe_nilai_id,
         materi: values.materi,
         bab: values.bab,
+        tujuan_pembelajaran: values.tujuan_pembelajaran || null,
       }),
     onSuccess: async (result) => {
       const userId = getUserId()
@@ -718,6 +725,15 @@ export default function BankSoalPage() {
                 {form.formState.errors.bab && (
                   <p className="text-xs text-destructive">{form.formState.errors.bab.message}</p>
                 )}
+              </div>
+
+              <div className="space-y-1">
+                <Label>Tujuan Pembelajaran (opsional)</Label>
+                <Textarea
+                  {...form.register('tujuan_pembelajaran')}
+                  placeholder="Contoh: Mengidentifikasi gagasan utama dalam paragraf..."
+                  className="min-h-[80px]"
+                />
               </div>
 
               <div className="space-y-1">

@@ -1026,6 +1026,26 @@ export default function NilaiHarianPage() {
                         ))}
                       </SelectContent>
                     </Select>
+                    {(() => {
+                      const selectedBsId = form.watch('bank_soal_id')
+                      if (selectedBsId) {
+                        const selectedBs = filteredEditBankSoals.find((b) => b.id === selectedBsId) || (editingItem?.bank_soal_id === selectedBsId ? editingItem.bank_soal : null)
+                        const tp = selectedBs?.tujuan_pembelajaran
+                        if (tp) {
+                          return (
+                            <div className="mt-1.5 p-2.5 rounded-md bg-muted/50 border border-border text-xs text-muted-foreground animate-in fade-in duration-200">
+                              <span className="font-medium text-foreground block mb-0.5">Tujuan Pembelajaran:</span>
+                              {tp}
+                            </div>
+                          )
+                        }
+                      }
+                      return (
+                        <p className="text-[11px] text-muted-foreground mt-1">
+                          Pilih instrumen/bank soal untuk melihat tujuan pembelajaran
+                        </p>
+                      )
+                    })()}
                   </div>
 
                   <div className="grid gap-4 sm:grid-cols-2">
@@ -1202,6 +1222,25 @@ export default function NilaiHarianPage() {
                     ))}
                   </SelectContent>
                 </Select>
+                {(() => {
+                  if (bulkBankSoal) {
+                    const selectedBs = filteredBulkBankSoals.find((b) => b.id === bulkBankSoal)
+                    const tp = selectedBs?.tujuan_pembelajaran
+                    if (tp) {
+                      return (
+                        <div className="mt-1.5 p-2.5 rounded-md bg-muted/50 border border-border text-xs text-muted-foreground animate-in fade-in duration-200">
+                          <span className="font-medium text-foreground block mb-0.5">Tujuan Pembelajaran:</span>
+                          {tp}
+                        </div>
+                      )
+                    }
+                  }
+                  return (
+                    <p className="text-[11px] text-muted-foreground mt-1">
+                      Pilih instrumen/bank soal untuk melihat tujuan pembelajaran
+                    </p>
+                  )
+                })()}
               </div>
             </div>
 
