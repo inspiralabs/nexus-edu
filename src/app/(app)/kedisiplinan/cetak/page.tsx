@@ -345,7 +345,7 @@ export default function CetakKedisiplinanPage() {
                         {row.students?.nama ?? '-'}
                       </TableCell>
                       <TableCell className="print:border print:border-[#333] print:text-black">
-                        {row.students?.kelas ?? '-'}
+                        {row.students?.kelas?.nama_kelas || '-'}
                       </TableCell>
                       <TableCell className="print:border print:border-[#333] print:text-black">
                         {row.kategori_disiplin?.nama_kategori ?? '-'}

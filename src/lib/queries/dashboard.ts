@@ -85,16 +85,17 @@ export async function getStudentsByClass(
 
   const { data, error } = await supabase
     .from('students')
-    .select('kelas, jenis_kelamin')
+    .select('kelas_id, kelas(nama_kelas), jenis_kelamin')
     .eq('unit', unit)
 
   if (error) throw new Error(error.message)
 
-  const rows = (data ?? []) as StudentClassRow[]
+  const rows = (data ?? []) as any[]
   const classMap = new Map<string, { laki: number; perempuan: number }>()
 
   for (const row of rows) {
-    const existing = classMap.get(row.kelas) ?? { laki: 0, perempuan: 0 }
+    const className = row.kelas?.nama_kelas || 'Tanpa Kelas'
+    const existing = classMap.get(className) ?? { laki: 0, perempuan: 0 }
 
     if (row.jenis_kelamin === 'L') {
       existing.laki++
@@ -102,7 +103,7 @@ export async function getStudentsByClass(
       existing.perempuan++
     }
 
-    classMap.set(row.kelas, existing)
+    classMap.set(className, existing)
   }
 
   return Array.from(classMap.entries())
@@ -196,7 +197,7 @@ export async function getRecentKedisiplinan(
   const { data, error } = await supabase
     .from('kedisiplinan')
     .select(
-      `*, students(id,nama,kelas), kategori_disiplin(id,nama_kategori)`
+      `*, students(id,nama,kelas_id,kelas(nama_kelas)), kategori_disiplin(id,nama_kategori)`
     )
     .order('created_at', { ascending: false })
     .limit(limit)

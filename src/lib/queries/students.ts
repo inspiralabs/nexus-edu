@@ -3,7 +3,8 @@ import type { JenisKelamin, Student, Unit, MataPelajaran } from '@/lib/supabase/
 
 export interface CreateStudentInput {
   nama: string
-  kelas: string
+  kelas?: string | null
+  kelas_id?: string | null
   jenis_kelamin: JenisKelamin
   unit: Unit
   kamar_id?: string | null
@@ -15,7 +16,8 @@ export interface CreateStudentInput {
 
 export interface UpdateStudentInput {
   nama?: string
-  kelas?: string
+  kelas?: string | null
+  kelas_id?: string | null
   jenis_kelamin?: JenisKelamin
   kamar_id?: string | null
   kamar?: string
@@ -47,6 +49,24 @@ export async function getStudents(
   const sortField = options?.sortField ?? 'nama'
   const ascending = options?.sortDirection !== 'desc'
 
+  let kelasIdFilter: string | null = null
+  if (options?.kelas) {
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(options.kelas)
+    if (!isUuid) {
+      const { data: kelasRow } = await supabase
+        .from('kelas')
+        .select('id')
+        .eq('nama_kelas', options.kelas)
+        .eq('unit', unit)
+        .maybeSingle()
+      if (kelasRow) {
+        kelasIdFilter = kelasRow.id
+      }
+    } else {
+      kelasIdFilter = options.kelas
+    }
+  }
+
   let countQuery = supabase
     .from('students')
     .select('*', { count: 'exact', head: true })
@@ -57,8 +77,8 @@ export async function getStudents(
     countQuery = countQuery.ilike('nama', `%${options.search}%`)
   }
 
-  if (options?.kelas) {
-    countQuery = countQuery.eq('kelas', options.kelas)
+  if (kelasIdFilter) {
+    countQuery = countQuery.eq('kelas_id', kelasIdFilter)
   }
 
   const { count, error: countError } = await countQuery
@@ -67,7 +87,7 @@ export async function getStudents(
 
   let dataQuery = supabase
     .from('students')
-    .select('*, orangtua_siswa(orangtua_id, hubungan, orangtua(nama_lengkap))')
+    .select('*, kelas(nama_kelas), orangtua_siswa(orangtua_id, hubungan, orangtua(nama_lengkap))')
     .eq('unit', unit)
     .eq('is_alumni', false)
 
@@ -75,8 +95,8 @@ export async function getStudents(
     dataQuery = dataQuery.ilike('nama', `%${options.search}%`)
   }
 
-  if (options?.kelas) {
-    dataQuery = dataQuery.eq('kelas', options.kelas)
+  if (kelasIdFilter) {
+    dataQuery = dataQuery.eq('kelas_id', kelasIdFilter)
   }
 
   const { data, error } = await dataQuery
@@ -102,6 +122,23 @@ export async function getAlumniStudents(
   const sortField = options?.sortField ?? 'nama'
   const ascending = options?.sortDirection !== 'desc'
 
+  let kelasIdsFilter: string[] = []
+  if (options?.kelas) {
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(options.kelas)
+    if (!isUuid) {
+      let query = supabase.from('kelas').select('id').eq('nama_kelas', options.kelas)
+      if (options?.unit) {
+        query = query.eq('unit', options.unit)
+      }
+      const { data: kelasRows } = await query
+      if (kelasRows && kelasRows.length > 0) {
+        kelasIdsFilter = kelasRows.map((r) => r.id)
+      }
+    } else {
+      kelasIdsFilter = [options.kelas]
+    }
+  }
+
   let countQuery = supabase
     .from('students')
     .select('*', { count: 'exact', head: true })
@@ -116,7 +153,9 @@ export async function getAlumniStudents(
   }
 
   if (options?.kelas) {
-    countQuery = countQuery.eq('kelas', options.kelas)
+    if (kelasIdsFilter.length > 0) {
+      countQuery = countQuery.in('kelas_id', kelasIdsFilter)
+    }
   }
 
   const { count, error: countError } = await countQuery
@@ -125,7 +164,7 @@ export async function getAlumniStudents(
 
   let dataQuery = supabase
     .from('students')
-    .select('*, orangtua_siswa(orangtua_id, hubungan, orangtua(nama_lengkap))')
+    .select('*, kelas(nama_kelas), orangtua_siswa(orangtua_id, hubungan, orangtua(nama_lengkap))')
     .eq('is_alumni', true)
 
   if (options?.unit) {
@@ -137,7 +176,9 @@ export async function getAlumniStudents(
   }
 
   if (options?.kelas) {
-    dataQuery = dataQuery.eq('kelas', options.kelas)
+    if (kelasIdsFilter.length > 0) {
+      dataQuery = dataQuery.in('kelas_id', kelasIdsFilter)
+    }
   }
 
   const { data, error } = await dataQuery
@@ -170,11 +211,11 @@ export async function createStudent(
     }
   }
 
-  const { kamar: _, orang_tua: __, orangtua_id: selectedOrangTuaId, ...rest } = data
+  const { kamar: _, orang_tua: __, orangtua_id: selectedOrangTuaId, kelas: ___, ...rest } = data
   const { data: result, error } = await supabase
     .from('students')
     .insert({ ...rest, kamar_id: finalKamarId, is_alumni: false })
-    .select()
+    .select('*, kelas(nama_kelas)')
     .single()
 
   if (error) throw new Error(error.message)
@@ -214,7 +255,7 @@ export async function updateStudent(
     }
   }
 
-  const { kamar: _, orang_tua: __, orangtua_id: selectedOrangTuaId, ...rest } = data
+  const { kamar: _, orang_tua: __, orangtua_id: selectedOrangTuaId, kelas: ___, ...rest } = data
   const updatePayload: any = { ...rest }
   if (finalKamarId !== undefined) {
     updatePayload.kamar_id = finalKamarId
@@ -224,7 +265,7 @@ export async function updateStudent(
     .from('students')
     .update(updatePayload)
     .eq('id', id)
-    .select()
+    .select('*, kelas(nama_kelas)')
     .single()
 
   if (error) throw new Error(error.message)
@@ -259,7 +300,7 @@ export async function restoreStudent(id: string): Promise<Student> {
     .from('students')
     .update({ is_alumni: false })
     .eq('id', id)
-    .select()
+    .select('*, kelas(nama_kelas)')
     .single()
 
   if (error) throw new Error(error.message)
@@ -278,7 +319,8 @@ export async function deleteStudents(ids: string[]): Promise<void> {
 export async function bulkUpdateStudents(
   ids: string[],
   data: {
-    kelas?: string
+    kelas?: string | null
+    kelas_id?: string | null
     unit?: Unit
     jenis_kelamin?: JenisKelamin
     kamar_id?: string | null
@@ -319,7 +361,7 @@ export async function bulkUpdateStudents(
     }
   }
 
-  const { kamar: _, orang_tua: __, orangtua_id: ___, ...rest } = data
+  const { kamar: _, orang_tua: __, orangtua_id: ___, kelas: ____, ...rest } = data
   const updatePayload: any = { ...rest }
   if (finalKamarId !== undefined) {
     updatePayload.kamar_id = finalKamarId
@@ -384,6 +426,19 @@ export async function bulkCreateStudents(
     })
   }
 
+  const { data: kelasList, error: kelasErr } = await supabase
+    .from('kelas')
+    .select('id, nama_kelas, unit')
+
+  if (kelasErr) throw new Error(kelasErr.message)
+
+  const kelasMap = new Map<string, string>()
+  if (kelasList) {
+    kelasList.forEach((k) => {
+      kelasMap.set(`${k.nama_kelas.trim().toLowerCase()}_${k.unit}`, k.id)
+    })
+  }
+
   const mappedData = data.map((item) => {
     let finalKamarId = item.kamar_id || null
 
@@ -392,9 +447,17 @@ export async function bulkCreateStudents(
       finalKamarId = kamarMap.get(trimmedKamar) || null
     }
 
-    const { kamar: _, orang_tua: __, orangtua_id: ___, ...rest } = item
+    let finalKelasId = item.kelas_id || null
+    if (!finalKelasId && item.kelas) {
+      const trimmedKelas = item.kelas.trim().toLowerCase()
+      const key = `${trimmedKelas}_${item.unit}`
+      finalKelasId = kelasMap.get(key) || null
+    }
+
+    const { kamar: _, orang_tua: __, orangtua_id: ___, kelas: ____, ...rest } = item
     return {
       ...rest,
+      kelas_id: finalKelasId,
       kamar_id: finalKamarId,
       is_alumni: false,
     }
@@ -403,7 +466,7 @@ export async function bulkCreateStudents(
   const { data: result, error } = await supabase
     .from('students')
     .insert(mappedData)
-    .select()
+    .select('*, kelas(nama_kelas)')
 
   if (error) throw new Error(error.message)
 
@@ -447,7 +510,7 @@ export async function getKelasOptionsByUnits(
 ): Promise<KelasOption[]> {
   const supabase = createClient()
 
-  let query = supabase.from('students').select('kelas')
+  let query = supabase.from('kelas').select('nama_kelas')
 
   if (units && units.length > 0) {
     query = query.in('unit', units)
@@ -460,7 +523,7 @@ export async function getKelasOptionsByUnits(
   const uniqueKelas = [
     ...new Set(
       (data ?? [])
-        .map((row) => row.kelas)
+        .map((row) => row.nama_kelas)
         .filter(
           (kelas): kelas is string =>
             typeof kelas === 'string' && kelas.length > 0
@@ -478,17 +541,16 @@ export async function getStudentClasses(unit: Unit): Promise<string[]> {
   const supabase = createClient()
 
   const { data, error } = await supabase
-    .from('students')
-    .select('kelas')
+    .from('kelas')
+    .select('nama_kelas')
     .eq('unit', unit)
-    .eq('is_alumni', false)
 
   if (error) throw new Error(error.message)
 
   const classes = [
     ...new Set(
       (data ?? [])
-        .map((row) => row.kelas)
+        .map((row) => row.nama_kelas)
         .filter(
           (kelas): kelas is string =>
             typeof kelas === 'string' && kelas.length > 0
@@ -507,7 +569,7 @@ export async function searchStudents(
 
   let searchQuery = supabase
     .from('students')
-    .select('id, nama, kelas, unit')
+    .select('id, nama, kelas_id, unit, kelas(nama_kelas)')
     .ilike('nama', `%${query}%`)
     .eq('is_alumni', false)
     .limit(10)
@@ -520,7 +582,7 @@ export async function searchStudents(
 
   if (error) throw new Error(error.message)
 
-  return (data ?? []) as Student[]
+  return (data ?? []) as unknown as Student[]
 }
 
 export async function getKamarOptions(units?: string[]): Promise<{ id: string; nama_kamar: string; unit?: string; jenis_kelamin?: string }[]> {

@@ -163,7 +163,7 @@ export default function OrangTuaDashboardPage() {
               <SelectContent>
                 {anakList.map((siswa) => (
                   <SelectItem key={siswa.id} value={siswa.id}>
-                    {siswa.nama} ({siswa.kelas})
+                    {siswa.nama} ({siswa.kelas?.nama_kelas || '-'})
                   </SelectItem>
                 ))}
               </SelectContent>

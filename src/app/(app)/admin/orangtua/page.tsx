@@ -121,7 +121,7 @@ export default function OrangTuaPage() {
       setSiswaOptions(
         all.map((s) => ({
           value: s.id,
-          label: `${s.nama} - ${s.kelas} (${s.unit})`,
+          label: `${s.nama} - ${s.kelas?.nama_kelas || '-'} (${s.unit})`,
         }))
       )
       return all
@@ -158,7 +158,7 @@ export default function OrangTuaPage() {
       .filter((os) => os.students)
       .map((os) => ({
         value: os.siswa_id,
-        label: `${os.students?.nama} - ${os.students?.kelas} (${os.students?.unit})`,
+        label: `${os.students?.nama} - ${os.students?.kelas?.nama_kelas || '-'} (${os.students?.unit})`,
       }))
     setSiswaOptions(preloadedOptions)
 
@@ -293,7 +293,7 @@ export default function OrangTuaPage() {
             <div className="space-y-0.5">
               {anak.map((os) => (
                 <p key={os.id} className="text-sm text-[var(--text-secondary)]">
-                  {os.students?.nama} ({os.students?.kelas})
+                  {os.students?.nama} ({os.students?.kelas?.nama_kelas || '-'})
                 </p>
               ))}
             </div>

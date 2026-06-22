@@ -370,9 +370,16 @@ const menuItems: MenuItemConfig[] = [
       },
       {
         id: 'admin-mapel',
-        label: 'Mata Pelajaran',
+        label: 'Data Mata Pelajaran',
         href: '/admin/mapel',
         icon: BookMarked,
+        minRole: 'admin',
+      },
+      {
+        id: 'admin-kelas',
+        label: 'Data Kelas',
+        href: '/admin/mapel/kelas',
+        icon: GitBranch,
         minRole: 'admin',
       },
       {
@@ -504,6 +511,7 @@ const EXACT_MATCH_HREFS = new Set([
   '/diknas',
   '/superadmin',
   '/orangtua',
+  '/admin/mapel',
 ])
 
 interface SidebarContextValue {

@@ -186,7 +186,7 @@ export default function OrangTuaMutabaahPage() {
         <h2 className="text-lg font-semibold text-center mt-1">Laporan Mutabaah Yaumiyah (Ibadah Harian)</h2>
         <div className="grid grid-cols-2 mt-4 text-sm gap-2">
           <p><strong>Nama Siswa:</strong> {activeStudent?.nama}</p>
-          <p><strong>Kelas:</strong> {activeStudent?.kelas} ({activeStudent?.unit})</p>
+          <p><strong>Kelas:</strong> {activeStudent?.kelas?.nama_kelas || '-'} ({activeStudent?.unit})</p>
           <p><strong>Tanggal Cetak:</strong> {format(new Date(), 'dd/MM/yyyy')}</p>
           <p><strong>Dicetak Oleh:</strong> {profile?.nama_lengkap ?? 'Orang Tua'}</p>
         </div>
@@ -211,7 +211,7 @@ export default function OrangTuaMutabaahPage() {
               <SelectContent>
                 {anakList.map((siswa) => (
                   <SelectItem key={siswa.id} value={siswa.id}>
-                    {siswa.nama} ({siswa.kelas})
+                    {siswa.nama} ({siswa.kelas?.nama_kelas || '-'})
                   </SelectItem>
                 ))}
               </SelectContent>

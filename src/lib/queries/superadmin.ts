@@ -94,14 +94,14 @@ interface ProfileCreatedRow {
 interface KedisiplinanAnalyticsRow {
   tanggal: string
   siswa_id: string | null
-  students: Relation<{ nama: string; kelas: string }>
+  students: Relation<{ nama: string; kelas_id: string | null; kelas?: { nama_kelas: string }[] }>
 }
 
 interface PrestasiAnalyticsRow {
   waktu: string | null
   created_at: string
   siswa_id: string | null
-  students: Relation<{ nama: string; kelas: string }>
+  students: Relation<{ nama: string; kelas_id: string | null; kelas?: { nama_kelas: string }[] }>
 }
 
 interface StudentUnitRow {
@@ -373,10 +373,10 @@ export async function getAnalyticsData(
   let profilesQuery = supabase.from('profiles').select('created_at')
   let kedisiplinanQuery = supabase
     .from('kedisiplinan')
-    .select('tanggal, siswa_id, students(nama, kelas)')
+    .select('tanggal, siswa_id, students(nama, kelas_id, kelas(nama_kelas))')
   let prestasiQuery = supabase
     .from('prestasi')
-    .select('waktu, created_at, siswa_id, students(nama, kelas)')
+    .select('waktu, created_at, siswa_id, students(nama, kelas_id, kelas(nama_kelas))')
   const studentsQuery = supabase.from('students').select('unit')
 
   if (yearRange) {
@@ -427,7 +427,7 @@ export async function getAnalyticsData(
     const student = unwrapRelation(row.students)
     const existing = kedisiplinanStudentMap.get(row.siswa_id) ?? {
       nama: student?.nama ?? 'Tidak Dikenal',
-      kelas: student?.kelas ?? '-',
+      kelas: student?.kelas?.[0]?.nama_kelas ?? '-',
       count: 0,
     }
 
@@ -449,7 +449,7 @@ export async function getAnalyticsData(
     const student = unwrapRelation(row.students)
     const existing = prestasiStudentMap.get(row.siswa_id) ?? {
       nama: student?.nama ?? 'Tidak Dikenal',
-      kelas: student?.kelas ?? '-',
+      kelas: student?.kelas?.[0]?.nama_kelas ?? '-',
       count: 0,
     }
 

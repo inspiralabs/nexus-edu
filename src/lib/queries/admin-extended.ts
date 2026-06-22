@@ -10,6 +10,7 @@ import type {
   TipeGuru,
   TipeRole,
   Unit,
+  Kelas,
 } from '@/lib/supabase/types'
 
 // ─── Tipe Input ───────────────────────────────────────────────────────────────
@@ -18,15 +19,35 @@ export interface CreateMapelInput {
   nama_mapel: string
   kategori: string
   unit: Unit
+  kelas_ids?: string[] | null
 }
 
 export interface UpdateMapelInput {
   nama_mapel?: string
   kategori?: string
   unit?: Unit
+  kelas_ids?: string[] | null
 }
 
 export interface GetMapelOptions {
+  unit?: Unit
+  search?: string
+  page?: number
+  pageSize?: number
+}
+
+export interface CreateKelasInput {
+  nama_kelas: string
+  deskripsi?: string | null
+  unit: Unit
+}
+
+export interface UpdateKelasInput {
+  nama_kelas?: string
+  deskripsi?: string | null
+}
+
+export interface GetKelasOptions {
   unit?: Unit
   search?: string
   page?: number
@@ -126,6 +147,20 @@ export async function getAllMapel(unit?: Unit): Promise<MataPelajaran[]> {
   const { data, error } = await query
   if (error) throw new Error(error.message)
   return (data ?? []) as MataPelajaran[]
+}
+
+export async function getAllKelas(unit?: Unit): Promise<Kelas[]> {
+  const supabase = createClient()
+  let query = supabase
+    .from('kelas')
+    .select('*')
+    .order('nama_kelas', { ascending: true })
+
+  if (unit) query = query.eq('unit', unit)
+
+  const { data, error } = await query
+  if (error) throw new Error(error.message)
+  return (data ?? []) as Kelas[]
 }
 
 export async function createMapel(input: CreateMapelInput): Promise<MataPelajaran> {
@@ -352,7 +387,7 @@ export async function getOrangTua(
   let query = supabase
     .from('orangtua')
     .select(
-      '*, orangtua_siswa(id, siswa_id, hubungan, students(id, nama, kelas, unit))',
+      '*, orangtua_siswa(id, siswa_id, hubungan, students(id, nama, kelas_id, unit, kelas(nama_kelas)))',
       { count: 'exact' }
     )
     .order('nama_lengkap', { ascending: true })
@@ -559,7 +594,7 @@ export async function getOrangTuaFiltered(
   let query = supabase
     .from('orangtua')
     .select(
-      '*, profiles(id, nama_lengkap, username, email, is_approved), orangtua_siswa(id, siswa_id, hubungan, students(id, nama, kelas, unit))',
+      '*, profiles(id, nama_lengkap, username, email, is_approved), orangtua_siswa(id, siswa_id, hubungan, students(id, nama, kelas_id, unit, kelas(nama_kelas)))',
       { count: 'exact' }
     )
     .order('nama_lengkap', { ascending: true })
@@ -580,7 +615,7 @@ export async function getOrangTuaFiltered(
       const anak = ortu.orangtua_siswa ?? []
       return anak.some((os) => {
         const matchUnit = unit ? os.students?.unit === unit : true
-        const matchKelas = kelas ? os.students?.kelas === kelas : true
+        const matchKelas = kelas ? os.students?.kelas?.nama_kelas === kelas : true
         return matchUnit && matchKelas
       })
     })
@@ -665,4 +700,68 @@ export async function bulkCreateOrangTua(
 
   if (error) throw new Error(error.message)
   return (data ?? []) as OrangTua[]
+}
+
+// ─── Kelas ────────────────────────────────────────────────────────────────────
+
+export async function getKelas(
+  options: GetKelasOptions = {}
+): Promise<{ data: Kelas[]; total: number }> {
+  const supabase = createClient()
+  const { unit, search, page = 1, pageSize = 10 } = options
+
+  let query = supabase
+    .from('kelas')
+    .select('*', { count: 'exact' })
+    .order('nama_kelas', { ascending: true })
+
+  if (unit) query = query.eq('unit', unit)
+  if (search) query = query.ilike('nama_kelas', `%${search}%`)
+
+  const from = (page - 1) * pageSize
+  const to = from + pageSize - 1
+  query = query.range(from, to)
+
+  const { data, error, count } = await query
+
+  if (error) throw new Error(error.message)
+
+  return {
+    data: (data ?? []) as Kelas[],
+    total: count ?? 0,
+  }
+}
+
+export async function createKelas(input: CreateKelasInput): Promise<Kelas> {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('kelas')
+    .insert(input)
+    .select()
+    .single()
+
+  if (error) throw new Error(error.message)
+  return data as Kelas
+}
+
+export async function updateKelas(
+  id: string,
+  input: UpdateKelasInput
+): Promise<Kelas> {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('kelas')
+    .update(input)
+    .eq('id', id)
+    .select()
+    .single()
+
+  if (error) throw new Error(error.message)
+  return data as Kelas
+}
+
+export async function deleteKelas(id: string): Promise<void> {
+  const supabase = createClient()
+  const { error } = await supabase.from('kelas').delete().eq('id', id)
+  if (error) throw new Error(error.message)
 }

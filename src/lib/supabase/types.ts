@@ -46,7 +46,7 @@ export interface Profile {
 export interface Student {
   id: string
   nama: string
-  kelas: string
+  kelas_id: string | null
   jenis_kelamin: JenisKelamin | null
   unit: Unit | null
   is_alumni: boolean | null
@@ -62,6 +62,7 @@ export interface Student {
       nama_lengkap: string
     } | null
   }[]
+  kelas?: { nama_kelas: string } | null
 }
 
 export interface KategoriDisiplin {
@@ -179,6 +180,7 @@ export interface MataPelajaran {
   nama_mapel: string
   kategori: string
   unit: Unit
+  kelas_ids?: string[] | null
   created_at: string
 }
 
@@ -351,5 +353,13 @@ export interface CatatanKelakuan {
   catatan: string
   tanggal: string | null
   dicatat_oleh: string | null
+  created_at: string
+}
+
+export interface Kelas {
+  id: string
+  nama_kelas: string
+  deskripsi: string | null
+  unit: Unit
   created_at: string
 }

@@ -1,6 +1,14 @@
 import { createClient } from '@/lib/supabase/client'
 import type { Semester } from './semester'
 
+type Relation<T> = T | T[] | null | undefined
+
+function unwrapRelation<T>(relation: Relation<T>): T | null {
+  if (!relation) return null
+  if (Array.isArray(relation)) return relation[0] ?? null
+  return relation
+}
+
 // ─── TypeScript Types ─────────────────────────────────────────────────────────
 
 /**
@@ -536,7 +544,7 @@ export async function getSiswaByKamar(
 
   let query = supabase
     .from('students')
-    .select('id, nama, kelas, kamar, unit, is_alumni')
+    .select('id, nama, kelas_id, kelas(nama_kelas), kamar, unit, is_alumni')
     .eq('kamar', kamarNama)
     .eq('is_alumni', false)
     .order('nama', { ascending: true })
@@ -549,7 +557,14 @@ export async function getSiswaByKamar(
 
   if (error) throw new Error(error.message)
 
-  return (data ?? []) as SiswaKamarRow[]
+  return (data ?? []).map((row: any) => ({
+    id: row.id,
+    nama: row.nama,
+    kelas: row.kelas?.nama_kelas || '-',
+    kamar: row.kamar,
+    unit: row.unit,
+    is_alumni: row.is_alumni,
+  }))
 }
 
 // ─── Hari Libur ───────────────────────────────────────────────────────────────
@@ -624,7 +639,7 @@ export async function getMutabaahByTanggalKamar(
     .select(
       `
       *,
-      students(nama, kelas),
+      students(nama, kelas_id, kelas(nama_kelas)),
       kegiatan(nama_kegiatan),
       sub_kegiatan(nama_sub)
       `
@@ -634,7 +649,15 @@ export async function getMutabaahByTanggalKamar(
 
   if (error) throw new Error(error.message)
 
-  return (data ?? []) as MutabaahEntry[]
+  return (data ?? []).map((row: any) => {
+    const std = unwrapRelation(row.students)
+    return {
+      ...row,
+      students: std ? { nama: std.nama, kelas: std.kelas?.nama_kelas || '-' } : undefined,
+      kegiatan: unwrapRelation(row.kegiatan) || undefined,
+      sub_kegiatan: unwrapRelation(row.sub_kegiatan) || undefined,
+    } as MutabaahEntry
+  })
 }
 
 /** Upsert data mutabaah (insert atau update jika sudah ada) */
@@ -797,7 +820,7 @@ export async function getMutabaahRekap(
       sub_kegiatan_id,
       status,
       is_libur,
-      students(nama, kelas),
+      students(nama, kelas_id, kelas(nama_kelas)),
       kegiatan(nama_kegiatan),
       sub_kegiatan(nama_sub)
       `
@@ -824,7 +847,7 @@ export async function getMutabaahRekap(
       sub_kegiatan_id: string | null
       status: MutabaahStatus
       is_libur: boolean
-      students: { nama: string; kelas: string } | { nama: string; kelas: string }[] | null
+      students: { nama: string; kelas_id: string | null; kelas?: { nama_kelas: string } | null } | { nama: string; kelas_id: string | null; kelas?: { nama_kelas: string } | null }[] | null
       kegiatan: { nama_kegiatan: string } | { nama_kegiatan: string }[] | null
       sub_kegiatan: { nama_sub: string } | { nama_sub: string }[] | null
     }
@@ -838,7 +861,7 @@ export async function getMutabaahRekap(
       sub_kegiatan_id: rawRow.sub_kegiatan_id,
       status: rawRow.status,
       is_libur: rawRow.is_libur,
-      students: studentsRaw as { nama: string; kelas: string } | null,
+      students: studentsRaw ? { nama: studentsRaw.nama, kelas: studentsRaw.kelas?.nama_kelas || '-' } : null,
       kegiatan: kegiatanRaw as { nama_kegiatan: string } | null,
       sub_kegiatan: subKegiatanRaw as { nama_sub: string } | null,
     }

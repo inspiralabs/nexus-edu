@@ -363,7 +363,7 @@ export default function CetakPrestasiPage() {
                         {row.students?.nama ?? '-'}
                       </TableCell>
                       <TableCell className="print:border print:border-[#333] print:text-black">
-                        {row.students?.kelas ?? '-'}
+                        {typeof row.students?.kelas === 'string' ? row.students.kelas : row.students?.kelas?.nama_kelas ?? '-'}
                       </TableCell>
                       <TableCell className="print:border print:border-[#333] print:text-black">
                         {row.event?.nama_event ?? '-'}

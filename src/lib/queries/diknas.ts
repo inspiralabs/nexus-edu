@@ -104,19 +104,19 @@ export type { PresensiStatus }
 // ─── SELECT fragments (LEFT JOIN agar data orphan UUID tetap muncul) ───────────
 
 const PRESENSI_SELECT =
-  'id, siswa_id, mata_pelajaran_id, semester_id, tanggal, status, keterangan, dicatat_oleh, created_at, students!left(nama, kelas, unit), mata_pelajaran!left(nama_mapel, unit), profiles:dicatat_oleh!left(nama_lengkap)'
+  'id, siswa_id, mata_pelajaran_id, semester_id, tanggal, status, keterangan, dicatat_oleh, created_at, students!left(nama, kelas_id, unit, kelas(nama_kelas)), mata_pelajaran!left(nama_mapel, unit), profiles:dicatat_oleh!left(nama_lengkap)'
 
 const NILAI_HARIAN_SELECT =
-  'id, siswa_id, mata_pelajaran_id, semester_id, tipe_nilai, nama_tugas, materi, bab, nilai_asli, nilai_remedial, nilai_final, tipe_remedial, bank_soal_id, tipe_nilai_id, is_approved, approved_at, approved_by, dicatat_oleh, tanggal, created_at, students!left(nama, kelas, unit), mata_pelajaran!left(nama_mapel), bank_soal!left(judul, tipe, tujuan_pembelajaran), profiles:dicatat_oleh!left(nama_lengkap), tipe_nilai_rel:tipe_nilai!left(nama_tipe, jenis_nilai)'
+  'id, siswa_id, mata_pelajaran_id, semester_id, tipe_nilai, nama_tugas, materi, bab, nilai_asli, nilai_remedial, nilai_final, tipe_remedial, bank_soal_id, tipe_nilai_id, is_approved, approved_at, approved_by, dicatat_oleh, tanggal, created_at, students!left(nama, kelas_id, unit, kelas(nama_kelas)), mata_pelajaran!left(nama_mapel), bank_soal!left(judul, tipe, tujuan_pembelajaran), profiles:dicatat_oleh!left(nama_lengkap), tipe_nilai_rel:tipe_nilai!left(nama_tipe, jenis_nilai)'
 
 const NILAI_UAS_SELECT =
-  'id, siswa_id, mata_pelajaran_id, semester_id, nilai_asli, nilai_remedial, nilai_final, tipe_remedial, bank_soal_id, tipe_nilai_id, materi, bab, is_approved, approved_at, approved_by, dicatat_oleh, created_at, students!left(nama, kelas, unit), mata_pelajaran!left(nama_mapel), profiles:dicatat_oleh!left(nama_lengkap), bank_soal!left(judul, tipe, tujuan_pembelajaran), tipe_nilai_rel:tipe_nilai!left(nama_tipe, jenis_nilai)'
+  'id, siswa_id, mata_pelajaran_id, semester_id, nilai_asli, nilai_remedial, nilai_final, tipe_remedial, bank_soal_id, tipe_nilai_id, materi, bab, is_approved, approved_at, approved_by, dicatat_oleh, created_at, students!left(nama, kelas_id, unit, kelas(nama_kelas)), mata_pelajaran!left(nama_mapel), profiles:dicatat_oleh!left(nama_lengkap), bank_soal!left(judul, tipe, tujuan_pembelajaran), tipe_nilai_rel:tipe_nilai!left(nama_tipe, jenis_nilai)'
 
 const BANK_SOAL_SELECT =
   'id, judul, tipe, mata_pelajaran_id, semester_id, konten, dibuat_oleh, tipe_nilai_id, materi, bab, tujuan_pembelajaran, created_at, mata_pelajaran!left(nama_mapel, unit), semester!left(nomor_semester, tahun_pelajaran(nama)), profiles:dibuat_oleh!left(nama_lengkap), tipe_nilai:tipe_nilai_id(nama_tipe, jenis_nilai)'
 
 const CATATAN_KELAKUAN_SELECT =
-  'id, siswa_id, semester_id, tipe, catatan, tanggal, dicatat_oleh, created_at, students!left(nama, kelas, unit), profiles:dicatat_oleh!left(nama_lengkap)'
+  'id, siswa_id, semester_id, tipe, catatan, tanggal, dicatat_oleh, created_at, students!left(nama, kelas_id, unit, kelas(nama_kelas)), profiles:dicatat_oleh!left(nama_lengkap)'
 
 // ─── Helpers: Relation unwrapping ─────────────────────────────────────────────
 
@@ -128,14 +128,16 @@ function unwrapRelation<T>(relation: Relation<T>): T | null {
   return relation
 }
 
+type StudentRelationRaw = { nama: string; kelas_id: string | null; unit: string; kelas?: any }
+
 type PresensiRow = Presensi & {
-  students?: Relation<{ nama: string; kelas: string; unit: string }>
+  students?: Relation<StudentRelationRaw>
   mata_pelajaran?: Relation<{ nama_mapel: string; unit: string }>
   profiles?: Relation<{ nama_lengkap: string }>
 }
 
 type NilaiHarianRow = NilaiHarian & {
-  students?: Relation<{ nama: string; kelas: string; unit: string }>
+  students?: Relation<StudentRelationRaw>
   mata_pelajaran?: Relation<{ nama_mapel: string }>
   bank_soal?: Relation<{ judul: string; tipe: string; tujuan_pembelajaran?: string | null }>
   profiles?: Relation<{ nama_lengkap: string }>
@@ -143,7 +145,7 @@ type NilaiHarianRow = NilaiHarian & {
 }
 
 type NilaiUASRow = NilaiUAS & {
-  students?: Relation<{ nama: string; kelas: string; unit: string }>
+  students?: Relation<StudentRelationRaw>
   mata_pelajaran?: Relation<{ nama_mapel: string }>
   profiles?: Relation<{ nama_lengkap: string }>
   bank_soal?: Relation<{ judul: string; tipe: string; tujuan_pembelajaran?: string | null }>
@@ -158,11 +160,20 @@ type BankSoalRow = BankSoal & {
 }
 
 type CatatanKelakuanRow = CatatanKelakuan & {
-  students?: Relation<{ nama: string; kelas: string; unit: string }>
+  students?: Relation<StudentRelationRaw>
   profiles?: Relation<{ nama_lengkap: string }>
 }
 
+function getNamaKelas(kelas: any): string {
+  if (!kelas) return '-'
+  if (Array.isArray(kelas)) {
+    return kelas[0]?.nama_kelas || '-'
+  }
+  return kelas.nama_kelas || '-'
+}
+
 function mapPresensi(row: PresensiRow): PresensiEntry {
+  const std = unwrapRelation(row.students)
   return {
     id: row.id,
     siswa_id: row.siswa_id,
@@ -173,13 +184,20 @@ function mapPresensi(row: PresensiRow): PresensiEntry {
     keterangan: row.keterangan,
     dicatat_oleh: row.dicatat_oleh,
     created_at: row.created_at,
-    students: unwrapRelation(row.students) ?? undefined,
+    students: std
+      ? {
+          nama: std.nama,
+          kelas: getNamaKelas(std.kelas),
+          unit: std.unit,
+        }
+      : undefined,
     mata_pelajaran: unwrapRelation(row.mata_pelajaran) ?? undefined,
     profiles: unwrapRelation(row.profiles) ?? undefined,
   }
 }
 
 function mapNilaiHarian(row: NilaiHarianRow): NilaiHarianEntry {
+  const std = unwrapRelation(row.students)
   return {
     id: row.id,
     siswa_id: row.siswa_id,
@@ -201,7 +219,13 @@ function mapNilaiHarian(row: NilaiHarianRow): NilaiHarianEntry {
     dicatat_oleh: row.dicatat_oleh,
     tanggal: row.tanggal,
     created_at: row.created_at,
-    students: unwrapRelation(row.students) ?? undefined,
+    students: std
+      ? {
+          nama: std.nama,
+          kelas: getNamaKelas(std.kelas),
+          unit: std.unit,
+        }
+      : undefined,
     mata_pelajaran: unwrapRelation(row.mata_pelajaran) ?? undefined,
     bank_soal: unwrapRelation(row.bank_soal) ?? undefined,
     profiles: unwrapRelation(row.profiles) ?? undefined,
@@ -210,6 +234,7 @@ function mapNilaiHarian(row: NilaiHarianRow): NilaiHarianEntry {
 }
 
 function mapNilaiUAS(row: NilaiUASRow): NilaiUASEntry {
+  const std = unwrapRelation(row.students)
   return {
     id: row.id,
     siswa_id: row.siswa_id,
@@ -228,7 +253,13 @@ function mapNilaiUAS(row: NilaiUASRow): NilaiUASEntry {
     approved_by: row.approved_by,
     dicatat_oleh: row.dicatat_oleh,
     created_at: row.created_at,
-    students: unwrapRelation(row.students) ?? undefined,
+    students: std
+      ? {
+          nama: std.nama,
+          kelas: getNamaKelas(std.kelas),
+          unit: std.unit,
+        }
+      : undefined,
     mata_pelajaran: unwrapRelation(row.mata_pelajaran) ?? undefined,
     bank_soal: unwrapRelation(row.bank_soal) ?? undefined,
     profiles: unwrapRelation(row.profiles) ?? undefined,
@@ -259,6 +290,7 @@ function mapBankSoal(row: unknown): BankSoalEntry {
 }
 
 function mapCatatanKelakuan(row: CatatanKelakuanRow): CatatanKelakuanEntry {
+  const std = unwrapRelation(row.students)
   return {
     id: row.id,
     siswa_id: row.siswa_id,
@@ -268,7 +300,13 @@ function mapCatatanKelakuan(row: CatatanKelakuanRow): CatatanKelakuanEntry {
     tanggal: row.tanggal,
     dicatat_oleh: row.dicatat_oleh,
     created_at: row.created_at,
-    students: unwrapRelation(row.students) ?? undefined,
+    students: std
+      ? {
+          nama: std.nama,
+          kelas: getNamaKelas(std.kelas),
+          unit: std.unit,
+        }
+      : undefined,
     profiles: unwrapRelation(row.profiles) ?? undefined,
   }
 }
@@ -395,7 +433,29 @@ async function getSiswaIds(
   let q = supabase.from('students').select('id').eq('is_alumni', false)
 
   if (unit) q = q.eq('unit', unit)
-  if (kelas) q = q.eq('kelas', kelas)
+  
+  if (kelas) {
+    let kelasIdFilter: string | null = null
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(kelas)
+    if (!isUuid) {
+      let query = supabase.from('kelas').select('id').eq('nama_kelas', kelas)
+      if (unit) {
+        query = query.eq('unit', unit)
+      }
+      const { data: kelasRow } = await query.maybeSingle()
+      if (kelasRow) {
+        kelasIdFilter = kelasRow.id
+      }
+    } else {
+      kelasIdFilter = kelas
+    }
+    if (kelasIdFilter) {
+      q = q.eq('kelas_id', kelasIdFilter)
+    } else {
+      return []
+    }
+  }
+
   if (search) q = q.ilike('nama', `%${search}%`)
 
   const { data, error } = await q
@@ -1638,18 +1698,44 @@ export async function getRaportSiswa(filters: {
   // 1. Ambil daftar siswa aktif sesuai filter
   let siswaQ = supabase
     .from('students')
-    .select('id, nama, kelas')
+    .select('id, nama, kelas_id, kelas(nama_kelas)')
     .eq('is_alumni', false)
     .order('nama', { ascending: true })
 
   if (filters.unit) siswaQ = siswaQ.eq('unit', filters.unit)
-  if (filters.kelas) siswaQ = siswaQ.eq('kelas', filters.kelas)
+  
+  if (filters.kelas) {
+    let kelasIdFilter: string | null = null
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(filters.kelas)
+    if (!isUuid) {
+      let query = supabase.from('kelas').select('id').eq('nama_kelas', filters.kelas)
+      if (filters.unit) {
+        query = query.eq('unit', filters.unit)
+      }
+      const { data: kelasRow } = await query.maybeSingle()
+      if (kelasRow) {
+        kelasIdFilter = kelasRow.id
+      }
+    } else {
+      kelasIdFilter = filters.kelas
+    }
+    if (kelasIdFilter) {
+      siswaQ = siswaQ.eq('kelas_id', kelasIdFilter)
+    } else {
+      return []
+    }
+  }
+
   if (filters.search) siswaQ = siswaQ.ilike('nama', `%${filters.search}%`)
 
   const { data: siswaData, error: siswaError } = await siswaQ
   if (siswaError) throw new Error(siswaError.message)
 
-  const siswaList = (siswaData ?? []) as SiswaRow[]
+  const siswaList: SiswaRow[] = (siswaData ?? []).map((row: any) => ({
+    id: row.id,
+    nama: row.nama,
+    kelas: row.kelas?.nama_kelas || '-',
+  }))
   if (siswaList.length === 0) return []
 
   const siswaIds = siswaList.map((s) => s.id)
@@ -1829,16 +1915,19 @@ export async function getKehadiranPerKelas(
 
   const { data, error } = await supabase
     .from('presensi')
-    .select('status, students!left(kelas)')
+    .select('status, students!left(kelas_id, kelas(nama_kelas))')
     .gte('tanggal', `${bulan}-01`)
     .lte('tanggal', `${bulan}-31`)
 
   if (error) throw new Error(error.message)
 
-  const rows = (data ?? []).map((row: { status: string; students?: Relation<{ kelas: string }> }) => ({
-    status: row.status,
-    students: unwrapRelation(row.students),
-  }))
+  const rows = (data ?? []).map((row: any) => {
+    const std = unwrapRelation(row.students)
+    return {
+      status: row.status,
+      students: std ? { kelas: std.kelas?.nama_kelas || '-' } : null,
+    }
+  })
 
   const kelasMap = new Map<string, { hadir: number; total: number }>()
 
@@ -1860,17 +1949,16 @@ export async function getKehadiranPerKelas(
 export async function getKelasOptions(unit: string): Promise<string[]> {
   const supabase = createClient()
   const { data, error } = await supabase
-    .from('students')
-    .select('kelas')
+    .from('kelas')
+    .select('nama_kelas')
     .eq('unit', unit)
-    .eq('is_alumni', false)
 
   if (error) throw new Error(error.message)
 
   const classes = [
     ...new Set(
       (data ?? [])
-        .map((row) => row.kelas)
+        .map((row) => row.nama_kelas)
         .filter(
           (kelas): kelas is string =>
             typeof kelas === 'string' && kelas.length > 0

@@ -51,6 +51,7 @@ import { toast } from '@/components/ui/use-toast'
 import { useAuth } from '@/hooks/use-auth'
 import { useDebounce } from '@/hooks/use-debounce'
 import { logAudit } from '@/lib/audit/log'
+import { getAllKelas } from '@/lib/queries/admin-extended'
 import {
   bulkCreateStudents,
   bulkUpdateStudents,
@@ -74,7 +75,7 @@ type TabValue = Unit | 'Alumni'
 // Schema tambah siswa baru (tanpa is_alumni, dengan kamar_id & nomor_induk opsional)
 const studentAddSchema = z.object({
   nama: z.string().min(2, 'Nama minimal 2 karakter'),
-  kelas: z.string().min(1, 'Kelas wajib diisi'),
+  kelas_id: z.string().uuid('Kelas wajib dipilih'),
   jenis_kelamin: z.enum(['L', 'P'], { message: 'Pilih jenis kelamin' }),
   kamar_id: z.string().uuid().optional().nullable().or(z.literal('')),
   nomor_induk: z.string().optional(),
@@ -84,7 +85,7 @@ const studentAddSchema = z.object({
 // Schema edit siswa — lengkap
 const studentEditSchema = z.object({
   nama: z.string().min(2, 'Nama minimal 2 karakter'),
-  kelas: z.string().min(1, 'Kelas wajib diisi'),
+  kelas_id: z.string().uuid('Kelas wajib dipilih'),
   jenis_kelamin: z.enum(['L', 'P'], { message: 'Pilih jenis kelamin' }),
   kamar_id: z.string().uuid().optional().nullable().or(z.literal('')),
   nomor_induk: z.string().optional(),
@@ -103,7 +104,8 @@ function studentToRecord(student: Student): Record<string, unknown> {
   return {
     id: student.id,
     nama: student.nama,
-    kelas: student.kelas,
+    kelas: student.kelas?.nama_kelas || null,
+    kelas_id: student.kelas_id,
     jenis_kelamin: student.jenis_kelamin,
     unit: student.unit,
     is_alumni: student.is_alumni,
@@ -146,12 +148,12 @@ export default function StudentsPage() {
   const [alumniTargetStudent, setAlumniTargetStudent] = useState<Student | null>(null)
   const [restoreTargetStudent, setRestoreTargetStudent] = useState<Student | null>(null)
   const [bulkEditData, setBulkEditData] = useState<{
-    kelas: string
+    kelas_id: string | null
     jenis_kelamin: JenisKelamin | ''
     kamar_id: string | null
     nomor_induk: string
     orangtua_id: string | null
-  }>({ kelas: '', jenis_kelamin: '', kamar_id: null, nomor_induk: '', orangtua_id: null })
+  }>({ kelas_id: null, jenis_kelamin: '', kamar_id: null, nomor_induk: '', orangtua_id: null })
   const [alumniUnitFilter, setAlumniUnitFilter] = useState<Unit | 'all'>('all')
   const [deleteTargetIds, setDeleteTargetIds] = useState<string[]>([])
   const [deletingStudents, setDeletingStudents] = useState<Student[]>([])
@@ -223,24 +225,36 @@ export default function StudentsPage() {
     },
   })
 
+  // Load Kelas Options
+  const { data: kelasData = [], isLoading: isKelasLoading } = useQuery({
+    queryKey: ['all-kelas'],
+    queryFn: () => getAllKelas(),
+  })
+
   const { data: studentClasses = [] } = useQuery({
     queryKey: ['students', 'classes', activeTab],
-    queryFn: () => {
-      if (isAlumniTab) return Promise.resolve([])
-      return getStudentClasses(activeTab as Unit)
+    queryFn: async () => {
+      if (isAlumniTab) return []
+      // Get official classes
+      const officialClasses = await getAllKelas(activeTab as Unit)
+      const officialNames = officialClasses.map((c) => c.nama_kelas)
+      // Get student existing classes (fallback)
+      const existingNames = await getStudentClasses(activeTab as Unit)
+      // Merge unique
+      return Array.from(new Set([...officialNames, ...existingNames])).sort((a, b) => a.localeCompare(b, 'id'))
     },
   })
 
   const addForm = useForm<StudentAddFormValues>({
     resolver: zodResolver(studentAddSchema),
-    defaultValues: { nama: '', kelas: '', jenis_kelamin: 'L', kamar_id: null, nomor_induk: '', orangtua_id: null },
+    defaultValues: { nama: '', kelas_id: '', jenis_kelamin: 'L', kamar_id: null, nomor_induk: '', orangtua_id: null },
   })
 
   const editForm = useForm<StudentEditFormValues>({
     resolver: zodResolver(studentEditSchema) as import('react-hook-form').Resolver<StudentEditFormValues>,
     defaultValues: {
       nama: '',
-      kelas: '',
+      kelas_id: '',
       jenis_kelamin: 'L',
       kamar_id: null,
       nomor_induk: '',
@@ -251,6 +265,21 @@ export default function StudentsPage() {
 
   const watchJkAdd = addForm.watch('jenis_kelamin')
   const watchJkEdit = editForm.watch('jenis_kelamin')
+
+  const addFormKelasOptions = useMemo(() => {
+    const currentUnit = activeUnit ?? 'SD'
+    return kelasData.filter((k) => k.unit === currentUnit)
+  }, [kelasData, activeUnit])
+
+  const editFormKelasOptions = useMemo(() => {
+    const currentUnit = editingStudent?.unit ?? 'SD'
+    return kelasData.filter((k) => k.unit === currentUnit)
+  }, [kelasData, editingStudent])
+
+  const bulkEditKelasOptions = useMemo(() => {
+    const currentUnit = activeUnit ?? 'SD'
+    return kelasData.filter((k) => k.unit === currentUnit)
+  }, [kelasData, activeUnit])
 
   const addKamarOptions = useMemo(() => {
     if (!watchJkAdd) return []
@@ -431,7 +460,8 @@ export default function StudentsPage() {
       ...payload
     }: {
       ids: string[]
-      kelas?: string
+      kelas?: string | null
+      kelas_id?: string | null
       jenis_kelamin?: JenisKelamin
       kamar_id?: string | null
       nomor_induk?: string
@@ -458,7 +488,7 @@ export default function StudentsPage() {
       })
       setSelectedRows([])
       setIsBulkEditOpen(false)
-      setBulkEditData({ kelas: '', jenis_kelamin: '', kamar_id: null, nomor_induk: '', orangtua_id: null })
+      setBulkEditData({ kelas_id: null, jenis_kelamin: '', kamar_id: null, nomor_induk: '', orangtua_id: null })
     },
     onError: (error: Error) => {
       toast({ title: 'Gagal', description: error.message, variant: 'destructive' })
@@ -498,7 +528,7 @@ export default function StudentsPage() {
   }
 
   const openAddDialog = () => {
-    addForm.reset({ nama: '', kelas: '', jenis_kelamin: 'L', kamar_id: null, nomor_induk: '', orangtua_id: null })
+    addForm.reset({ nama: '', kelas_id: '', jenis_kelamin: 'L', kamar_id: null, nomor_induk: '', orangtua_id: null })
     setIsAddOpen(true)
   }
 
@@ -507,7 +537,7 @@ export default function StudentsPage() {
     const currentOrangTuaId = student.orangtua_siswa?.[0]?.orangtua_id || null
     editForm.reset({
       nama: student.nama,
-      kelas: student.kelas,
+      kelas_id: student.kelas_id ?? '',
       jenis_kelamin: student.jenis_kelamin ?? 'L',
       kamar_id: student.kamar_id ?? null,
       nomor_induk: student.nomor_induk ?? '',
@@ -531,7 +561,7 @@ export default function StudentsPage() {
   }
 
   const openBulkEdit = () => {
-    setBulkEditData({ kelas: '', jenis_kelamin: '', kamar_id: null, nomor_induk: '', orangtua_id: null })
+    setBulkEditData({ kelas_id: null, jenis_kelamin: '', kamar_id: null, nomor_induk: '', orangtua_id: null })
     setIsBulkEditOpen(true)
   }
 
@@ -546,7 +576,7 @@ export default function StudentsPage() {
   }
 
   const resetAddFormDefaults = () => {
-    addForm.reset({ nama: '', kelas: '', jenis_kelamin: 'L', kamar_id: null, nomor_induk: '', orangtua_id: null })
+    addForm.reset({ nama: '', kelas_id: '', jenis_kelamin: 'L', kamar_id: null, nomor_induk: '', orangtua_id: null })
   }
 
   const closeBulkAddDialog = () => {
@@ -567,7 +597,7 @@ export default function StudentsPage() {
       {
         localId: crypto.randomUUID(),
         nama: values.nama,
-        kelas: values.kelas,
+        kelas_id: values.kelas_id,
         jenis_kelamin: values.jenis_kelamin,
         kamar_id: values.kamar_id,
         nomor_induk: values.nomor_induk,
@@ -581,7 +611,7 @@ export default function StudentsPage() {
 
   const handleBulkEditSubmit = () => {
     const hasAnyValue =
-      bulkEditData.kelas.trim() ||
+      bulkEditData.kelas_id ||
       bulkEditData.jenis_kelamin ||
       bulkEditData.kamar_id ||
       bulkEditData.nomor_induk.trim() ||
@@ -592,13 +622,13 @@ export default function StudentsPage() {
       return
     }
     const payload: {
-      kelas?: string
+      kelas_id?: string | null
       jenis_kelamin?: JenisKelamin
       kamar_id?: string | null
       nomor_induk?: string
       orangtua_id?: string | null
     } = {}
-    if (bulkEditData.kelas.trim()) payload.kelas = bulkEditData.kelas.trim()
+    if (bulkEditData.kelas_id) payload.kelas_id = bulkEditData.kelas_id
     if (bulkEditData.jenis_kelamin) payload.jenis_kelamin = bulkEditData.jenis_kelamin
     if (bulkEditData.kamar_id) payload.kamar_id = bulkEditData.kamar_id
     if (bulkEditData.nomor_induk.trim()) payload.nomor_induk = bulkEditData.nomor_induk.trim()
@@ -628,7 +658,13 @@ export default function StudentsPage() {
         cell: ({ row }) => (page - 1) * pageSize + row.index + 1,
       },
       { accessorKey: 'nama', header: 'Nama' },
-      { accessorKey: 'kelas', header: 'Kelas' },
+      {
+        id: 'kelas',
+        header: 'Kelas',
+        cell: ({ row }) => {
+          return row.original.kelas?.nama_kelas || '—'
+        },
+      },
       {
         id: 'orang_tua',
         header: 'Nama Orang Tua',
@@ -696,7 +732,13 @@ export default function StudentsPage() {
         cell: ({ row }) => (page - 1) * pageSize + row.index + 1,
       },
       { accessorKey: 'nama', header: 'Nama' },
-      { accessorKey: 'kelas', header: 'Kelas Terakhir' },
+      {
+        id: 'kelas',
+        header: 'Kelas Terakhir',
+        cell: ({ row }) => {
+          return row.original.kelas?.nama_kelas || '—'
+        },
+      },
       {
         id: 'orang_tua',
         header: 'Nama Orang Tua',
@@ -772,22 +814,25 @@ export default function StudentsPage() {
         )}
       </div>
 
-      <div className="space-y-2">
-        <Label htmlFor={showAddToListButton ? 'bulk-kelas' : 'add-kelas'}>Kelas</Label>
-        <Input
-          id={showAddToListButton ? 'bulk-kelas' : 'add-kelas'}
-          list={showAddToListButton ? 'kelas-suggestions' : undefined}
-          {...addForm.register('kelas')}
-        />
-        {showAddToListButton && studentClasses.length > 0 && (
-          <datalist id="kelas-suggestions">
-            {studentClasses.map((kelas) => (
-              <option key={kelas} value={kelas} />
+      <div className="space-y-2 flex flex-col">
+        <Label>Kelas</Label>
+        <Select
+          value={addForm.watch('kelas_id') || ''}
+          onValueChange={(val) => addForm.setValue('kelas_id', val || '', { shouldValidate: true })}
+        >
+          <SelectTrigger id={showAddToListButton ? 'bulk-kelas' : 'add-kelas'}>
+            <SelectValue placeholder="Pilih Kelas..." />
+          </SelectTrigger>
+          <SelectContent>
+            {addFormKelasOptions.map((k) => (
+              <SelectItem key={k.id} value={k.id}>
+                {k.nama_kelas}
+              </SelectItem>
             ))}
-          </datalist>
-        )}
-        {addForm.formState.errors.kelas && (
-          <p className="text-xs text-status-red">{addForm.formState.errors.kelas.message}</p>
+          </SelectContent>
+        </Select>
+        {addForm.formState.errors.kelas_id && (
+          <p className="text-xs text-status-red">{addForm.formState.errors.kelas_id.message}</p>
         )}
       </div>
 
@@ -1083,11 +1128,25 @@ export default function StudentsPage() {
             </div>
 
             {/* Kelas */}
-            <div className="space-y-2">
-              <Label htmlFor="edit-kelas">Kelas</Label>
-              <Input id="edit-kelas" {...editForm.register('kelas')} />
-              {editForm.formState.errors.kelas && (
-                <p className="text-xs text-status-red">{editForm.formState.errors.kelas.message}</p>
+            <div className="space-y-2 flex flex-col">
+              <Label>Kelas</Label>
+              <Select
+                value={editForm.watch('kelas_id') || ''}
+                onValueChange={(val) => editForm.setValue('kelas_id', val || '', { shouldValidate: true })}
+              >
+                <SelectTrigger id="edit-kelas">
+                  <SelectValue placeholder="Pilih Kelas..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {editFormKelasOptions.map((k) => (
+                    <SelectItem key={k.id} value={k.id}>
+                      {k.nama_kelas}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {editForm.formState.errors.kelas_id && (
+                <p className="text-xs text-status-red">{editForm.formState.errors.kelas_id.message}</p>
               )}
             </div>
 
@@ -1258,7 +1317,7 @@ export default function StudentsPage() {
         open={isBulkEditOpen}
         onOpenChange={(open) => {
           setIsBulkEditOpen(open)
-          if (!open) setBulkEditData({ kelas: '', jenis_kelamin: '', kamar_id: null, nomor_induk: '', orangtua_id: null })
+          if (!open) setBulkEditData({ kelas_id: null, jenis_kelamin: '', kamar_id: null, nomor_induk: '', orangtua_id: null })
         }}
       >
         <DialogContent>
@@ -1271,14 +1330,29 @@ export default function StudentsPage() {
             </p>
 
             {/* Kelas */}
-            <div className="space-y-2">
-              <Label htmlFor="bulk-edit-kelas">Kelas Baru <span className="text-[var(--text-tertiary)]">(opsional)</span></Label>
-              <Input
-                id="bulk-edit-kelas"
-                placeholder="Contoh: VII-A"
-                value={bulkEditData.kelas}
-                onChange={(e) => setBulkEditData((prev) => ({ ...prev, kelas: e.target.value }))}
-              />
+            <div className="space-y-2 flex flex-col">
+              <Label>Kelas Baru <span className="text-[var(--text-tertiary)]">(opsional)</span></Label>
+              <Select
+                value={bulkEditData.kelas_id || 'no-change'}
+                onValueChange={(val) =>
+                  setBulkEditData((prev) => ({
+                    ...prev,
+                    kelas_id: val === 'no-change' ? null : val,
+                  }))
+                }
+              >
+                <SelectTrigger id="bulk-edit-kelas">
+                  <SelectValue placeholder="Tidak diubah" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="no-change">Tidak diubah</SelectItem>
+                  {bulkEditKelasOptions.map((k) => (
+                    <SelectItem key={k.id} value={k.id}>
+                      {k.nama_kelas}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             {/* Jenis Kelamin */}
@@ -1365,7 +1439,7 @@ export default function StudentsPage() {
               variant="outline"
               onClick={() => {
                 setIsBulkEditOpen(false)
-                setBulkEditData({ kelas: '', jenis_kelamin: '', kamar_id: null, nomor_induk: '', orangtua_id: null })
+                setBulkEditData({ kelas_id: null, jenis_kelamin: '', kamar_id: null, nomor_induk: '', orangtua_id: null })
               }}
             >
               Batal
@@ -1413,7 +1487,9 @@ export default function StudentsPage() {
                     {studentsQueue.map((item) => (
                       <TableRow key={item.localId}>
                         <TableCell>{item.nama}</TableCell>
-                        <TableCell>{item.kelas}</TableCell>
+                        <TableCell>
+                          {kelasData.find((c) => c.id === item.kelas_id)?.nama_kelas || item.kelas || '—'}
+                        </TableCell>
                         <TableCell>{formatJenisKelamin(item.jenis_kelamin)}</TableCell>
                         <TableCell>
                           <Button

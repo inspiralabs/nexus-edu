@@ -167,7 +167,7 @@ function formatTanggal(tanggal: string | null): string {
 
 const PRESTASI_SELECT = `
   *,
-  students(id,nama,kelas),
+  students(id,nama,kelas_id,kelas(nama_kelas)),
   event(id,nama_event),
   juara(id,nama_juara),
   bidang(id,nama_bidang),
@@ -444,7 +444,7 @@ export default function PrestasiDataPage() {
       setStudentOptions(
         results.map((s) => ({
           value: s.id,
-          label: `${s.nama} - ${s.kelas}`,
+          label: `${s.nama} - ${s.kelas?.nama_kelas || '-'}`,
         }))
       )
       return results
@@ -1024,10 +1024,10 @@ export default function PrestasiDataPage() {
         setStudentOptions([
           {
             value: item.siswa_id,
-            label: `${item.students?.nama ?? 'Siswa Dihapus'} - ${item.students?.kelas ?? '-'}`,
+            label: `${item.students?.nama ?? 'Siswa Dihapus'} - ${item.students?.kelas?.nama_kelas || '-'}`,
           },
         ])
-        setKelasDisplay(item.students?.kelas ?? '')
+        setKelasDisplay(item.students?.kelas?.nama_kelas ?? '')
       }
 
       if (item.event && item.event_id) {
@@ -1185,7 +1185,7 @@ export default function PrestasiDataPage() {
         id: 'kelas',
         header: 'Kelas',
         enableSorting: false,
-        cell: ({ row }) => row.original.students?.kelas ?? '-',
+        cell: ({ row }) => row.original.students?.kelas?.nama_kelas ?? '-',
       },
       {
         id: 'event',

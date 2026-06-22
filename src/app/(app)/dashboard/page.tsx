@@ -419,7 +419,7 @@ export default function DashboardPage() {
                     <TableRow key={item.id}>
                       <TableCell>{formatTanggal(item.tanggal)}</TableCell>
                       <TableCell>{student?.nama ?? '-'}</TableCell>
-                      <TableCell>{student?.kelas ?? '-'}</TableCell>
+                      <TableCell>{student?.kelas?.nama_kelas || '-'}</TableCell>
                       <TableCell>{getRelatedKategori(item)}</TableCell>
                       <TableCell>
                         <Badge variant={STATUS_BADGE_VARIANT[item.status]}>

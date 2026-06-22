@@ -269,7 +269,7 @@ export default function KedisiplinanDataPage() {
       setStudentOptions(
         results.map((s) => ({
           value: s.id,
-          label: `${s.nama} - ${s.kelas}`,
+          label: `${s.nama} - ${s.kelas?.nama_kelas || '-'}`,
         }))
       )
       return results
@@ -613,11 +613,11 @@ export default function KedisiplinanDataPage() {
         {
           value: item.siswa_id,
           label: item.students
-            ? `${item.students.nama} - ${item.students.kelas}`
+            ? `${item.students.nama} - ${item.students.kelas?.nama_kelas || '-'}`
             : 'Siswa tidak ditemukan',
         },
       ])
-      setKelasDisplay(item.students?.kelas ?? '')
+      setKelasDisplay(item.students?.kelas?.nama_kelas ?? '')
     }
 
     if (item.kategori_id) {
@@ -762,7 +762,7 @@ export default function KedisiplinanDataPage() {
         id: 'kelas',
         header: 'Kelas',
         enableSorting: false,
-        cell: ({ row }) => row.original.students?.kelas ?? '-',
+        cell: ({ row }) => row.original.students?.kelas?.nama_kelas ?? '-',
       },
       {
         id: 'kategori',

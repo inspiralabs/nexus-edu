@@ -87,7 +87,7 @@ export default function SignupOrangTuaPage() {
     )
     return unselected.map((s) => ({
       value: s.id,
-      label: `${s.nama} - ${s.kelas} (${s.unit})`,
+      label: `${s.nama} - ${s.kelas?.nama_kelas || '-'} (${s.unit})`,
     }))
   }, [searchedSiswa, selectedStudents])
 
@@ -117,7 +117,7 @@ export default function SignupOrangTuaPage() {
 
   // Generate read-only class string
   const kelasAnakString = useMemo(() => {
-    const classes = selectedStudents.map((s) => s.kelas).filter(Boolean)
+    const classes = selectedStudents.map((s) => s.kelas?.nama_kelas).filter(Boolean)
     const uniqueClasses = Array.from(new Set(classes))
     return uniqueClasses.join(', ')
   }, [selectedStudents])
@@ -271,7 +271,7 @@ export default function SignupOrangTuaPage() {
                     className="flex items-center justify-between gap-2 p-1.5 hover:bg-[var(--surface)] rounded transition-colors duration-200"
                   >
                     <span className="text-sm font-medium text-[var(--text-primary)]">
-                      {student.nama} - {student.kelas} ({student.unit})
+                      {student.nama} - {student.kelas?.nama_kelas || '-'} ({student.unit})
                     </span>
                     <Button
                       type="button"

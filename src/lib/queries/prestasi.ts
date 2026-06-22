@@ -80,7 +80,7 @@ const NASIONAL_PLUS_TINGKAT: TingkatKejuaraan[] = [
 
 const PRESTASI_SELECT = `
   *,
-  students(id,nama,kelas),
+  students(id,nama,kelas_id,kelas(nama_kelas)),
   event(id,nama_event),
   juara(id,nama_juara),
   bidang(id,nama_bidang),
@@ -154,7 +154,25 @@ async function getFilteredStudentIds(
     query = query.ilike('nama', `%${search}%`)
   }
   if (kelas && kelas !== 'all') {
-    query = query.eq('kelas', kelas)
+    let kelasIdFilter: string | null = null
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(kelas)
+    if (!isUuid) {
+      let queryClass = supabase.from('kelas').select('id').eq('nama_kelas', kelas)
+      if (unit && unit.length > 0) {
+        queryClass = queryClass.in('unit', unit)
+      }
+      const { data: kelasRows } = await queryClass
+      if (kelasRows && kelasRows.length > 0) {
+        kelasIdFilter = kelasRows[0].id
+      }
+    } else {
+      kelasIdFilter = kelas
+    }
+    if (kelasIdFilter) {
+      query = query.eq('kelas_id', kelasIdFilter)
+    } else {
+      return []
+    }
   }
   if (unit && unit.length > 0) {
     query = query.in('unit', unit)
@@ -424,7 +442,21 @@ async function getDashboardStudentIdsByKelas(
   }
 
   const supabase = createClient()
-  let query = supabase.from('students').select('id').in('kelas', filters!.kelas!)
+
+  // Resolve kelas names to IDs
+  let queryClass = supabase.from('kelas').select('id').in('nama_kelas', filters!.kelas!)
+  if (filters?.unit && filters.unit.length > 0) {
+    queryClass = queryClass.in('unit', filters.unit)
+  }
+  const { data: kelasRows, error: classErr } = await queryClass
+  if (classErr) throw new Error(classErr.message)
+
+  const kelasIds = (kelasRows ?? []).map((r) => r.id)
+  if (kelasIds.length === 0) {
+    return []
+  }
+
+  let query = supabase.from('students').select('id').in('kelas_id', kelasIds)
 
   if (filters?.unit && filters.unit.length > 0) {
     query = query.in('unit', filters.unit)

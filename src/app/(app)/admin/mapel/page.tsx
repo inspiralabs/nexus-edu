@@ -32,14 +32,16 @@ import { toast } from '@/components/ui/use-toast'
 import { useAuth } from '@/hooks/use-auth'
 import { useDebounce } from '@/hooks/use-debounce'
 import { logAudit } from '@/lib/audit/log'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
   createMapel,
   deleteMapel,
   getMapel,
   updateMapel,
+  getAllKelas,
   type CreateMapelInput,
 } from '@/lib/queries/admin-extended'
-import type { MataPelajaran, Unit } from '@/lib/supabase/types'
+import type { MataPelajaran, Unit, Kelas } from '@/lib/supabase/types'
 
 const PAGE_SIZE_OPTIONS = [10, 20, 30, 50] as const
 const UNITS: Unit[] = ['SD', 'SMP', 'SMA']
@@ -48,6 +50,7 @@ const mapelSchema = z.object({
   nama_mapel: z.string().min(2, 'Nama mata pelajaran minimal 2 karakter'),
   kategori: z.string().min(2, 'Kategori minimal 2 karakter'),
   unit: z.enum(['SD', 'SMP', 'SMA'], { message: 'Pilih unit' }),
+  kelas_ids: z.array(z.string()).min(1, 'Minimal pilih satu kelas'),
 })
 
 type MapelFormValues = z.infer<typeof mapelSchema>
@@ -58,6 +61,7 @@ function mapelToRecord(item: MataPelajaran): Record<string, unknown> {
     nama_mapel: item.nama_mapel,
     kategori: item.kategori,
     unit: item.unit,
+    kelas_ids: item.kelas_ids,
     created_at: item.created_at,
   }
 }
@@ -82,7 +86,7 @@ export default function MapelPage() {
 
   const form = useForm<MapelFormValues>({
     resolver: zodResolver(mapelSchema),
-    defaultValues: { nama_mapel: '', kategori: '', unit: 'SD' },
+    defaultValues: { nama_mapel: '', kategori: '', unit: 'SD', kelas_ids: [] },
   })
 
   const queryFilters = useMemo(
@@ -95,6 +99,16 @@ export default function MapelPage() {
     queryFn: () => getMapel(queryFilters),
   })
 
+  const { data: allKelasList = [] } = useQuery({
+    queryKey: ['all-kelas'],
+    queryFn: () => getAllKelas(),
+  })
+
+  const watchedUnit = form.watch('unit')
+  const formKelasList = useMemo(() => {
+    return allKelasList.filter((k) => k.unit === watchedUnit)
+  }, [allKelasList, watchedUnit])
+
   const getUserId = (): string | null => profile?.user_id ?? null
 
   const invalidate = useCallback(() => {
@@ -105,12 +119,12 @@ export default function MapelPage() {
     setIsAddOpen(false)
     setIsEditOpen(false)
     setEditingItem(null)
-    form.reset({ nama_mapel: '', kategori: '', unit: activeUnit })
+    form.reset({ nama_mapel: '', kategori: '', unit: activeUnit, kelas_ids: [] })
   }
 
   const openAddDialog = () => {
     setEditingItem(null)
-    form.reset({ nama_mapel: '', kategori: '', unit: activeUnit })
+    form.reset({ nama_mapel: '', kategori: '', unit: activeUnit, kelas_ids: [] })
     setIsAddOpen(true)
   }
 
@@ -120,6 +134,7 @@ export default function MapelPage() {
       nama_mapel: item.nama_mapel,
       kategori: item.kategori,
       unit: item.unit,
+      kelas_ids: item.kelas_ids || [],
     })
     setIsEditOpen(true)
   }
@@ -210,6 +225,17 @@ export default function MapelPage() {
         ),
       },
       {
+        id: 'kelas',
+        header: 'Kelas',
+        cell: ({ row }) => {
+          const ids = row.original.kelas_ids || []
+          const names = ids
+            .map((id) => allKelasList.find((k) => k.id === id)?.nama_kelas)
+            .filter(Boolean)
+          return names.length > 0 ? names.join(', ') : '-'
+        },
+      },
+      {
         accessorKey: 'kategori',
         header: 'Kategori',
         cell: ({ row }) => (
@@ -217,11 +243,6 @@ export default function MapelPage() {
             {row.original.kategori}
           </span>
         ),
-      },
-      {
-        accessorKey: 'unit',
-        header: 'Unit',
-        cell: ({ row }) => row.original.unit,
       },
       {
         id: 'actions',
@@ -251,7 +272,7 @@ export default function MapelPage() {
         ),
       },
     ],
-    [page, pageSize]
+    [page, pageSize, allKelasList]
   )
 
   return (
@@ -355,9 +376,10 @@ export default function MapelPage() {
               <Label htmlFor="unit-mapel">Unit</Label>
               <Select
                 value={form.watch('unit')}
-                onValueChange={(value) =>
+                onValueChange={(value) => {
                   form.setValue('unit', value as Unit, { shouldValidate: true })
-                }
+                  form.setValue('kelas_ids', [])
+                }}
               >
                 <SelectTrigger id="unit-mapel">
                   <SelectValue placeholder="Pilih unit" />
@@ -373,6 +395,48 @@ export default function MapelPage() {
               {form.formState.errors.unit && (
                 <p className="text-xs text-status-red">
                   {form.formState.errors.unit.message}
+                </p>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <Label>Kelas (pilih minimal satu)</Label>
+              {formKelasList.length === 0 ? (
+                <p className="text-xs text-muted-foreground py-2 px-3 border border-dashed rounded-md text-center bg-muted/5">
+                  Tidak ada data kelas untuk unit {watchedUnit}. Buat kelas terlebih dahulu.
+                </p>
+              ) : (
+                <div className="grid grid-cols-2 gap-2 border border-border rounded-md p-3 max-h-[150px] overflow-y-auto bg-muted/5">
+                  {formKelasList.map((kelas) => {
+                    const currentIds = form.watch('kelas_ids') || []
+                    const isChecked = currentIds.includes(kelas.id)
+                    return (
+                      <div key={kelas.id} className="flex items-center space-x-2">
+                        <Checkbox
+                          id={`kelas-${kelas.id}`}
+                          checked={isChecked}
+                          onCheckedChange={(checked) => {
+                            if (checked) {
+                              form.setValue('kelas_ids', [...currentIds, kelas.id], { shouldValidate: true })
+                            } else {
+                              form.setValue('kelas_ids', currentIds.filter((id) => id !== kelas.id), { shouldValidate: true })
+                            }
+                          }}
+                        />
+                        <Label
+                          htmlFor={`kelas-${kelas.id}`}
+                          className="text-sm font-normal cursor-pointer select-none text-foreground"
+                        >
+                          {kelas.nama_kelas}
+                        </Label>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+              {form.formState.errors.kelas_ids && (
+                <p className="text-xs text-status-red">
+                  {form.formState.errors.kelas_ids.message}
                 </p>
               )}
             </div>
