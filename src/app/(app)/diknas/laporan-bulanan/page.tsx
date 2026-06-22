@@ -1,6 +1,6 @@
 'use client'
 
-// src/app/(app)/admin/akademik/laporan-bulanan/page.tsx
+// src/app/(app)/diknas/laporan-bulanan/page.tsx
 
 import { useQuery } from '@tanstack/react-query'
 import { format } from 'date-fns'
@@ -267,7 +267,7 @@ function FilterPanel({
 }
 
 export default function LaporanBulananPage() {
-  const { isAdmin } = useAuth()
+  const { profile } = useAuth()
 
   // ── Filter State ─────────────────────────────────────────────────────────────
   const now = new Date()
@@ -322,9 +322,21 @@ export default function LaporanBulananPage() {
   )
 
   const tahunAjaran = useMemo(() => {
-    const found = semesterOptions.find((s) => s.id === selectedSemesterId)
-    return found?.tahunAjaran ?? ''
-  }, [semesterOptions, selectedSemesterId])
+    if (periodMode === 'semester') {
+      const found = semesterOptions.find((s) => s.id === selectedSemesterId)
+      if (found) return found.tahunAjaran
+    }
+    const activeSmt = rawSemesters.find((s) => s.is_aktif)
+    if (activeSmt) {
+      const tp = activeSmt.tahun_pelajaran
+      return tp
+        ? Array.isArray(tp)
+          ? ((tp[0] as { nama: string } | undefined)?.nama ?? '')
+          : ((tp as unknown as { nama: string }).nama ?? '')
+        : ''
+    }
+    return ''
+  }, [semesterOptions, selectedSemesterId, periodMode, rawSemesters])
 
   // ── Kelas List ────────────────────────────────────────────────────────────────
   const { data: kelasList = [], isLoading: kelasLoading } = useQuery({
@@ -538,8 +550,8 @@ export default function LaporanBulananPage() {
                     <div className="divide-y divide-[var(--border)]">
                       {filteredStudents.map((siswa, idx) => (
                         <div
-                          key={siswa.siswaId}
-                          className="group flex items-center gap-4 px-6 py-3.5 transition-colors hover:bg-[var(--background)]"
+                           key={siswa.siswaId}
+                           className="group flex items-center gap-4 px-6 py-3.5 transition-colors hover:bg-[var(--background)]"
                         >
                           {/* Number */}
                           <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--background)] text-xs font-semibold text-[var(--text-secondary)]">

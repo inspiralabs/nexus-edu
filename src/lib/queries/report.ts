@@ -389,6 +389,7 @@ export async function getSiswaReport(
     .from('kedisiplinan')
     .select('tanggal, status, kategori_disiplin(nama_kategori), pasal(nama_pasal, poin)')
     .eq('siswa_id', siswaId)
+    .eq('status', 'Sudah Diproses')
 
   if (period.type === 'month') {
     kedisiplinanQ = kedisiplinanQ.gte('tanggal', dateFrom).lte('tanggal', dateTo)

@@ -113,9 +113,6 @@ function PrintContent({
               <tr className="bg-gray-100">
                 <th className="border border-gray-400 px-2 py-1 text-center w-8">No</th>
                 <th className="border border-gray-400 px-2 py-1 text-left">Mata Pelajaran</th>
-                <th className="border border-gray-400 px-2 py-1 text-center w-20">Avg Formatif</th>
-                <th className="border border-gray-400 px-2 py-1 text-center w-20">Avg Sumatif</th>
-                <th className="border border-gray-400 px-2 py-1 text-center w-16">UAS</th>
                 <th className="border border-gray-400 px-2 py-1 text-center w-20 font-bold">Nilai Akhir</th>
                 <th className="border border-gray-400 px-2 py-1 text-left">Tujuan Pembelajaran</th>
               </tr>
@@ -125,15 +122,6 @@ function PrintContent({
                 <tr key={m.mapelId} style={{ pageBreakInside: 'avoid' }}>
                   <td className="border border-gray-400 px-2 py-1 text-center">{idx + 1}</td>
                   <td className="border border-gray-400 px-2 py-1 font-medium">{m.namaMapel}</td>
-                  <td className="border border-gray-400 px-2 py-1 text-center">
-                    {m.avgFormatif !== null ? m.avgFormatif.toFixed(1) : '-'}
-                  </td>
-                  <td className="border border-gray-400 px-2 py-1 text-center">
-                    {m.avgSumatif !== null ? m.avgSumatif.toFixed(1) : '-'}
-                  </td>
-                  <td className="border border-gray-400 px-2 py-1 text-center">
-                    {m.nilaiUAS !== null ? m.nilaiUAS.toFixed(1) : '-'}
-                  </td>
                   <td className="border border-gray-400 px-2 py-1 text-center font-bold">
                     {m.nilaiAkhir !== null ? m.nilaiAkhir.toFixed(1) : '-'}
                   </td>
@@ -190,7 +178,6 @@ function PrintContent({
                 <th className="border border-gray-400 px-2 py-1 text-left">Kategori</th>
                 <th className="border border-gray-400 px-2 py-1 text-left">Pasal</th>
                 <th className="border border-gray-400 px-2 py-1 text-center w-14">Poin</th>
-                <th className="border border-gray-400 px-2 py-1 text-center w-28">Status</th>
               </tr>
             </thead>
             <tbody>
@@ -201,7 +188,6 @@ function PrintContent({
                   <td className="border border-gray-400 px-2 py-1">{k.kategori}</td>
                   <td className="border border-gray-400 px-2 py-1">{k.pasal}</td>
                   <td className="border border-gray-400 px-2 py-1 text-center">{k.poin}</td>
-                  <td className="border border-gray-400 px-2 py-1 text-center">{k.status}</td>
                 </tr>
               ))}
             </tbody>
