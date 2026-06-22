@@ -90,6 +90,11 @@ interface BulkPresensiItem {
 
 // ─── Halaman ──────────────────────────────────────────────────────────────────
 
+function parseLocalDate(dateStr: string): Date {
+  const [year, month, day] = dateStr.split('-').map(Number)
+  return new Date(year, month - 1, day || 1)
+}
+
 export default function PresensiPage() {
   const queryClient = useQueryClient()
   const { profile } = useAuth()
@@ -118,6 +123,7 @@ export default function PresensiPage() {
   const [bulkKelas, setBulkKelas] = useState('')
   const [bulkMapel, setBulkMapel] = useState('')
   const [bulkItems, setBulkItems] = useState<BulkPresensiItem[]>([])
+  const [lastSemesterId, setLastSemesterId] = useState<string>('')
 
   // Dialog state
   const [isAddOpen, setIsAddOpen] = useState(false)
@@ -179,8 +185,8 @@ export default function PresensiPage() {
   // Bulan dinamis
   const monthOptions = useMemo(() => {
     if (!activeSemester?.tanggal_mulai || !activeSemester?.tanggal_selesai) return []
-    const start = new Date(activeSemester.tanggal_mulai)
-    const end = new Date(activeSemester.tanggal_selesai)
+    const start = parseLocalDate(activeSemester.tanggal_mulai)
+    const end = parseLocalDate(activeSemester.tanggal_selesai)
     const months: { value: string; label: string; minDate: Date; maxDate: Date }[] = []
     
     const monthNamesIndo = [
@@ -215,6 +221,18 @@ export default function PresensiPage() {
   const selectedMonthOpt = useMemo(() => {
     return monthOptions.find((m) => m.value === bulkBulan)
   }, [monthOptions, bulkBulan])
+
+  const bulkMonthRange = useMemo(() => {
+    if (!bulkBulan) return null
+    const [yearStr, monthStr] = bulkBulan.split('-')
+    const year = parseInt(yearStr, 10)
+    const month = parseInt(monthStr, 10)
+    if (isNaN(year) || isNaN(month)) return null
+    return {
+      minDate: new Date(year, month - 1, 1, 0, 0, 0),
+      maxDate: new Date(year, month, 0, 23, 59, 59, 999),
+    }
+  }, [bulkBulan])
 
   const { data: semesterList = [] } = useQuery({
     queryKey: ['semester-options'],
@@ -288,6 +306,35 @@ export default function PresensiPage() {
       setBulkItems([])
     }
   }, [siswaPerKelas])
+
+  // Inisialisasi default bulkBulan dan bulkTanggal berdasarkan rentang semester aktif
+  useEffect(() => {
+    if (activeSemester?.tanggal_mulai && activeSemester?.tanggal_selesai && activeSemester.id !== lastSemesterId && monthOptions.length > 0) {
+      const today = new Date()
+      // Zero out time parts to prevent hour-level mismatches
+      const compareToday = new Date(today.getFullYear(), today.getMonth(), today.getDate())
+      const start = parseLocalDate(activeSemester.tanggal_mulai)
+      const end = parseLocalDate(activeSemester.tanggal_selesai)
+
+      if (compareToday >= start && compareToday <= end) {
+        const currentMonthVal = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`
+        const exists = monthOptions.some((m) => m.value === currentMonthVal)
+        if (exists) {
+          setBulkBulan(currentMonthVal)
+          setBulkTanggal(today)
+        } else {
+          setBulkBulan(monthOptions[0].value)
+          const [yearStr, monthStr] = monthOptions[0].value.split('-')
+          setBulkTanggal(new Date(Number(yearStr), Number(monthStr) - 1, 1))
+        }
+      } else {
+        setBulkBulan(monthOptions[0].value)
+        const [yearStr, monthStr] = monthOptions[0].value.split('-')
+        setBulkTanggal(new Date(Number(yearStr), Number(monthStr) - 1, 1))
+      }
+      setLastSemesterId(activeSemester.id)
+    }
+  }, [activeSemester, monthOptions, lastSemesterId])
 
   // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -638,9 +685,9 @@ export default function PresensiPage() {
               <Label>Bulan</Label>
               <Select value={bulkBulan} onValueChange={(v) => {
                 setBulkBulan(v)
-                const opt = monthOptions.find((m) => m.value === v)
-                if (opt) {
-                  setBulkTanggal(opt.minDate)
+                const [yearStr, monthStr] = v.split('-')
+                if (yearStr && monthStr) {
+                  setBulkTanggal(new Date(Number(yearStr), Number(monthStr) - 1, 1))
                 }
               }}>
                 <SelectTrigger>
@@ -656,10 +703,11 @@ export default function PresensiPage() {
             <div className="space-y-1">
               <Label>Tanggal</Label>
               <DatePicker
+                key={bulkBulan || 'none'}
                 value={bulkTanggal}
                 onChange={(d) => d && setBulkTanggal(d)}
-                minDate={selectedMonthOpt?.minDate}
-                maxDate={selectedMonthOpt?.maxDate}
+                minDate={bulkMonthRange?.minDate}
+                maxDate={bulkMonthRange?.maxDate}
                 disabled={!bulkBulan}
               />
             </div>

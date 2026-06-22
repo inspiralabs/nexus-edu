@@ -36,6 +36,13 @@ function DatePicker({
   modifiersClassNames,
 }: DatePickerProps) {
   const [open, setOpen] = React.useState(false)
+  const [month, setMonth] = React.useState<Date | undefined>(value)
+
+  React.useEffect(() => {
+    if (value) {
+      setMonth(value)
+    }
+  }, [value])
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -61,6 +68,10 @@ function DatePicker({
             onChange(date)
             setOpen(false)
           }}
+          month={month}
+          onMonthChange={setMonth}
+          startMonth={minDate}
+          endMonth={maxDate}
           disabled={(date) => {
             if (minDate && date < minDate) return true
             if (maxDate && date > maxDate) return true

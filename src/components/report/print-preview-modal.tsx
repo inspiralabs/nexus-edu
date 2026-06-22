@@ -17,6 +17,7 @@ interface PrintPreviewModalProps {
   isLoading: boolean
   period: ReportPeriod
   tahunAjaran?: string
+  semester?: { nomor_semester: number; tahun_pelajaran?: any } | null
 }
 
 function formatPeriodLabel(period: ReportPeriod, tahunAjaran?: string): string {
@@ -40,10 +41,12 @@ function PrintContent({
   report,
   period,
   tahunAjaran,
+  semester,
 }: {
   report: SiswaReport
   period: ReportPeriod
   tahunAjaran?: string
+  semester?: { nomor_semester: number; tahun_pelajaran?: any } | null
 }) {
   const today = format(new Date(), 'dd MMMM yyyy', { locale: idLocale })
   const periodLabel = formatPeriodLabel(period, tahunAjaran)
@@ -95,7 +98,10 @@ function PrintContent({
           </div>
           <div className="flex gap-2">
             <span className="w-28 shrink-0 font-semibold">Tahun Ajaran</span>
-            <span>: {tahunAjaran ?? '-'}</span>
+            <span>
+              : {tahunAjaran ?? '-'}
+              {semester ? ` (Semester ${semester.nomor_semester})` : ''}
+            </span>
           </div>
         </div>
       </div>
@@ -265,6 +271,7 @@ export function PrintPreviewModal({
   isLoading,
   period,
   tahunAjaran,
+  semester,
 }: PrintPreviewModalProps) {
   const printRef = useRef<HTMLDivElement>(null)
 
@@ -353,7 +360,7 @@ export function PrintPreviewModal({
                 <p className="text-sm">Memuat data laporan...</p>
               </div>
             ) : report ? (
-              <PrintContent report={report} period={period} tahunAjaran={tahunAjaran} />
+              <PrintContent report={report} period={period} tahunAjaran={tahunAjaran} semester={semester} />
             ) : (
               <div className="flex items-center justify-center h-64 text-[var(--text-secondary)]">
                 <p className="text-sm">Tidak ada data laporan tersedia.</p>

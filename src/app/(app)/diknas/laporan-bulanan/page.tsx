@@ -15,7 +15,7 @@ import {
   GraduationCap,
   Search,
 } from 'lucide-react'
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { PageHeader } from '@/components/layout/page-header'
 import { PrintPreviewModal } from '@/components/report/print-preview-modal'
 import { Badge } from '@/components/ui/badge'
@@ -35,7 +35,7 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useAuth } from '@/hooks/use-auth'
 import { useDebounce } from '@/hooks/use-debounce'
 import { getAllKelas } from '@/lib/queries/admin-extended'
-import { getSemesterOptions } from '@/lib/queries/diknas'
+import { getSemesterOptions, getActiveSemesterDiknas } from '@/lib/queries/diknas'
 import {
   getKelasReportSummary,
   getSiswaReport,
@@ -88,9 +88,9 @@ function FilterPanel({
   onUnitChange,
   periodMode,
   onPeriodModeChange,
-  selectedMonth,
+  selectedMonthKey,
+  monthOptions,
   onMonthChange,
-  selectedYear,
   onYearChange,
   selectedSemesterId,
   onSemesterIdChange,
@@ -105,9 +105,9 @@ function FilterPanel({
   onUnitChange: (v: Unit) => void
   periodMode: PeriodMode
   onPeriodModeChange: (v: PeriodMode) => void
-  selectedMonth: number
+  selectedMonthKey: string
+  monthOptions: Array<{ value: string; label: string; year: number; month: number }>
   onMonthChange: (v: number) => void
-  selectedYear: number
   onYearChange: (v: number) => void
   selectedSemesterId: string
   onSemesterIdChange: (v: string) => void
@@ -166,43 +166,30 @@ function FilterPanel({
 
         {/* Period Selector */}
         {periodMode === 'month' ? (
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label className="mb-1 block text-xs text-[var(--text-secondary)]">Bulan</Label>
-              <Select
-                value={String(selectedMonth)}
-                onValueChange={(v) => onMonthChange(Number(v))}
-              >
-                <SelectTrigger id="select-month" className="h-9 text-xs">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {MONTHS.map((m) => (
-                    <SelectItem key={m.value} value={String(m.value)} className="text-xs">
-                      {m.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label className="mb-1 block text-xs text-[var(--text-secondary)]">Tahun</Label>
-              <Select
-                value={String(selectedYear)}
-                onValueChange={(v) => onYearChange(Number(v))}
-              >
-                <SelectTrigger id="select-year" className="h-9 text-xs">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {YEARS.map((y) => (
-                    <SelectItem key={y} value={String(y)} className="text-xs">
-                      {y}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+          <div>
+            <Label className="mb-1 block text-xs text-[var(--text-secondary)]">Bulan</Label>
+            <Select
+              value={selectedMonthKey}
+              onValueChange={(v) => {
+                const opt = monthOptions.find((m) => m.value === v)
+                if (opt) {
+                  onMonthChange(opt.month)
+                  onYearChange(opt.year)
+                }
+              }}
+              disabled={monthOptions.length === 0}
+            >
+              <SelectTrigger id="select-month" className="h-9 text-xs">
+                <SelectValue placeholder="Pilih bulan..." />
+              </SelectTrigger>
+              <SelectContent>
+                {monthOptions.map((m) => (
+                  <SelectItem key={m.value} value={m.value} className="text-xs">
+                    {m.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
         ) : (
           <div>
@@ -286,22 +273,85 @@ export default function LaporanBulananPage() {
   const [printReport, setPrintReport] = useState<SiswaReport | null>(null)
   const [printLoading, setPrintLoading] = useState(false)
 
-  // ── Derived Period ────────────────────────────────────────────────────────────
-  const period = useMemo<ReportPeriod | null>(() => {
-    if (periodMode === 'month') {
-      return { type: 'month', year: selectedYear, month: selectedMonth }
-    }
-    if (selectedSemesterId) {
-      return { type: 'semester', semesterId: selectedSemesterId }
-    }
-    return null
-  }, [periodMode, selectedYear, selectedMonth, selectedSemesterId])
-
   // ── Semester Options ──────────────────────────────────────────────────────────
   const { data: rawSemesters = [] } = useQuery({
     queryKey: ['semester-options'],
     queryFn: getSemesterOptions,
   })
+
+  const { data: activeSemester } = useQuery({
+    queryKey: ['active-semester-diknas'],
+    queryFn: getActiveSemesterDiknas,
+  })
+
+  // Sync selectedSemesterId ke activeSemester ketika activeSemester diload
+  useEffect(() => {
+    if (activeSemester?.id && !selectedSemesterId) {
+      setSelectedSemesterId(activeSemester.id)
+    }
+  }, [activeSemester, selectedSemesterId])
+
+  // ── Derived Period ────────────────────────────────────────────────────────────
+  const period = useMemo<ReportPeriod | null>(() => {
+    if (periodMode === 'month') {
+      return { type: 'month', year: selectedYear, month: selectedMonth }
+    }
+    const semId = selectedSemesterId || activeSemester?.id
+    if (semId) {
+      return { type: 'semester', semesterId: semId }
+    }
+    return null
+  }, [periodMode, selectedYear, selectedMonth, selectedSemesterId, activeSemester])
+
+  const monthOptions = useMemo(() => {
+    if (!activeSemester?.tanggal_mulai || !activeSemester?.tanggal_selesai) return []
+    const start = new Date(activeSemester.tanggal_mulai)
+    const end = new Date(activeSemester.tanggal_selesai)
+    const months: { value: string; label: string; year: number; month: number }[] = []
+    
+    const monthNamesIndo = [
+      'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+      'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
+    ]
+
+    let current = new Date(start.getFullYear(), start.getMonth(), 1)
+    const last = new Date(end.getFullYear(), end.getMonth(), 1)
+
+    while (current <= last) {
+      const m = current.getMonth()
+      const y = current.getFullYear()
+      
+      months.push({
+        value: `${y}-${String(m + 1).padStart(2, '0')}`,
+        label: `${monthNamesIndo[m]} - ${y}`,
+        year: y,
+        month: m + 1,
+      })
+      current.setMonth(current.getMonth() + 1)
+    }
+    return months
+  }, [activeSemester])
+
+  const selectedMonthKey = useMemo(() => {
+    return `${selectedYear}-${String(selectedMonth).padStart(2, '0')}`
+  }, [selectedYear, selectedMonth])
+
+  useEffect(() => {
+    if (monthOptions.length > 0) {
+      const exists = monthOptions.some((m) => m.value === selectedMonthKey)
+      if (!exists) {
+        const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+        const currentOpt = monthOptions.find((m) => m.value === currentMonthKey)
+        if (currentOpt) {
+          setSelectedMonth(currentOpt.month)
+          setSelectedYear(currentOpt.year)
+        } else {
+          setSelectedMonth(monthOptions[0].month)
+          setSelectedYear(monthOptions[0].year)
+        }
+      }
+    }
+  }, [monthOptions, selectedMonthKey])
 
   const semesterOptions = useMemo(
     () =>
@@ -320,6 +370,13 @@ export default function LaporanBulananPage() {
       }),
     [rawSemesters]
   )
+
+  const currentSemester = useMemo(() => {
+    if (periodMode === 'semester') {
+      return rawSemesters.find((s) => s.id === selectedSemesterId) ?? null
+    }
+    return rawSemesters.find((s) => s.is_aktif) ?? null
+  }, [selectedSemesterId, periodMode, rawSemesters])
 
   const tahunAjaran = useMemo(() => {
     if (periodMode === 'semester') {
@@ -431,9 +488,9 @@ export default function LaporanBulananPage() {
             onUnitChange={handleUnitChange}
             periodMode={periodMode}
             onPeriodModeChange={setPeriodMode}
-            selectedMonth={selectedMonth}
+            selectedMonthKey={selectedMonthKey}
+            monthOptions={monthOptions}
             onMonthChange={setSelectedMonth}
-            selectedYear={selectedYear}
             onYearChange={setSelectedYear}
             selectedSemesterId={selectedSemesterId}
             onSemesterIdChange={setSelectedSemesterId}
@@ -606,6 +663,7 @@ export default function LaporanBulananPage() {
         isLoading={printLoading}
         period={period ?? { type: 'month', year: now.getFullYear(), month: now.getMonth() + 1 }}
         tahunAjaran={tahunAjaran || undefined}
+        semester={currentSemester}
       />
     </div>
   )
