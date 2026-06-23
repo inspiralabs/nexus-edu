@@ -566,3 +566,296 @@ export async function getSiswaReport(
     prestasi,
   }
 }
+
+/**
+ * Generate laporan lengkap untuk 1 siswa tanpa parameter kelasId (diperoleh otomatis dari data siswa).
+ * Digunakan khusus untuk role Orang Tua.
+ */
+export async function getLaporanAnak(
+  siswaId: string,
+  period: ReportPeriod
+): Promise<SiswaReport> {
+  const supabase = createClient()
+
+  const isValidUuid = (val: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val)
+
+  if (!siswaId || siswaId === 'all' || !isValidUuid(siswaId)) {
+    throw new Error('Siswa ID tidak valid')
+  }
+
+  // 1. Data siswa dasar
+  const { data: siswa, error: siswaError } = await supabase
+    .from('students')
+    .select('id, nama, nomor_induk, kamar, unit, kelas_id, kelas(nama_kelas)')
+    .eq('id', siswaId)
+    .single()
+
+  if (siswaError || !siswa) throw new Error(siswaError?.message ?? 'Siswa tidak ditemukan')
+
+  const kelasId = siswa.kelas_id
+  if (!kelasId || !isValidUuid(kelasId)) {
+    throw new Error('Siswa belum memiliki kelas')
+  }
+
+  const kelasRaw = siswa.kelas
+  const kelasNama = Array.isArray(kelasRaw)
+    ? (kelasRaw[0] as { nama_kelas: string } | undefined)?.nama_kelas ?? '-'
+    : (kelasRaw as { nama_kelas: string } | null)?.nama_kelas ?? '-'
+
+  // 2. Mapel terikat pada kelas
+  const { data: mapelList, error: mapelError } = await supabase
+    .from('mata_pelajaran')
+    .select('id, nama_mapel')
+    .contains('kelas_ids', [kelasId])
+    .order('nama_mapel', { ascending: true })
+
+  if (mapelError) throw new Error(mapelError.message)
+  const mapelItems = mapelList ?? []
+
+  // Ambil semesterId
+  let semesterId = ''
+  if (period.type === 'semester') {
+    semesterId = period.semesterId
+  } else {
+    const { data: activeSem } = await supabase
+      .from('semester')
+      .select('id')
+      .eq('is_aktif', true)
+      .single()
+    semesterId = activeSem?.id ?? ''
+  }
+
+  if (!semesterId || semesterId === 'all' || !isValidUuid(semesterId)) {
+    throw new Error('Semester ID tidak valid')
+  }
+
+  // Ambil date range dari semester untuk limitasi data non-semester seperti kedisiplinan dan prestasi
+  let semStart: Date | null = null
+  let semEnd: Date | null = null
+  const { data: semData } = await supabase
+    .from('semester')
+    .select('tanggal_mulai, tanggal_selesai')
+    .eq('id', semesterId)
+    .single()
+
+  if (semData?.tanggal_mulai && semData?.tanggal_selesai) {
+    semStart = new Date(semData.tanggal_mulai)
+    semStart.setHours(0, 0, 0, 0)
+    semEnd = new Date(semData.tanggal_selesai)
+    semEnd.setHours(23, 59, 59, 999)
+  }
+
+  // 3. Nilai harian (Formatif + Sumatif)
+  const { data: nilaiHarianData, error: nhError } = await supabase
+    .from('nilai_harian')
+    .select('mata_pelajaran_id, tipe_nilai, nilai_final, tanggal, bank_soal_id, bank_soal(tujuan_pembelajaran, created_at), tipe_nilai_rel:tipe_nilai(jenis_nilai)')
+    .eq('siswa_id', siswaId)
+    .in('mata_pelajaran_id', mapelItems.map((m: { id: string }) => m.id))
+    .eq('semester_id', semesterId)
+
+  if (nhError) throw new Error(nhError.message)
+
+  // 4. Nilai UAS
+  const { data: nilaiUASData, error: nuError } = await supabase
+    .from('nilai_uas')
+    .select('mata_pelajaran_id, nilai_final, bank_soal_id, bank_soal(tujuan_pembelajaran, created_at), created_at')
+    .eq('siswa_id', siswaId)
+    .in('mata_pelajaran_id', mapelItems.map((m: { id: string }) => m.id))
+    .eq('semester_id', semesterId)
+
+  if (nuError) throw new Error(nuError.message)
+
+  // 5. Presensi
+  const { data: presensiData } = await supabase
+    .from('presensi')
+    .select('status, tanggal')
+    .eq('siswa_id', siswaId)
+    .eq('semester_id', semesterId)
+
+  // 6. Kedisiplinan
+  const { data: kedisiplinanData } = await supabase
+    .from('kedisiplinan')
+    .select('tanggal, status, kategori_disiplin(nama_kategori), pasal(nama_pasal, poin)')
+    .eq('siswa_id', siswaId)
+    .eq('status', 'Sudah Diproses')
+
+  // 7. Prestasi
+  const { data: prestasiData } = await supabase
+    .from('prestasi')
+    .select('waktu, event(nama_event), juara(nama_juara), tingkat_kejuaraan')
+    .eq('siswa_id', siswaId)
+    .eq('tipe', 'siswa')
+
+  // Logika post-processing filter rentang tanggal di level JS
+  let startDate: Date | null = null
+  let endDate: Date | null = null
+  if (period.type === 'month') {
+    startDate = new Date(period.year, period.month - 1, 1, 0, 0, 0)
+    endDate = new Date(period.year, period.month, 0, 23, 59, 59, 999)
+  }
+
+  // Filter nilai harian
+  const harianValid = (nilaiHarianData ?? []).filter((n: any) => {
+    if (period.type === 'month' && startDate && endDate) {
+      const d = new Date(n.tanggal)
+      return d >= startDate && d <= endDate
+    }
+    return true
+  })
+
+  // Filter presensi
+  const presensiValid = (presensiData ?? []).filter((p: any) => {
+    if (period.type === 'month' && startDate && endDate) {
+      const d = new Date(p.tanggal)
+      return d >= startDate && d <= endDate
+    }
+    return true
+  })
+
+  // Filter kedisiplinan
+  const kedisiplinanValid = (kedisiplinanData ?? []).filter((k: any) => {
+    if (period.type === 'month' && startDate && endDate) {
+      const d = new Date(k.tanggal)
+      return d >= startDate && d <= endDate
+    }
+    if (semStart && semEnd) {
+      const d = new Date(k.tanggal)
+      return d >= semStart && d <= semEnd
+    }
+    return true
+  })
+
+  // Filter prestasi
+  const prestasiValid = (prestasiData ?? []).filter((p: any) => {
+    if (period.type === 'month' && startDate && endDate) {
+      if (!p.waktu) return false
+      const d = new Date(p.waktu)
+      return d >= startDate && d <= endDate
+    }
+    if (semStart && semEnd) {
+      if (!p.waktu) return false
+      const d = new Date(p.waktu)
+      return d >= semStart && d <= semEnd
+    }
+    return true
+  })
+
+  // 8. Hitung nilai per mapel
+  const nilaiPerMapel: MapelNilai[] = mapelItems.map((mapel: { id: string; nama_mapel: string }) => {
+    const harianMapel = harianValid.filter(
+      (n: any) => n.mata_pelajaran_id === mapel.id
+    )
+    const formatifValues = harianMapel
+      .filter((n: any) => {
+        const tipe = n.tipe_nilai_rel ? (n.tipe_nilai_rel.jenis_nilai === 'Harian' ? 'Formatif' : 'Sumatif') : n.tipe_nilai
+        return tipe === 'Formatif'
+      })
+      .map((n: any) => n.nilai_final as number | null)
+    const sumatifValues = harianMapel
+      .filter((n: any) => {
+        const tipe = n.tipe_nilai_rel ? (n.tipe_nilai_rel.jenis_nilai === 'Harian' ? 'Formatif' : 'Sumatif') : n.tipe_nilai
+        return tipe === 'Sumatif'
+      })
+      .map((n: any) => n.nilai_final as number | null)
+
+    const avgFormatif = avg(formatifValues)
+    const avgSumatif = avg(sumatifValues)
+
+    // UAS - ambil entry terakhir per mapel (Hanya di mode semester)
+    const uasEntry = period.type === 'semester'
+      ? (nilaiUASData ?? []).find((u: any) => u.mata_pelajaran_id === mapel.id)
+      : null
+    const nilaiUAS = uasEntry ? (uasEntry.nilai_final as number | null) : null
+
+    const nilaiAkhir = calcNilaiAkhir(avgFormatif, avgSumatif, nilaiUAS)
+
+    // Tujuan Pembelajaran — gabungkan dari bank_soal yang terkait
+    const tpSet = new Set<string>()
+    for (const n of harianMapel) {
+      const bs = n.bank_soal
+      const bsItem = Array.isArray(bs) ? bs[0] : bs
+      if (bsItem?.tujuan_pembelajaran) tpSet.add(bsItem.tujuan_pembelajaran.trim())
+    }
+    if (uasEntry?.bank_soal) {
+      const bs = uasEntry.bank_soal
+      const bsItem = Array.isArray(bs) ? bs[0] : bs
+      if (bsItem?.tujuan_pembelajaran) tpSet.add(bsItem.tujuan_pembelajaran.trim())
+    }
+
+    return {
+      mapelId: mapel.id,
+      namaMapel: mapel.nama_mapel,
+      avgFormatif,
+      avgSumatif,
+      nilaiUAS,
+      nilaiAkhir,
+      tujuanPembelajaran: Array.from(tpSet).join('; ') || '-',
+    }
+  })
+
+  // 9. Rekap Absensi
+  const absensi: AbsensiRekap = { sakit: 0, izin: 0, alpha: 0, hadir: 0, total: 0 }
+  for (const p of presensiValid) {
+    absensi.total++
+    if (p.status === 'Sakit') absensi.sakit++
+    else if (p.status === 'Izin') absensi.izin++
+    else if (p.status === 'Alpha') absensi.alpha++
+    else absensi.hadir++
+  }
+
+  // 10. Kedisiplinan
+  const kedisiplinan: KedisiplinanItem[] = kedisiplinanValid.map((k: any) => {
+    const kat = Array.isArray(k.kategori_disiplin) ? k.kategori_disiplin[0] : k.kategori_disiplin
+    const pasal = Array.isArray(k.pasal) ? k.pasal[0] : k.pasal
+    return {
+      tanggal: k.tanggal,
+      kategori: kat?.nama_kategori ?? '-',
+      pasal: pasal?.nama_pasal ?? '-',
+      poin: pasal?.poin ?? 0,
+      status: k.status,
+    }
+  })
+
+  // 11. Prestasi
+  const prestasi: PrestasiItem[] = prestasiValid.map((p: any) => {
+    const ev = Array.isArray(p.event) ? p.event[0] : p.event
+    const jr = Array.isArray(p.juara) ? p.juara[0] : p.juara
+    return {
+      waktu: p.waktu,
+      namaEvent: ev?.nama_event ?? '-',
+      juara: jr?.nama_juara ?? '-',
+      tingkat: p.tingkat_kejuaraan ?? '-',
+    }
+  })
+
+  // 12. Status kelengkapan
+  const coveredMapelIds = new Set([
+    ...harianValid.map((n: any) => n.mata_pelajaran_id),
+    ...(period.type === 'semester' ? (nilaiUASData ?? []).map((u: any) => u.mata_pelajaran_id) : []),
+  ])
+
+  let completenessStatus: 'Lengkap' | 'Belum Lengkap' | 'Kosong' = 'Kosong'
+  if (mapelItems.length === 0) {
+    completenessStatus = 'Kosong'
+  } else if (coveredMapelIds.size === 0) {
+    completenessStatus = 'Kosong'
+  } else if (mapelItems.every((m: { id: string }) => coveredMapelIds.has(m.id))) {
+    completenessStatus = 'Lengkap'
+  } else {
+    completenessStatus = 'Belum Lengkap'
+  }
+
+  return {
+    siswaId,
+    nama: siswa.nama,
+    nomorInduk: siswa.nomor_induk,
+    kamar: siswa.kamar,
+    kelasNama,
+    unit: siswa.unit as Unit,
+    completenessStatus,
+    nilaiPerMapel,
+    absensi,
+    kedisiplinan,
+    prestasi,
+  }
+}

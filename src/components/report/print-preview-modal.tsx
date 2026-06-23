@@ -37,7 +37,7 @@ function formatTanggal(value: string | null): string {
   }
 }
 
-function PrintContent({
+export function PrintContent({
   report,
   period,
   tahunAjaran,

@@ -506,6 +506,14 @@ const menuItemsOrangtua: MenuItemConfig[] = [
         minRole: 'orangtua',
         allowedRoles: ['orangtua'],
       },
+      {
+        id: 'orangtua-laporan-bulanan',
+        label: 'Laporan Hasil Belajar',
+        href: '/orangtua/laporan-bulanan',
+        icon: Printer,
+        minRole: 'orangtua',
+        allowedRoles: ['orangtua'],
+      },
     ],
   },
 ]
