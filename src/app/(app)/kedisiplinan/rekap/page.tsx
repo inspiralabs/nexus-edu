@@ -165,16 +165,19 @@ export default function RekapPoinPage() {
   const { data: kelasOptions = [] } = useQuery({
     queryKey: ['rekap-kelas-options', activeUnit],
     queryFn: () => getKelasOptions(activeUnit),
+    retry: false,
   })
 
   const { data: tahunOptions = [] } = useQuery({
     queryKey: ['rekap-tahun-options'],
     queryFn: getTahunOptions,
+    retry: false,
   })
 
   const { data: leaderboard, isLoading: leaderboardLoading } = useQuery({
     queryKey: ['rekap-leaderboard', filterOptions],
     queryFn: () => getTop10Leaderboard(filterOptions),
+    retry: false,
   })
 
   const { data: rekapResult, isLoading: rekapLoading } = useQuery({
@@ -185,12 +188,14 @@ export default function RekapPoinPage() {
         page,
         pageSize,
       }),
+    retry: false,
   })
 
   const { data: detailData, isLoading: detailLoading } = useQuery({
     queryKey: ['rekap-detail', selectedSiswaId, tahunFilter],
     queryFn: () => getDetailSiswa(selectedSiswaId!, tahunFilter),
     enabled: selectedSiswaId !== null,
+    retry: false,
   })
 
   const filteredDetailData = useMemo(() => {

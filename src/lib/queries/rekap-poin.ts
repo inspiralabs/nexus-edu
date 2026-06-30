@@ -53,7 +53,10 @@ export interface KelasOption {
 interface StudentRow {
   id: string
   nama: string
-  kelas: string
+  kelas:
+    | { nama_kelas: string }
+    | { nama_kelas: string }[]
+    | null
   unit: string | null
   jenis_kelamin: string | null
 }
@@ -95,16 +98,21 @@ export async function getRekapPoin(
 ): Promise<{ data: RekapPoinSiswa[]; total: number }> {
   const supabase = createClient()
 
+  let selectStr = 'id, nama, kelas(nama_kelas), unit, jenis_kelamin'
+  if (options?.kelas && options.kelas.length > 0) {
+    selectStr = 'id, nama, kelas!inner(nama_kelas), unit, jenis_kelamin'
+  }
+
   let studentsQuery = supabase
     .from('students')
-    .select('id, nama, kelas, unit, jenis_kelamin')
+    .select(selectStr)
 
   if (options?.unit) {
     studentsQuery = studentsQuery.eq('unit', options.unit)
   }
 
   if (options?.kelas && options.kelas.length > 0) {
-    studentsQuery = studentsQuery.in('kelas', options.kelas)
+    studentsQuery = studentsQuery.in('kelas.nama_kelas', options.kelas)
   }
 
   if (options?.search && options.search.trim() !== '') {
@@ -118,7 +126,7 @@ export async function getRekapPoin(
   if (studentsError) throw new Error(studentsError.message)
   if (!students || students.length === 0) return { data: [], total: 0 }
 
-  const studentRows = students as StudentRow[]
+  const studentRows = students as unknown as StudentRow[]
   const studentIds = studentRows.map((s) => s.id)
 
   let kedisiplinanQuery = supabase
@@ -179,17 +187,21 @@ export async function getRekapPoin(
     }
   }
 
-  const rekapData: RekapPoinSiswa[] = studentRows.map((s) => ({
-    siswa_id: s.id,
-    nama: s.nama,
-    kelas: s.kelas,
-    unit: s.unit ?? '',
-    jenis_kelamin: s.jenis_kelamin,
-    total_poin_pelanggaran: pelanggaranMap.get(s.id)?.totalPoin ?? 0,
-    total_poin_prestasi: prestasiMap.get(s.id)?.totalPoin ?? 0,
-    jumlah_kasus_pelanggaran: pelanggaranMap.get(s.id)?.jumlahKasus ?? 0,
-    jumlah_kasus_prestasi: prestasiMap.get(s.id)?.jumlahKasus ?? 0,
-  }))
+  const rekapData: RekapPoinSiswa[] = studentRows.map((s) => {
+    const kelasObj = resolveRelation(s.kelas)
+    const kelasNama = kelasObj?.nama_kelas ?? '-'
+    return {
+      siswa_id: s.id,
+      nama: s.nama,
+      kelas: kelasNama,
+      unit: s.unit ?? '',
+      jenis_kelamin: s.jenis_kelamin,
+      total_poin_pelanggaran: pelanggaranMap.get(s.id)?.totalPoin ?? 0,
+      total_poin_prestasi: prestasiMap.get(s.id)?.totalPoin ?? 0,
+      jumlah_kasus_pelanggaran: pelanggaranMap.get(s.id)?.jumlahKasus ?? 0,
+      jumlah_kasus_prestasi: prestasiMap.get(s.id)?.jumlahKasus ?? 0,
+    }
+  })
 
   const total = rekapData.length
   const page = options?.page ?? 1
@@ -234,13 +246,15 @@ export async function getDetailSiswa(
 
   const { data: siswa, error: siswaError } = await supabase
     .from('students')
-    .select('id, nama, kelas, unit, jenis_kelamin')
+    .select('id, nama, kelas(nama_kelas), unit, jenis_kelamin')
     .eq('id', siswaId)
     .single()
 
   if (siswaError || !siswa) throw new Error('Siswa tidak ditemukan')
 
-  const student = siswa as StudentRow
+  const student = siswa as unknown as StudentRow
+  const kelasObj = resolveRelation(student.kelas)
+  const kelasNama = kelasObj?.nama_kelas ?? '-'
 
   let kedQuery = supabase
     .from('kedisiplinan')
@@ -300,7 +314,7 @@ export async function getDetailSiswa(
     siswa: {
       id: student.id,
       nama: student.nama,
-      kelas: student.kelas,
+      kelas: kelasNama,
       unit: student.unit ?? '',
       jenis_kelamin: student.jenis_kelamin,
     },
@@ -314,7 +328,7 @@ export async function getDetailSiswa(
 export async function getKelasOptions(unit?: string): Promise<KelasOption[]> {
   const supabase = createClient()
 
-  let query = supabase.from('students').select('kelas')
+  let query = supabase.from('kelas').select('nama_kelas')
 
   if (unit) {
     query = query.eq('unit', unit)
@@ -327,7 +341,7 @@ export async function getKelasOptions(unit?: string): Promise<KelasOption[]> {
   const uniqueKelas = [
     ...new Set(
       (data ?? [])
-        .map((row) => row.kelas)
+        .map((row) => row.nama_kelas)
         .filter(
           (kelas): kelas is string =>
             typeof kelas === 'string' && kelas.length > 0
