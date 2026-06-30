@@ -222,11 +222,13 @@ export default function KedisiplinanDashboardPage() {
   const { data: kategoriList } = useQuery({
     queryKey: ['kategori-disiplin'],
     queryFn: getKategoriDisiplin,
+    retry: false,
   })
 
   const { data: divisiList } = useQuery({
     queryKey: ['divisi'],
     queryFn: () => getDivisi(),
+    retry: false,
   })
 
   const { data: kelasOptions = [] } = useQuery({
@@ -235,6 +237,7 @@ export default function KedisiplinanDashboardPage() {
       getKelasOptionsByUnits(
         selectedUnits.length > 0 ? selectedUnits : undefined
       ),
+    retry: false,
   })
 
   const dashboardFilters = useMemo<KedisiplinanDashboardFilters>(
@@ -258,6 +261,7 @@ export default function KedisiplinanDashboardPage() {
   const { data, isLoading } = useQuery({
     queryKey: ['kedisiplinan-dashboard', dashboardFilters],
     queryFn: () => getKedisiplinanDashboard(dashboardFilters),
+    retry: false,
   })
 
   const trenData = useMemo(

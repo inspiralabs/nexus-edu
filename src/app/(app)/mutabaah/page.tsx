@@ -115,6 +115,7 @@ function RankingDetailDialog({
     queryFn: () =>
       siswa ? getMutabaahProgressWithNames(siswa.siswa_id, semesterId) : Promise.resolve([]),
     enabled: !!siswa && !!semesterId,
+    retry: false,
   })
 
   const [expandedKegiatan, setExpandedKegiatan] = useState<Record<string, boolean>>({})
@@ -341,6 +342,7 @@ export default function DashboardMutabaahPage() {
   const { data: activeSemester } = useQuery({
     queryKey: ['active-semester-mutabaah'],
     queryFn: getActiveSemester,
+    retry: false,
   })
 
   const { data: rankingsData, isLoading: loadingRankings } = useQuery({
@@ -348,12 +350,14 @@ export default function DashboardMutabaahPage() {
     queryFn: () =>
       activeSemester ? getMutabaahRankings(activeSemester.id, rankingUnit) : Promise.resolve({ topRajin: [], topPerluMotivasi: [] }),
     enabled: !!activeSemester,
+    retry: false,
   })
 
   const { data: kegiatanList = [] } = useQuery({
     queryKey: ['kegiatan-list-with-sub', activeSemester?.id],
     queryFn: () => getKegiatanWithSub(),
     enabled: !!activeSemester,
+    retry: false,
   })
 
   const now = new Date()
@@ -385,6 +389,7 @@ export default function DashboardMutabaahPage() {
       return getKamar()
     },
     enabled: !!profile,
+    retry: false,
   })
 
   const filteredKamarList = useMemo(() => {
@@ -411,18 +416,21 @@ export default function DashboardMutabaahPage() {
   const { data: stats, isLoading: loadingStats } = useQuery({
     queryKey: ['mutabaah-dashboard-stats', kamarFilter, selectedBulan, selectedUnit, filterKategori],
     queryFn: () => getMutabaahDashboardStats(kamarFilter, selectedBulan, selectedUnit, filterKategori),
+    retry: false,
   })
 
   // ── Query Kehadiran Per Kegiatan ──
   const { data: kehadiranPerKegiatan = [], isLoading: loadingBar } = useQuery({
     queryKey: ['mutabaah-kehadiran-per-kegiatan', kamarFilter, selectedBulan, selectedUnit, filterKategori],
     queryFn: () => getKehadiranPerKegiatan(kamarFilter, selectedBulan, 5, selectedUnit, filterKategori),
+    retry: false,
   })
 
   // ── Query Tren Harian ──
   const { data: trendHarian = [], isLoading: loadingLine } = useQuery({
     queryKey: ['mutabaah-trend-harian', kamarFilter, selectedBulan, selectedUnit, filterKategori],
     queryFn: () => getTrendKehadiranHarian(kamarFilter, selectedBulan, selectedUnit, filterKategori),
+    retry: false,
   })
 
   // Format data untuk chart

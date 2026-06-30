@@ -1638,12 +1638,20 @@ export async function getMutabaahRankings(
   // 3. Ambil siswa aktif di unit terpilih
   const { data: siswaData, error: siswaError } = await supabase
     .from('students')
-    .select('id, nama, kelas, kamar')
+    .select('id, nama, kelas(nama_kelas), kamar')
     .eq('unit', unit)
     .eq('is_alumni', false)
 
   if (siswaError) throw new Error(siswaError.message)
-  const students = (siswaData ?? []) as { id: string; nama: string; kelas: string; kamar: string | null }[]
+  const students = (siswaData ?? []).map((s: any) => {
+    const kelasObj = unwrapRelation(s.kelas)
+    return {
+      id: s.id,
+      nama: s.nama,
+      kelas: kelasObj?.nama_kelas ?? '-',
+      kamar: s.kamar,
+    }
+  })
 
   if (students.length === 0) {
     return { topRajin: [], topPerluMotivasi: [] }

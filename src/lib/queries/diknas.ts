@@ -1920,12 +1920,16 @@ export async function getDiknasDashboardStats(semesterId?: string): Promise<Dikn
   const now = new Date()
   const bulanIni = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
 
+  const [yr, mo] = bulanIni.split('-').map(Number)
+  const lastDay = new Date(yr, mo, 0).getDate()
+  const tglSelesai = `${bulanIni}-${String(lastDay).padStart(2, '0')}`
+
   // Total presensi bulan ini
   let presensiQ = supabase
     .from('presensi')
     .select('*', { count: 'exact', head: true })
     .gte('tanggal', `${bulanIni}-01`)
-    .lte('tanggal', `${bulanIni}-31`)
+    .lte('tanggal', tglSelesai)
 
   const { count: totalPresensi } = await presensiQ
 
@@ -1935,7 +1939,7 @@ export async function getDiknasDashboardStats(semesterId?: string): Promise<Dikn
     .select('*', { count: 'exact', head: true })
     .eq('status', 'Hadir')
     .gte('tanggal', `${bulanIni}-01`)
-    .lte('tanggal', `${bulanIni}-31`)
+    .lte('tanggal', tglSelesai)
 
   const { count: hadirCount } = await hadirQ
 
@@ -1966,11 +1970,15 @@ export async function getKehadiranPerKelas(
 ): Promise<{ kelas: string; hadir: number; total: number }[]> {
   const supabase = createClient()
 
+  const [yr, mo] = bulan.split('-').map(Number)
+  const lastDay = new Date(yr, mo, 0).getDate()
+  const tglSelesai = `${bulan}-${String(lastDay).padStart(2, '0')}`
+
   const { data, error } = await supabase
     .from('presensi')
     .select('status, students!left(kelas_id, kelas(nama_kelas))')
     .gte('tanggal', `${bulan}-01`)
-    .lte('tanggal', `${bulan}-31`)
+    .lte('tanggal', tglSelesai)
 
   if (error) throw new Error(error.message)
 

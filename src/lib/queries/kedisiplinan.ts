@@ -118,16 +118,20 @@ async function getFilteredStudentIds(
   }
 
   const supabase = createClient()
-  let query = supabase.from('students').select('id')
+  
+  let selectStr = 'id'
+  if (hasKelasFilter && filters?.kelas) {
+    selectStr = 'id, kelas!inner(nama_kelas)'
+  }
+
+  let query = supabase.from('students').select(selectStr)
 
   if (hasUnitFilter && filters?.unit) {
     query = query.in('unit', filters.unit)
   }
 
   if (hasKelasFilter && filters?.kelas) {
-    // kelas_ids is array of kelas UUIDs — resolve nama_kelas to IDs if needed
-    const kelasIds = filters.kelas
-    query = query.in('kelas_id', kelasIds)
+    query = query.in('kelas.nama_kelas', filters.kelas)
   }
 
   if (hasSearchFilter && filters?.search) {
@@ -138,7 +142,7 @@ async function getFilteredStudentIds(
 
   if (error) throw new Error(error.message)
 
-  return (data ?? []).map((row) => (row as StudentIdRow).id)
+  return (data ?? []).map((row) => (row as any).id)
 }
 
 type KedisiplinanTableFilterInput = Pick<
@@ -453,7 +457,22 @@ export async function getKategoriDisiplin(): Promise<KategoriDisiplin[]> {
 
   if (error) throw new Error(error.message)
 
-  return (data ?? []) as KategoriDisiplin[]
+  const rawData = (data ?? []) as KategoriDisiplin[]
+  const seen = new Set<string>()
+  const uniqueData: KategoriDisiplin[] = []
+
+  for (const item of rawData) {
+    const trimmedName = item.nama_kategori.trim().toLowerCase()
+    if (!seen.has(trimmedName)) {
+      seen.add(trimmedName)
+      uniqueData.push({
+        ...item,
+        nama_kategori: item.nama_kategori.trim(),
+      })
+    }
+  }
+
+  return uniqueData
 }
 
 export async function getDivisi(unit?: Unit): Promise<Divisi[]> {
@@ -515,7 +534,22 @@ export async function searchKategoriDisiplin(
 
   if (error) throw new Error(error.message)
 
-  return (data ?? []) as KategoriDisiplin[]
+  const rawData = (data ?? []) as KategoriDisiplin[]
+  const seen = new Set<string>()
+  const uniqueData: KategoriDisiplin[] = []
+
+  for (const item of rawData) {
+    const trimmedName = item.nama_kategori.trim().toLowerCase()
+    if (!seen.has(trimmedName)) {
+      seen.add(trimmedName)
+      uniqueData.push({
+        ...item,
+        nama_kategori: item.nama_kategori.trim(),
+      })
+    }
+  }
+
+  return uniqueData
 }
 
 export async function searchDivisi(query: string): Promise<Divisi[]> {
