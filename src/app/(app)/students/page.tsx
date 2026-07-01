@@ -1286,7 +1286,8 @@ export default function StudentsPage() {
             ? `Apakah Anda yakin ingin menandai "${alumniTargetStudent.nama}" sebagai alumni? Siswa tidak akan tampil di daftar aktif.`
             : 'Apakah Anda yakin ingin menandai siswa ini sebagai alumni?'
         }
-        variant="destructive"
+        variant="default"
+        confirmText="Tandai Alumni"
         isLoading={alumniMutation.isPending}
         onConfirm={() => {
           if (alumniTargetStudent) alumniMutation.mutate(alumniTargetStudent.id)

@@ -18,6 +18,7 @@ interface ConfirmDialogProps {
   onConfirm: () => void
   isLoading?: boolean
   variant?: 'destructive' | 'default'
+  confirmText?: string
 }
 
 function ConfirmDialog({
@@ -28,8 +29,9 @@ function ConfirmDialog({
   onConfirm,
   isLoading = false,
   variant = 'default',
+  confirmText,
 }: ConfirmDialogProps) {
-  const confirmLabel = variant === 'destructive' ? 'Hapus' : 'Konfirmasi'
+  const confirmLabel = confirmText || (variant === 'destructive' ? 'Hapus' : 'Konfirmasi')
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
