@@ -51,8 +51,8 @@ function Calendar({
     <DayPicker
       showOutsideDays={showOutsideDays}
       className={cn('p-3', className)}
-      startMonth={fromDate || props.startMonth}
-      endMonth={toDate || props.endMonth}
+      startMonth={props.startMonth}
+      endMonth={props.endMonth}
       disabled={disabledMatchers}
       month={resolvedMonth}
       classNames={{
@@ -92,7 +92,7 @@ function Calendar({
         ),
         week: cn('mt-2 flex w-full', defaultClassNames.week),
         day: cn(
-          'relative p-0 text-center text-sm focus-within:relative focus-within:z-20',
+          'relative p-0 text-center text-sm focus-within:relative focus-within:z-20 h-9 w-9',
           defaultClassNames.day
         ),
         day_button: cn(

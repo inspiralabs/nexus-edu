@@ -79,8 +79,6 @@ function DatePicker({
           }}
           month={month}
           onMonthChange={setMonth}
-          startMonth={minDate || fromDate}
-          endMonth={maxDate || toDate}
           fromDate={fromDate}
           toDate={toDate}
           defaultMonth={defaultMonth}
