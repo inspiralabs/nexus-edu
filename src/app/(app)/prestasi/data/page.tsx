@@ -217,7 +217,8 @@ type BulkPrestasiUpdateInput = Omit<
 >
 
 async function bulkCreatePrestasi(
-  data: CreatePrestasiInput[]
+  data: CreatePrestasiInput[],
+  diberikanOleh?: string
 ): Promise<Prestasi[]> {
   const supabase = createClient()
 
@@ -227,6 +228,82 @@ async function bulkCreatePrestasi(
     .select(PRESTASI_SELECT)
 
   if (error) throw new Error(error.message)
+
+  // ── Alur otomatis: lempar ke kedisiplinan untuk tipe siswa (Bulk) ──
+  const studentItems = (result ?? []).filter((r) => r.tipe === 'siswa' && r.siswa_id)
+  
+  if (studentItems.length > 0) {
+    try {
+      let pembuatPoin = diberikanOleh
+      if (!pembuatPoin) {
+        const { data: { user } } = await supabase.auth.getUser()
+        if (user) {
+          const { data: prof } = await supabase
+            .from('profiles')
+            .select('nama_lengkap')
+            .eq('id', user.id)
+            .single()
+          pembuatPoin = prof?.nama_lengkap ?? user.email ?? 'Sistem'
+        } else {
+          pembuatPoin = 'Sistem'
+        }
+      }
+
+      // 1. Cari kategori_disiplin dengan nama 'prestasi'
+      const { data: katData } = await supabase
+        .from('kategori_disiplin')
+        .select('id')
+        .ilike('nama_kategori', '%prestasi%')
+        .limit(1)
+        .maybeSingle()
+
+      if (katData) {
+        // 1.5 Cari tindakan dengan nama 'Poin Kebaikan'
+        const { data: tindakanData } = await supabase
+          .from('tindakan')
+          .select('id')
+          .ilike('nama_tindakan', '%Poin Kebaikan%')
+          .limit(1)
+          .maybeSingle()
+
+        // 3. Persiapkan payload insert massal ke kedisiplinan
+        const kedisiplinanPayloads = studentItems.map((item) => ({
+          tanggal: item.waktu ?? new Date().toISOString().split('T')[0],
+          diberikan_oleh: pembuatPoin,
+          siswa_id: item.siswa_id,
+          kategori_id: katData.id,
+          pasal_id: null,
+          divisi_id: null,
+          tindakan_id: tindakanData?.id ?? null,
+          sumber: 'prestasi',
+          prestasi_id: item.id,
+          status: 'Belum Diproses',
+        }))
+
+        // Insert massal ke kedisiplinan
+        const { error: insertError } = await supabase
+          .from('kedisiplinan')
+          .insert(kedisiplinanPayloads)
+
+        if (insertError) {
+          console.error('Error bulk inserting to kedisiplinan:', insertError.message)
+        } else {
+          // 4. Update flag prestasi massal
+          const idsToUpdate = studentItems.map((item) => item.id)
+          const { error: updateError } = await supabase
+            .from('prestasi')
+            .update({ sudah_dilempar_kedisiplinan: true })
+            .in('id', idsToUpdate)
+
+          if (updateError) {
+            console.error('Error updating bulk prestasi flag:', updateError.message)
+          }
+        }
+      }
+    } catch (e: any) {
+      console.error('Failed to sync bulk prestasi to kedisiplinan:', e.message)
+    }
+  }
 
   return (result ?? []) as Prestasi[]
 }
@@ -754,7 +831,8 @@ export default function PrestasiDataPage() {
   })
 
   const bulkCreateMutation = useMutation({
-    mutationFn: (items: CreatePrestasiInput[]) => bulkCreatePrestasi(items),
+    mutationFn: (items: CreatePrestasiInput[]) =>
+      bulkCreatePrestasi(items, profile?.nama_lengkap),
     onSuccess: async (results) => {
       const userId = getUserId()
       if (userId) {
@@ -869,18 +947,85 @@ export default function PrestasiDataPage() {
 
   const resetComboboxState = () => {
     setGuruSearch('')
-    setGuruOptions([])
     setStudentSearch('')
     setEventSearch('')
     setJuaraSearch('')
     setBidangSearch('')
     setKategoriSearch('')
-    setStudentOptions([])
-    setEventOptions([])
-    setJuaraOptions([])
-    setBidangOptions([])
-    setKategoriOptions([])
     setKelasDisplay('')
+
+    // Restore options synchronously from React Query cache for empty search terms
+    const cachedStudents = queryClient.getQueryData<any[]>(['students-search', '', activeUnit])
+    if (cachedStudents) {
+      setStudentOptions(
+        cachedStudents.map((s) => ({
+          value: s.id,
+          label: `${s.nama} - ${s.kelas?.nama_kelas || '-'}`,
+        }))
+      )
+    } else {
+      setStudentOptions([])
+    }
+
+    const cachedGuru = queryClient.getQueryData<any[]>(['guru-search', ''])
+    if (cachedGuru) {
+      setGuruOptions(
+        cachedGuru.map((g) => ({
+          value: g.id,
+          label: g.nama_lengkap,
+        }))
+      )
+    } else {
+      setGuruOptions([])
+    }
+
+    const cachedEvents = queryClient.getQueryData<any[]>(['event-search', ''])
+    if (cachedEvents) {
+      setEventOptions(
+        cachedEvents.map((e) => ({
+          value: e.id,
+          label: e.nama_event,
+        }))
+      )
+    } else {
+      setEventOptions([])
+    }
+
+    const cachedJuaras = queryClient.getQueryData<any[]>(['juara-search', ''])
+    if (cachedJuaras) {
+      setJuaraOptions(
+        cachedJuaras.map((j) => ({
+          value: j.id,
+          label: j.nama_juara,
+        }))
+      )
+    } else {
+      setJuaraOptions([])
+    }
+
+    const cachedBidangs = queryClient.getQueryData<any[]>(['bidang-search', ''])
+    if (cachedBidangs) {
+      setBidangOptions(
+        cachedBidangs.map((b) => ({
+          value: b.id,
+          label: b.nama_bidang,
+        }))
+      )
+    } else {
+      setBidangOptions([])
+    }
+
+    const cachedKategoris = queryClient.getQueryData<any[]>(['kategori-prestasi-search', ''])
+    if (cachedKategoris) {
+      setKategoriOptions(
+        cachedKategoris.map((k) => ({
+          value: k.id,
+          label: k.nama_kategori,
+        }))
+      )
+    } else {
+      setKategoriOptions([])
+    }
   }
 
   const resetBulkComboboxState = () => {
