@@ -60,8 +60,8 @@ function DatePicker({
           variant="outline"
           disabled={disabled}
           className={cn(
-            'w-full justify-start text-left font-normal',
-            !value && 'text-[var(--text-tertiary)]'
+            'w-full justify-start text-left font-normal bg-[var(--surface)] hover:bg-[var(--surface-2)]',
+            value ? 'text-[var(--text-primary)]' : 'text-[var(--text-tertiary)]'
           )}
         >
           <CalendarIcon className="mr-2 h-4 w-4" />
