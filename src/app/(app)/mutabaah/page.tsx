@@ -360,23 +360,60 @@ export default function DashboardMutabaahPage() {
     retry: false,
   })
 
-  const now = new Date()
-  const defaultBulan = format(now, 'yyyy-MM')
-
   const [selectedUnit, setSelectedUnit] = useState<string>('all')
   const [filterKategori, setFilterKategori] = useState<string>('all')
   const [selectedKamar, setSelectedKamar] = useState<string>('all')
-  const [selectedBulan, setSelectedBulan] = useState<string>(defaultBulan)
+  const [selectedBulan, setSelectedBulan] = useState<string>('')
 
-  // ── Generate pilihan bulan (12 bulan terakhir) ──
-  const bulanOptions = Array.from({ length: 12 }, (_, i) => {
-    const d = new Date()
-    d.setMonth(d.getMonth() - i)
-    return {
-      value: format(d, 'yyyy-MM'),
-      label: format(d, 'MMMM yyyy', { locale: idLocale }),
+  // ── Generate pilihan bulan berdasarkan Semester Aktif ──
+  const bulanOptions = useMemo(() => {
+    if (!activeSemester?.tanggal_mulai || !activeSemester?.tanggal_selesai) {
+      // Fallback ke 12 bulan terakhir jika semester aktif belum ter-load
+      return Array.from({ length: 12 }, (_, i) => {
+        const d = new Date()
+        d.setMonth(d.getMonth() - i)
+        return {
+          value: format(d, 'yyyy-MM'),
+          label: format(d, 'MMMM yyyy', { locale: idLocale }),
+        }
+      })
     }
-  })
+
+    const start = new Date(activeSemester.tanggal_mulai)
+    const end = new Date(activeSemester.tanggal_selesai)
+    const options = []
+    
+    let current = new Date(start.getFullYear(), start.getMonth(), 1)
+    const targetEnd = new Date(end.getFullYear(), end.getMonth(), 1)
+
+    while (current <= targetEnd) {
+      options.push({
+        value: format(current, 'yyyy-MM'),
+        label: format(current, 'MMMM yyyy', { locale: idLocale }),
+      })
+      current = new Date(current.getFullYear(), current.getMonth() + 1, 1)
+    }
+    
+    // Urutkan dari bulan terbaru ke terlama (descending)
+    return options.reverse()
+  }, [activeSemester])
+
+  // ── Default Value Dropdown Bulan berdasarkan Semester Aktif ──
+  useEffect(() => {
+    if (!activeSemester?.tanggal_mulai || !activeSemester?.tanggal_selesai) return
+
+    const now = new Date()
+    const nowStr = format(now, 'yyyy-MM')
+    
+    const startStr = activeSemester.tanggal_mulai.substring(0, 7) // 'yyyy-MM'
+    const endStr = activeSemester.tanggal_selesai.substring(0, 7) // 'yyyy-MM'
+
+    if (nowStr >= startStr && nowStr <= endStr) {
+      setSelectedBulan(nowStr)
+    } else {
+      setSelectedBulan(endStr)
+    }
+  }, [activeSemester])
 
   // ── Query Kamar ──
   const { data: kamarList = [], isLoading: loadingKamar } = useQuery({
@@ -416,6 +453,7 @@ export default function DashboardMutabaahPage() {
   const { data: stats, isLoading: loadingStats } = useQuery({
     queryKey: ['mutabaah-dashboard-stats', kamarFilter, selectedBulan, selectedUnit, filterKategori],
     queryFn: () => getMutabaahDashboardStats(kamarFilter, selectedBulan, selectedUnit, filterKategori),
+    enabled: !!selectedBulan && !!activeSemester,
     retry: false,
   })
 
@@ -423,6 +461,7 @@ export default function DashboardMutabaahPage() {
   const { data: kehadiranPerKegiatan = [], isLoading: loadingBar } = useQuery({
     queryKey: ['mutabaah-kehadiran-per-kegiatan', kamarFilter, selectedBulan, selectedUnit, filterKategori],
     queryFn: () => getKehadiranPerKegiatan(kamarFilter, selectedBulan, 5, selectedUnit, filterKategori),
+    enabled: !!selectedBulan && !!activeSemester,
     retry: false,
   })
 
@@ -430,6 +469,7 @@ export default function DashboardMutabaahPage() {
   const { data: trendHarian = [], isLoading: loadingLine } = useQuery({
     queryKey: ['mutabaah-trend-harian', kamarFilter, selectedBulan, selectedUnit, filterKategori],
     queryFn: () => getTrendKehadiranHarian(kamarFilter, selectedBulan, selectedUnit, filterKategori),
+    enabled: !!selectedBulan && !!activeSemester,
     retry: false,
   })
 

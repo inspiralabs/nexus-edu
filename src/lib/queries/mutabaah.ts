@@ -770,6 +770,12 @@ export interface MutabaahRekapItem {
   total_hari: number
 }
 
+function isSemua(val?: string): boolean {
+  if (!val) return true
+  const v = val.toLowerCase()
+  return v === 'all' || v.includes('semua')
+}
+
 /** Helper to resolve student IDs by Kamar name, Unit, and Category (Ikhwan/Akhwat) */
 async function resolveSiswaIds(
   kamarNama?: string,
@@ -782,16 +788,19 @@ async function resolveSiswaIds(
     .select('id')
     .eq('is_alumni', false)
 
-  if (kamarNama) {
+  if (kamarNama && !isSemua(kamarNama)) {
     q = q.eq('kamar', kamarNama)
-  } else if (unit && unit !== 'all') {
+  }
+  if (unit && !isSemua(unit)) {
     q = q.eq('unit', unit)
   }
 
-  if (kategori === 'Laki-laki') {
-    q = q.eq('jenis_kelamin', 'L')
-  } else if (kategori === 'Perempuan') {
-    q = q.eq('jenis_kelamin', 'P')
+  if (kategori && !isSemua(kategori)) {
+    if (kategori === 'Laki-laki') {
+      q = q.eq('jenis_kelamin', 'L')
+    } else if (kategori === 'Perempuan') {
+      q = q.eq('jenis_kelamin', 'P')
+    }
   }
 
   const { data, error } = await q
@@ -820,9 +829,15 @@ export async function getMutabaahRekap(
 
   if (siswaId) {
     siswaIds = [siswaId]
-  } else if (kamarNama || unit || kategori) {
-    siswaIds = await resolveSiswaIds(kamarNama, unit, kategori)
-    if (siswaIds.length === 0) return []
+  } else {
+    const hasKamar = kamarNama && !isSemua(kamarNama)
+    const hasUnit = unit && !isSemua(unit)
+    const hasKategori = kategori && !isSemua(kategori)
+
+    if (hasKamar || hasUnit || hasKategori) {
+      siswaIds = await resolveSiswaIds(kamarNama, unit, kategori)
+      if (siswaIds.length === 0) return []
+    }
   }
 
   let query = supabase
@@ -1217,7 +1232,11 @@ export async function getKehadiranPerKegiatan(
   const tglSelesai = `${targetBulan}-${String(lastDay).padStart(2, '0')}`
 
   let siswaIds: string[] | null = null
-  if (kamarNama || (unit && unit !== 'all') || kategori) {
+  const hasKamar = kamarNama && !isSemua(kamarNama)
+  const hasUnit = unit && !isSemua(unit)
+  const hasKategori = kategori && !isSemua(kategori)
+
+  if (hasKamar || hasUnit || hasKategori) {
     siswaIds = await resolveSiswaIds(kamarNama, unit, kategori)
     if (siswaIds.length === 0) return []
   }
@@ -1284,7 +1303,11 @@ export async function getTrendKehadiranHarian(
   const tglSelesai = `${targetBulan}-${String(lastDay).padStart(2, '0')}`
 
   let siswaIds: string[] | null = null
-  if (kamarNama || (unit && unit !== 'all') || kategori) {
+  const hasKamar = kamarNama && !isSemua(kamarNama)
+  const hasUnit = unit && !isSemua(unit)
+  const hasKategori = kategori && !isSemua(kategori)
+
+  if (hasKamar || hasUnit || hasKategori) {
     siswaIds = await resolveSiswaIds(kamarNama, unit, kategori)
     if (siswaIds.length === 0) return []
   }
