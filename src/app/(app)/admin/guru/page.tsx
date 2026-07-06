@@ -307,16 +307,34 @@ export default function GuruPage() {
     const isGuru = values.tipe === 'guru' || values.tipe === 'guru_musyrif'
     const isMusyrif = values.tipe === 'musyrif' || values.tipe === 'guru_musyrif'
 
-    return {
+    const payload: CreateGuruInput = {
       nama_lengkap: values.nama_lengkap,
       nip: values.nip || undefined,
       jenis_kelamin: values.jenis_kelamin,
       tipe: values.tipe,
-      unit: isGuru || isMusyrif ? values.unit ?? [] : [],
-      mapel_ids: isGuru ? values.mapel_ids ?? [] : [],
-      kamar_ids: isMusyrif ? values.kamar_ids ?? [] : [],
       email: values.email || undefined,
       no_hp: values.no_hp || undefined,
+    }
+
+    if (isGuru || isMusyrif) {
+      payload.unit = values.unit ?? []
+    }
+    if (isGuru) {
+      payload.mapel_ids = values.mapel_ids ?? []
+    }
+    if (isMusyrif) {
+      payload.kamar_ids = values.kamar_ids ?? []
+    }
+
+    return payload
+  }
+
+  const onSubmit = (values: GuruFormValues) => {
+    const payload = buildPayload(values)
+    if (isEditOpen && editingItem) {
+      updateMutation.mutate({ id: editingItem.id, values, oldItem: editingItem })
+    } else {
+      createMutation.mutate(payload)
     }
   }
 
@@ -386,14 +404,6 @@ export default function GuruPage() {
       toast({ title: 'Gagal', description: error.message, variant: 'destructive' })
     },
   })
-
-  const onSubmit = (values: GuruFormValues) => {
-    if (isEditOpen && editingItem) {
-      updateMutation.mutate({ id: editingItem.id, values, oldItem: editingItem })
-    } else {
-      createMutation.mutate(buildPayload(values))
-    }
-  }
 
   const isSubmitting = createMutation.isPending || updateMutation.isPending
 

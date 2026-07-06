@@ -85,18 +85,153 @@ function roleFlags(tipe?: TipeGuru): { isGuru: boolean; isMusyrif: boolean } {
   return { isGuru, isMusyrif }
 }
 
+interface GuruRelations {
+  unit: string[]
+  mapel_ids: string[]
+  kamar_ids: string[]
+}
+
 function normalizeGuruRelations(input: {
   tipe?: TipeGuru
   unit?: string[]
   mapel_ids?: string[]
   kamar_ids?: string[]
-}): { unit: string[]; mapel_ids: string[]; kamar_ids: string[] } {
+}): GuruRelations {
   const { isGuru, isMusyrif } = roleFlags(input.tipe)
   return {
     unit: isGuru || isMusyrif ? input.unit ?? [] : [],
     mapel_ids: isGuru ? input.mapel_ids ?? [] : [],
     kamar_ids: isMusyrif ? input.kamar_ids ?? [] : [],
   }
+}
+
+/** Kolom yang boleh ditulis ke tabel master `guru` — relasi kamar TIDAK termasuk. */
+function buildGuruTableInsertPayload(
+  input: CreateGuruInput,
+  relations: GuruRelations,
+  tipe: TipeGuru
+): Record<string, unknown> {
+  const { isGuru, isMusyrif } = roleFlags(tipe)
+  const row: Record<string, unknown> = {
+    nama_lengkap: input.nama_lengkap,
+    nip: input.nip || null,
+    jenis_kelamin: input.jenis_kelamin || null,
+    tipe,
+    email: input.email || null,
+    no_hp: input.no_hp || null,
+  }
+  if (isGuru || isMusyrif) {
+    row.unit = relations.unit
+  }
+  if (isGuru) {
+    row.mapel_ids = relations.mapel_ids
+  }
+  return row
+}
+
+/** Update baris `guru` — tanpa kamar_ids; mapel_ids hanya untuk peran guru. */
+function buildGuruTableUpdatePayload(
+  input: UpdateGuruInput,
+  relations: GuruRelations,
+  tipe: TipeGuru
+): Record<string, unknown> {
+  const { isGuru, isMusyrif } = roleFlags(tipe)
+  const row: Record<string, unknown> = {}
+
+  if (input.nama_lengkap !== undefined) row.nama_lengkap = input.nama_lengkap
+  if (input.nip !== undefined) row.nip = input.nip || null
+  if (input.jenis_kelamin !== undefined) row.jenis_kelamin = input.jenis_kelamin || null
+  if (input.tipe !== undefined) row.tipe = input.tipe
+  if (input.email !== undefined) row.email = input.email || null
+  if (input.no_hp !== undefined) row.no_hp = input.no_hp || null
+
+  if (input.unit !== undefined || input.tipe !== undefined) {
+    if (isGuru || isMusyrif) row.unit = relations.unit
+  }
+  if (input.mapel_ids !== undefined || input.tipe !== undefined) {
+    if (isGuru) {
+      row.mapel_ids = relations.mapel_ids
+    } else if (input.tipe !== undefined) {
+      row.mapel_ids = []
+    }
+  }
+
+  return row
+}
+
+type GuruProfileJoin = {
+  id?: string
+  nama_lengkap?: string
+  username?: string
+  email?: string | null
+  role?: string
+  mapel_ids?: string[] | null
+  kamar_ids?: string[] | null
+  unit_mengajar?: Unit[] | null
+}
+
+/** Gabungkan relasi dari baris guru + profil auth (kamar & mapel profil). */
+function enrichGuruRow(
+  row: Guru & { profiles?: GuruProfileJoin | null },
+  relationsOverride?: GuruRelations
+): Guru {
+  const profile = row.profiles
+  const { isGuru, isMusyrif } = roleFlags(row.tipe)
+  const relations =
+    relationsOverride ??
+    normalizeGuruRelations({
+      tipe: row.tipe,
+      unit: (row.unit as string[] | undefined) ?? (profile?.unit_mengajar as string[] | undefined),
+      mapel_ids: isGuru
+        ? ((row.mapel_ids as string[] | undefined) ?? profile?.mapel_ids ?? undefined)
+        : [],
+      kamar_ids: isMusyrif ? (profile?.kamar_ids ?? undefined) : [],
+    })
+
+  return {
+    ...row,
+    unit: relations.unit,
+    mapel_ids: relations.mapel_ids,
+    kamar_ids: relations.kamar_ids,
+  }
+}
+
+/** Simpan mapel_ids & kamar_ids ke tabel `profiles` (bukan ke master `guru`). */
+async function syncGuruRelationsToProfile(
+  supabase: ReturnType<typeof createClient>,
+  profileId: string,
+  tipe: TipeGuru,
+  relations: GuruRelations,
+  input: Pick<UpdateGuruInput, 'nama_lengkap' | 'email' | 'tipe' | 'unit' | 'mapel_ids' | 'kamar_ids'>
+): Promise<void> {
+  const { isGuru, isMusyrif } = roleFlags(tipe)
+  const profilePayload: Record<string, unknown> = {}
+
+  if (input.nama_lengkap !== undefined) profilePayload.nama_lengkap = input.nama_lengkap
+  if (input.email !== undefined) profilePayload.email = input.email || null
+
+  if (input.tipe !== undefined) {
+    profilePayload.tipe_role = tipe as TipeRole
+    profilePayload.is_musyrif = isMusyrif
+  }
+
+  if (input.unit !== undefined || input.tipe !== undefined) {
+    if (isGuru || isMusyrif) profilePayload.unit_mengajar = relations.unit
+  }
+
+  if (input.mapel_ids !== undefined || input.tipe !== undefined) {
+    profilePayload.mapel_ids = isGuru ? relations.mapel_ids : []
+    profilePayload.is_multi_mapel = isGuru && relations.mapel_ids.length > 1
+  }
+
+  if (input.kamar_ids !== undefined || input.tipe !== undefined) {
+    profilePayload.kamar_ids = isMusyrif ? relations.kamar_ids : []
+  }
+
+  if (Object.keys(profilePayload).length === 0) return
+
+  const { error } = await supabase.from('profiles').update(profilePayload).eq('id', profileId)
+  if (error) throw new Error(error.message)
 }
 
 export interface GetGuruOptions {
@@ -229,7 +364,10 @@ export async function getGuru(
 
   let query = supabase
     .from('guru')
-    .select('*, profiles(id, nama_lengkap, username, email, role)', { count: 'exact' })
+    .select(
+      '*, profiles(id, nama_lengkap, username, email, role, mapel_ids, kamar_ids, unit_mengajar)',
+      { count: 'exact' }
+    )
     .order('nama_lengkap', { ascending: true })
 
   if (search) query = query.ilike('nama_lengkap', `%${search}%`)
@@ -242,10 +380,12 @@ export async function getGuru(
 
   if (error) throw new Error(error.message)
 
-  const filteredData = (data ?? []).filter((item) => {
-    const guruItem = item as Guru & { profiles?: { role?: string } | null }
-    return guruItem.profiles?.role !== 'superadmin'
-  }) as Guru[]
+  const filteredData = (data ?? [])
+    .filter((item) => {
+      const guruItem = item as Guru & { profiles?: { role?: string } | null }
+      return guruItem.profiles?.role !== 'superadmin'
+    })
+    .map((item) => enrichGuruRow(item as Guru & { profiles?: GuruProfileJoin | null })) as Guru[]
 
   const excludedCount = (data ?? []).length - filteredData.length
   const total = (count ?? 0) - excludedCount
@@ -260,25 +400,23 @@ export async function createGuru(input: CreateGuruInput): Promise<Guru> {
   const supabase = createClient()
   const tipe = input.tipe || 'guru'
   const relations = normalizeGuruRelations({ ...input, tipe })
-  const payload = {
-    nama_lengkap: input.nama_lengkap,
-    nip: input.nip || null,
-    jenis_kelamin: input.jenis_kelamin || null,
-    mapel_ids: relations.mapel_ids,
-    kamar_ids: relations.kamar_ids,
-    unit: relations.unit,
-    tipe,
-    email: input.email || null,
-    no_hp: input.no_hp || null,
-  }
+  const payload = buildGuruTableInsertPayload(input, relations, tipe)
+
   const { data, error } = await supabase
     .from('guru')
     .insert(payload)
-    .select()
+    .select('*, profiles(id, mapel_ids, kamar_ids, unit_mengajar)')
     .single()
 
   if (error) throw new Error(error.message)
-  return data as Guru
+
+  const guruRow = data as Guru & { profiles?: GuruProfileJoin | null }
+
+  if (guruRow.profile_id) {
+    await syncGuruRelationsToProfile(supabase, guruRow.profile_id, tipe, relations, input)
+  }
+
+  return enrichGuruRow(guruRow, relations)
 }
 
 export async function updateGuru(
@@ -289,88 +427,53 @@ export async function updateGuru(
 
   const { data: currentGuru } = await supabase
     .from('guru')
-    .select('profile_id, tipe, unit, mapel_ids, kamar_ids')
+    .select('profile_id, tipe, unit, mapel_ids')
     .eq('id', id)
     .single()
 
   const effectiveTipe = (input.tipe ?? currentGuru?.tipe ?? 'guru') as TipeGuru
+  const profileId =
+    input.profile_id !== undefined ? input.profile_id : currentGuru?.profile_id
+
+  let profileKamarIds: string[] | undefined
+  if (profileId && input.kamar_ids === undefined) {
+    const { data: profileRow } = await supabase
+      .from('profiles')
+      .select('kamar_ids')
+      .eq('id', profileId)
+      .maybeSingle()
+    profileKamarIds = (profileRow?.kamar_ids as string[] | undefined) ?? []
+  }
+
   const relations = normalizeGuruRelations({
     tipe: effectiveTipe,
     unit: input.unit ?? (currentGuru?.unit as string[] | undefined),
     mapel_ids: input.mapel_ids ?? (currentGuru?.mapel_ids as string[] | undefined),
-    kamar_ids: input.kamar_ids ?? (currentGuru?.kamar_ids as string[] | undefined),
+    kamar_ids: input.kamar_ids ?? profileKamarIds,
   })
 
-  const payload: {
-    nama_lengkap?: string
-    nip?: string | null
-    jenis_kelamin?: JenisKelamin | null
-    mapel_ids?: string[]
-    kamar_ids?: string[]
-    unit?: string[]
-    tipe?: TipeGuru
-    email?: string | null
-    no_hp?: string | null
-  } = {}
-
-  if (input.nama_lengkap !== undefined) payload.nama_lengkap = input.nama_lengkap
-  if (input.nip !== undefined) payload.nip = input.nip || null
-  if (input.jenis_kelamin !== undefined) payload.jenis_kelamin = input.jenis_kelamin || null
-  if (input.mapel_ids !== undefined || input.tipe !== undefined) payload.mapel_ids = relations.mapel_ids
-  if (input.kamar_ids !== undefined || input.tipe !== undefined) payload.kamar_ids = relations.kamar_ids
-  if (input.unit !== undefined || input.tipe !== undefined) payload.unit = relations.unit
-  if (input.tipe !== undefined) payload.tipe = input.tipe || 'guru'
-  if (input.email !== undefined) payload.email = input.email || null
-  if (input.no_hp !== undefined) payload.no_hp = input.no_hp || null
-
-  const profileId = input.profile_id !== undefined ? input.profile_id : currentGuru?.profile_id
+  const payload = buildGuruTableUpdatePayload(input, relations, effectiveTipe)
 
   const updateGuruPromise = supabase
     .from('guru')
     .update(payload)
     .eq('id', id)
-    .select()
+    .select('*, profiles(id, mapel_ids, kamar_ids, unit_mengajar)')
     .single()
 
   if (profileId) {
-    const mapelIds = relations.mapel_ids
-    const kamarIds = relations.kamar_ids
-    const { isMusyrif } = roleFlags(effectiveTipe)
-    const isMultiMapel = mapelIds.length > 1
-
-    const profilePayload: {
-      nama_lengkap?: string
-      email?: string | null
-      tipe_role?: TipeRole
-      unit_mengajar?: Unit[]
-      mapel_ids?: string[]
-      kamar_ids?: string[]
-      is_musyrif?: boolean
-      is_multi_mapel?: boolean
-    } = {}
-
-    if (input.nama_lengkap !== undefined) profilePayload.nama_lengkap = input.nama_lengkap
-    if (input.email !== undefined) profilePayload.email = input.email || null
-    if (input.tipe !== undefined) profilePayload.tipe_role = input.tipe as TipeRole
-    if (input.unit !== undefined || input.tipe !== undefined) profilePayload.unit_mengajar = relations.unit as Unit[]
-    if (input.mapel_ids !== undefined || input.tipe !== undefined) profilePayload.mapel_ids = mapelIds
-    if (input.kamar_ids !== undefined || input.tipe !== undefined) profilePayload.kamar_ids = kamarIds
-    if (input.tipe !== undefined) profilePayload.is_musyrif = isMusyrif
-    if (input.mapel_ids !== undefined || input.tipe !== undefined) profilePayload.is_multi_mapel = isMultiMapel
-
-    const updateProfilePromise = supabase
-      .from('profiles')
-      .update(profilePayload)
-      .eq('id', profileId)
-
-    const [guruResult] = await Promise.all([updateGuruPromise, updateProfilePromise])
-    if (guruResult.error) throw new Error(guruResult.error.message)
-    return guruResult.data as Guru
-  } else {
+    await syncGuruRelationsToProfile(supabase, profileId, effectiveTipe, relations, input)
     const guruResult = await updateGuruPromise
     if (guruResult.error) throw new Error(guruResult.error.message)
-    return guruResult.data as Guru
+    return enrichGuruRow(guruResult.data as Guru & { profiles?: GuruProfileJoin | null }, relations)
   }
+
+  const guruResult = await updateGuruPromise
+  if (guruResult.error) throw new Error(guruResult.error.message)
+  return enrichGuruRow(
+    guruResult.data as Guru & { profiles?: GuruProfileJoin | null },
+    relations
+  )
 }
 
 export async function deleteGuru(id: string): Promise<void> {
@@ -388,28 +491,28 @@ export async function linkGuruToProfile(
     .from('guru')
     .update({ profile_id: profileId })
     .eq('id', guruId)
-    .select()
+    .select('*, profiles(id, mapel_ids, kamar_ids, unit_mengajar)')
     .single()
 
   if (error) throw new Error(error.message)
 
   if (data) {
-    const guruRow = data as Guru
-    const { isMusyrif } = roleFlags(guruRow.tipe)
-    const isMultiMapel = guruRow.mapel_ids && guruRow.mapel_ids.length > 1
-    await supabase
-      .from('profiles')
-      .update({
-        nama_lengkap: guruRow.nama_lengkap,
-        email: guruRow.email,
-        tipe_role: guruRow.tipe as TipeRole,
-        unit_mengajar: guruRow.unit as Unit[],
-        mapel_ids: guruRow.mapel_ids,
-        kamar_ids: guruRow.kamar_ids,
-        is_musyrif: isMusyrif,
-        is_multi_mapel: isMultiMapel,
-      })
-      .eq('id', profileId)
+    const guruRow = data as Guru & { profiles?: GuruProfileJoin | null }
+    const relations = normalizeGuruRelations({
+      tipe: guruRow.tipe,
+      unit: (guruRow.unit as string[] | undefined) ?? undefined,
+      mapel_ids: (guruRow.mapel_ids as string[] | undefined) ?? undefined,
+      kamar_ids: guruRow.profiles?.kamar_ids ?? undefined,
+    })
+    await syncGuruRelationsToProfile(supabase, profileId, guruRow.tipe, relations, {
+      nama_lengkap: guruRow.nama_lengkap,
+      email: guruRow.email ?? undefined,
+      tipe: guruRow.tipe,
+      unit: relations.unit,
+      mapel_ids: relations.mapel_ids,
+      kamar_ids: relations.kamar_ids,
+    })
+    return enrichGuruRow({ ...guruRow, profile_id: profileId }, relations)
   }
 
   return data as Guru

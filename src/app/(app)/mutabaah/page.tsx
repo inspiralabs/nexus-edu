@@ -3,7 +3,7 @@
 import { format } from 'date-fns'
 import { id as idLocale } from 'date-fns/locale'
 import { CalendarDays, Moon, TrendingUp, Users, ChevronDown, ChevronRight, Eye } from 'lucide-react'
-import { useState, useMemo, useEffect, Fragment } from 'react'
+import { useState, useMemo, useEffect, useRef, Fragment } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
   Bar,
@@ -343,7 +343,7 @@ export default function DashboardMutabaahPage() {
   const [rankingUnit, setRankingUnit] = useState<'SD' | 'SMP' | 'SMA'>('SD')
   const [detailSiswa, setDetailSiswa] = useState<SiswaDetail | null>(null)
 
-  const { data: activeSemester } = useQuery({
+  const { data: activeSemester, isLoading: loadingSemester } = useQuery({
     queryKey: ['active-semester-mutabaah'],
     queryFn: getActiveSemester,
     retry: false,
@@ -351,48 +351,46 @@ export default function DashboardMutabaahPage() {
     refetchOnWindowFocus: false,
   })
 
+  const activeSemesterId = activeSemester?.id
+
+  const [selectedUnit, setSelectedUnit] = useState<string>('all')
+  const [filterKategori, setFilterKategori] = useState<string>('all')
+  const [selectedKamarId, setSelectedKamarId] = useState<string>('all')
+  const [selectedBulan, setSelectedBulan] = useState<string>('')
+
+  const bulanInitializedForSemester = useRef<string | null>(null)
+
   const { data: rankingsData, isLoading: loadingRankings } = useQuery({
-    queryKey: ['mutabaah-rankings', activeSemester?.id, rankingUnit],
+    queryKey: ['mutabaah-rankings', activeSemesterId, rankingUnit],
     queryFn: () =>
-      activeSemester ? getMutabaahRankings(activeSemester.id, rankingUnit) : Promise.resolve({ topRajin: [], topPerluMotivasi: [] }),
-    enabled: !!activeSemester,
+      activeSemester
+        ? getMutabaahRankings(activeSemester.id, rankingUnit)
+        : Promise.resolve({ topRajin: [], topPerluMotivasi: [] }),
+    enabled: !!activeSemesterId,
     retry: false,
     staleTime: 1 * 60 * 1000,
     refetchOnWindowFocus: false,
   })
 
   const { data: kegiatanList = EMPTY_ARRAY } = useQuery({
-    queryKey: ['kegiatan-list-with-sub', activeSemester?.id],
+    queryKey: ['kegiatan-list-with-sub', activeSemesterId],
     queryFn: () => getKegiatanWithSub(),
-    enabled: !!activeSemester,
+    enabled: !!activeSemesterId,
     retry: false,
     staleTime: 5 * 60 * 1000,
     refetchOnWindowFocus: false,
   })
 
-  const [selectedUnit, setSelectedUnit] = useState<string>('all')
-  const [filterKategori, setFilterKategori] = useState<string>('all')
-  const [selectedKamar, setSelectedKamar] = useState<string>('all')
-  const [selectedBulan, setSelectedBulan] = useState<string>('')
-
   // ── Generate pilihan bulan berdasarkan Semester Aktif ──
   const bulanOptions = useMemo(() => {
     if (!activeSemester?.tanggal_mulai || !activeSemester?.tanggal_selesai) {
-      // Fallback ke 12 bulan terakhir jika semester aktif belum ter-load
-      return Array.from({ length: 12 }, (_, i) => {
-        const d = new Date()
-        d.setMonth(d.getMonth() - i)
-        return {
-          value: format(d, 'yyyy-MM'),
-          label: format(d, 'MMMM yyyy', { locale: idLocale }),
-        }
-      })
+      return []
     }
 
     const start = new Date(activeSemester.tanggal_mulai)
     const end = new Date(activeSemester.tanggal_selesai)
     const options = []
-    
+
     let current = new Date(start.getFullYear(), start.getMonth(), 1)
     const targetEnd = new Date(end.getFullYear(), end.getMonth(), 1)
 
@@ -403,33 +401,36 @@ export default function DashboardMutabaahPage() {
       })
       current = new Date(current.getFullYear(), current.getMonth() + 1, 1)
     }
-    
-    // Urutkan dari bulan terbaru ke terlama (descending)
+
     return options.reverse()
-  }, [activeSemester])
+  }, [activeSemester?.tanggal_mulai, activeSemester?.tanggal_selesai])
 
-  // ── Default Value Dropdown Bulan berdasarkan Semester Aktif ──
+  // ── Default bulan: sekali per semester aktif (hindari loop setState) ──
   useEffect(() => {
-    if (!activeSemester?.tanggal_mulai || !activeSemester?.tanggal_selesai) return
-
-    const now = new Date()
-    const nowStr = format(now, 'yyyy-MM')
-    
-    const startStr = activeSemester.tanggal_mulai.substring(0, 7) // 'yyyy-MM'
-    const endStr = activeSemester.tanggal_selesai.substring(0, 7) // 'yyyy-MM'
-
-    if (nowStr >= startStr && nowStr <= endStr) {
-      setSelectedBulan(nowStr)
-    } else {
-      setSelectedBulan(endStr)
+    if (loadingSemester) return
+    if (!activeSemesterId || !activeSemester?.tanggal_mulai || !activeSemester?.tanggal_selesai) {
+      return
     }
-  }, [activeSemester])
+    if (bulanInitializedForSemester.current === activeSemesterId) return
+
+    const nowStr = format(new Date(), 'yyyy-MM')
+    const startStr = activeSemester.tanggal_mulai.substring(0, 7)
+    const endStr = activeSemester.tanggal_selesai.substring(0, 7)
+
+    setSelectedBulan(nowStr >= startStr && nowStr <= endStr ? nowStr : endStr)
+    bulanInitializedForSemester.current = activeSemesterId
+  }, [
+    loadingSemester,
+    activeSemesterId,
+    activeSemester?.tanggal_mulai,
+    activeSemester?.tanggal_selesai,
+  ])
 
   // ── Query Kamar ──
   const { data: kamarList = EMPTY_ARRAY, isLoading: loadingKamar } = useQuery({
     queryKey: ['kamar-dashboard', profile?.id, isAdmin],
     queryFn: async () => {
-      if (!profile) return []
+      if (!profile) return EMPTY_ARRAY
       if (isAdmin) return getKamar()
       const musyrifKamar = await getKamarByMusyrif(profile.id)
       if (musyrifKamar.length > 0) return musyrifKamar
@@ -454,30 +455,42 @@ export default function DashboardMutabaahPage() {
 
   useEffect(() => {
     if (loadingKamar) return
-    if (selectedKamar !== 'all') {
-      const exists = filteredKamarList.some((k) => k.nama_kamar === selectedKamar)
-      if (!exists) setSelectedKamar('all')
-    }
-  }, [filteredKamarList, selectedKamar, loadingKamar])
+    if (selectedKamarId === 'all') return
+    const exists = filteredKamarList.some((k) => k.id === selectedKamarId)
+    if (!exists) setSelectedKamarId('all')
+  }, [filteredKamarList, selectedKamarId, loadingKamar])
 
-  const kamarFilter = selectedKamar === 'all' ? undefined : selectedKamar
+  const kamarFilter = selectedKamarId === 'all' ? undefined : selectedKamarId
 
-  // ── Satu query gabungan untuk semua data dashboard utama ───────────────────
-  // Menggantikan 3 query terpisah (stats / kehadiranPerKegiatan / trendHarian)
-  // yang masing-masing memanggil resolveSiswaIds() secara duplikat.
+  const dashboardReady = !!activeSemesterId && !!selectedBulan && !loadingSemester
+
+  // ── Satu query gabungan untuk semua data dashboard utama ──
   const { data: dashboardData, isLoading: loadingDashboard } = useQuery({
-    queryKey: ['mutabaah-dashboard', kamarFilter, selectedBulan, selectedUnit, filterKategori],
-    queryFn: () => getMutabaahDashboardData(kamarFilter, selectedBulan, selectedUnit, filterKategori),
-    enabled: !!selectedBulan && !!activeSemester,
+    queryKey: [
+      'mutabaah-dashboard',
+      kamarFilter ?? 'all',
+      selectedBulan,
+      selectedUnit,
+      filterKategori,
+    ],
+    queryFn: () =>
+      getMutabaahDashboardData(
+        kamarFilter,
+        selectedBulan,
+        selectedUnit,
+        filterKategori
+      ),
+    enabled: dashboardReady,
     retry: false,
     staleTime: 1 * 60 * 1000,
     refetchOnWindowFocus: false,
+    placeholderData: (prev) => prev,
   })
 
+  const showDashboardSkeleton =
+    loadingSemester || (dashboardReady && loadingDashboard && !dashboardData)
+
   const stats = dashboardData?.stats
-  const loadingStats = loadingDashboard
-  const loadingBar = loadingDashboard
-  const loadingLine = loadingDashboard
 
   // Format data untuk chart
   const barData = (dashboardData?.kehadiranPerKegiatan ?? []).map((item) => ({
@@ -505,7 +518,10 @@ export default function DashboardMutabaahPage() {
       <div className="flex flex-wrap items-end gap-3 rounded-lg border border-[var(--border)] bg-[var(--surface)] p-4 no-print">
         <div className="flex flex-col gap-1.5">
           <label className="text-xs font-medium text-[var(--text-secondary)]">Unit</label>
-          <Select value={selectedUnit} onValueChange={setSelectedUnit}>
+          <Select value={selectedUnit} onValueChange={(v) => {
+            setSelectedUnit(v)
+            setSelectedKamarId('all')
+          }}>
             <SelectTrigger id="select-unit-dashboard" className="w-48">
               <SelectValue placeholder="Semua Unit" />
             </SelectTrigger>
@@ -523,7 +539,7 @@ export default function DashboardMutabaahPage() {
             value={filterKategori}
             onValueChange={(v) => {
               setFilterKategori(v)
-              setSelectedKamar('all')
+              setSelectedKamarId('all')
             }}
           >
             <SelectTrigger className="w-36">
@@ -538,21 +554,25 @@ export default function DashboardMutabaahPage() {
         </div>
         <div className="flex flex-col gap-1.5">
           <label className="text-xs font-medium text-[var(--text-secondary)]">Kamar</label>
-          <Select value={selectedKamar} onValueChange={setSelectedKamar}>
+          <Select value={selectedKamarId} onValueChange={setSelectedKamarId}>
             <SelectTrigger id="select-kamar-dashboard" className="w-48">
               <SelectValue placeholder="Semua Kamar" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Semua Kamar</SelectItem>
               {filteredKamarList.map((k) => (
-                <SelectItem key={k.id} value={k.nama_kamar}>{k.nama_kamar}</SelectItem>
+                <SelectItem key={k.id} value={k.id}>{k.nama_kamar}</SelectItem>
               ))}
             </SelectContent>
           </Select>
         </div>
         <div className="flex flex-col gap-1.5">
           <label className="text-xs font-medium text-[var(--text-secondary)]">Bulan</label>
-          <Select value={selectedBulan} onValueChange={setSelectedBulan}>
+          <Select
+            value={selectedBulan}
+            onValueChange={setSelectedBulan}
+            disabled={loadingSemester || bulanOptions.length === 0}
+          >
             <SelectTrigger id="select-bulan-dashboard" className="w-48">
               <SelectValue />
             </SelectTrigger>
@@ -566,7 +586,7 @@ export default function DashboardMutabaahPage() {
       </div>
 
       {/* ── Stat Cards ── */}
-      {loadingStats ? (
+      {showDashboardSkeleton ? (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {Array.from({ length: 4 }).map((_, i) => (
             <Skeleton key={i} className="h-24 w-full" />
@@ -752,7 +772,7 @@ export default function DashboardMutabaahPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            {loadingBar ? (
+            {showDashboardSkeleton ? (
               <Skeleton className="h-56 w-full" />
             ) : barData.length === 0 ? (
               <EmptyState
@@ -803,7 +823,7 @@ export default function DashboardMutabaahPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            {loadingLine ? (
+            {showDashboardSkeleton ? (
               <Skeleton className="h-56 w-full" />
             ) : lineData.length === 0 ? (
               <EmptyState

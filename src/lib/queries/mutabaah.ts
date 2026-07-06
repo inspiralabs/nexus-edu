@@ -536,36 +536,98 @@ interface SiswaKamarRow {
   is_alumni: boolean
 }
 
-/** Ambil siswa aktif berdasarkan nama kamar (disimpan sebagai text di students.kamar) */
-export async function getSiswaByKamar(
-  kamarNama: string,
+const KAMAR_UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+export interface GetSiswaByKamarOptions {
   unit?: string
+  /** 'all' | 'Laki-laki' (Ikhwan) | 'Perempuan' (Akhwat) */
+  kategori?: string
+}
+
+/** Resolve kamar ref (UUID atau nama) ke id + nama untuk filter siswa. */
+async function resolveKamarRef(
+  kamarRef: string
+): Promise<{ id: string | null; nama: string | null }> {
+  const supabase = createClient()
+  const trimmed = kamarRef.trim()
+  if (!trimmed) return { id: null, nama: null }
+
+  if (KAMAR_UUID_RE.test(trimmed)) {
+    const { data } = await supabase
+      .from('kamar')
+      .select('id, nama_kamar')
+      .eq('id', trimmed)
+      .maybeSingle()
+    return { id: trimmed, nama: data?.nama_kamar ?? null }
+  }
+
+  const { data } = await supabase
+    .from('kamar')
+    .select('id, nama_kamar')
+    .ilike('nama_kamar', trimmed)
+    .maybeSingle()
+
+  return { id: data?.id ?? null, nama: data?.nama_kamar ?? trimmed }
+}
+
+/**
+ * Ambil siswa aktif di kamar tertentu.
+ * Menerima UUID kamar (disarankan) atau nama kamar (legacy).
+ * Siswa baru memakai kolom `kamar_id`; data lama mungkin hanya punya `kamar` teks.
+ */
+export async function getSiswaByKamar(
+  kamarRef: string,
+  options?: GetSiswaByKamarOptions | string
 ): Promise<SiswaKamarRow[]> {
   const supabase = createClient()
+  const opts: GetSiswaByKamarOptions =
+    typeof options === 'string' ? { unit: options } : (options ?? {})
+
+  const { id: kamarId, nama: kamarNama } = await resolveKamarRef(kamarRef)
+  if (!kamarId && !kamarNama) return []
 
   let query = supabase
     .from('students')
-    .select('id, nama, kelas_id, kelas(nama_kelas), kamar, unit, is_alumni')
-    .eq('kamar', kamarNama)
+    .select('id, nama, kelas_id, kelas(nama_kelas), kamar, kamar_id, unit, jenis_kelamin, is_alumni')
     .eq('is_alumni', false)
     .order('nama', { ascending: true })
 
-  if (unit) {
-    query = query.eq('unit', unit)
+  if (kamarId && kamarNama) {
+    query = query.or(`kamar_id.eq.${kamarId},kamar.ilike.${kamarNama}`)
+  } else if (kamarId) {
+    query = query.eq('kamar_id', kamarId)
+  } else if (kamarNama) {
+    query = query.ilike('kamar', kamarNama)
+  }
+
+  if (opts.unit) {
+    query = query.eq('unit', opts.unit)
+  }
+
+  if (opts.kategori && opts.kategori !== 'all') {
+    if (opts.kategori === 'Laki-laki') {
+      query = query.eq('jenis_kelamin', 'L')
+    } else if (opts.kategori === 'Perempuan') {
+      query = query.eq('jenis_kelamin', 'P')
+    }
   }
 
   const { data, error } = await query
 
   if (error) throw new Error(error.message)
 
-  return (data ?? []).map((row: any) => ({
-    id: row.id,
-    nama: row.nama,
-    kelas: row.kelas?.nama_kelas || '-',
-    kamar: row.kamar,
-    unit: row.unit,
-    is_alumni: row.is_alumni,
-  }))
+  return (data ?? []).map((row) => {
+    const kelas = unwrapRelation(row.kelas as Relation<{ nama_kelas: string }>)
+    return {
+      id: row.id as string,
+      nama: row.nama as string,
+      kelas: kelas?.nama_kelas || '-',
+      kamar: (row.kamar as string | null) ?? kamarNama,
+      unit: row.unit as string | null,
+      is_alumni: row.is_alumni as boolean,
+    }
+  })
 }
 
 // ─── Hari Libur ───────────────────────────────────────────────────────────────
@@ -776,9 +838,9 @@ function isSemua(val?: string): boolean {
   return v === 'all' || v.includes('semua')
 }
 
-/** Helper to resolve student IDs by Kamar name, Unit, and Category (Ikhwan/Akhwat) */
+/** Helper to resolve student IDs by Kamar ref (UUID atau nama), Unit, and Category */
 async function resolveSiswaIds(
-  kamarNama?: string,
+  kamarRef?: string,
   unit?: string,
   kategori?: string
 ): Promise<string[]> {
@@ -788,8 +850,15 @@ async function resolveSiswaIds(
     .select('id')
     .eq('is_alumni', false)
 
-  if (kamarNama && !isSemua(kamarNama)) {
-    q = q.eq('kamar', kamarNama)
+  if (kamarRef && !isSemua(kamarRef)) {
+    const { id: kamarId, nama: kamarNama } = await resolveKamarRef(kamarRef)
+    if (kamarId && kamarNama) {
+      q = q.or(`kamar_id.eq.${kamarId},kamar.ilike.${kamarNama}`)
+    } else if (kamarId) {
+      q = q.eq('kamar_id', kamarId)
+    } else if (kamarNama) {
+      q = q.ilike('kamar', kamarNama)
+    }
   }
   if (unit && !isSemua(unit)) {
     q = q.eq('unit', unit)

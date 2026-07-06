@@ -1,15 +1,13 @@
 'use client'
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import {
   AlertCircle,
   CheckCircle2,
   Clock,
   ShieldAlert,
-  Trophy,
-  X,
 } from 'lucide-react'
-import { useMemo, useState, useEffect, useCallback } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import {
   Bar,
   BarChart,
@@ -41,7 +39,6 @@ import {
   getDivisi,
   getKategoriDisiplin,
   getKedisiplinanDashboard,
-  type KedisiplinanDashboardFilters,
 } from '@/lib/queries/kedisiplinan'
 import { getKelasOptionsByUnits } from '@/lib/queries/students'
 import type { Unit, StatusKedisiplinan } from '@/lib/supabase/types'
@@ -237,7 +234,7 @@ export default function KedisiplinanDashboardPage() {
     refetchOnWindowFocus: false,
   })
 
-  const { data: kelasOptions = EMPTY_ARRAY } = useQuery({
+  const { data: kelasOptions = EMPTY_ARRAY, isLoading: loadingKelas } = useQuery({
     queryKey: ['kedisiplinan-dashboard-kelas', selectedUnits],
     queryFn: () =>
       getKelasOptionsByUnits(
@@ -248,31 +245,42 @@ export default function KedisiplinanDashboardPage() {
     refetchOnWindowFocus: false,
   })
 
-  const dashboardFilters = useMemo<KedisiplinanDashboardFilters>(
-    () => ({
-      tahun: selectedYears.length > 0 ? selectedYears : undefined,
-      unit: selectedUnits.length > 0 ? selectedUnits : undefined,
-      kelas: selectedKelas.length > 0 ? selectedKelas : undefined,
-      kategori_id:
-        selectedKategori.length > 0 ? selectedKategori : undefined,
-      divisi_id: selectedDivisi.length > 0 ? selectedDivisi : undefined,
-    }),
-    [
+  // Buang pilihan kelas yang tidak lagi valid setelah unit berubah
+  useEffect(() => {
+    if (loadingKelas) return
+    if (selectedKelas.length === 0) return
+    const validIds = new Set(kelasOptions.map((o) => o.value))
+    const next = selectedKelas.filter((k) => validIds.has(k))
+    if (next.length !== selectedKelas.length) {
+      setSelectedKelas(next)
+    }
+  }, [kelasOptions, selectedKelas, loadingKelas])
+
+  const { data, isLoading } = useQuery({
+    queryKey: [
+      'kedisiplinan-dashboard',
       selectedYears,
       selectedUnits,
       selectedKelas,
       selectedKategori,
       selectedDivisi,
-    ]
-  )
-
-  const { data, isLoading } = useQuery({
-    queryKey: ['kedisiplinan-dashboard', dashboardFilters],
-    queryFn: () => getKedisiplinanDashboard(dashboardFilters),
+    ],
+    queryFn: () =>
+      getKedisiplinanDashboard({
+        tahun: selectedYears.length > 0 ? selectedYears : undefined,
+        unit: selectedUnits.length > 0 ? selectedUnits : undefined,
+        kelas: selectedKelas.length > 0 ? selectedKelas : undefined,
+        kategori_id:
+          selectedKategori.length > 0 ? selectedKategori : undefined,
+        divisi_id: selectedDivisi.length > 0 ? selectedDivisi : undefined,
+      }),
     retry: false,
     staleTime: 1 * 60 * 1000,
     refetchOnWindowFocus: false,
+    placeholderData: (prev) => prev,
   })
+
+  const showDashboardSkeleton = isLoading && !data
 
   const trenData = useMemo(
     () =>
@@ -441,7 +449,7 @@ export default function KedisiplinanDashboardPage() {
         </CardContent>
       </Card>
 
-      {isLoading ? (
+      {showDashboardSkeleton ? (
         <StatCardsSkeleton />
       ) : (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
@@ -481,7 +489,7 @@ export default function KedisiplinanDashboardPage() {
             <CardTitle className="text-base">Tren Kasus per Bulan</CardTitle>
           </CardHeader>
           <CardContent>
-            {isLoading ? (
+            {showDashboardSkeleton ? (
               <ChartSkeleton />
             ) : trenData.length === 0 ? (
               <p className="py-12 text-center text-sm text-[var(--text-secondary)]">
@@ -520,7 +528,7 @@ export default function KedisiplinanDashboardPage() {
             <CardTitle className="text-base">Distribusi per Kategori</CardTitle>
           </CardHeader>
           <CardContent>
-            {isLoading ? (
+            {showDashboardSkeleton ? (
               <ChartSkeleton />
             ) : kategoriChartData.length === 0 ? (
               <p className="py-12 text-center text-sm text-[var(--text-secondary)]">
@@ -555,7 +563,7 @@ export default function KedisiplinanDashboardPage() {
             <CardTitle className="text-base">Distribusi per Divisi</CardTitle>
           </CardHeader>
           <CardContent>
-            {isLoading ? (
+            {showDashboardSkeleton ? (
               <ChartSkeleton />
             ) : divisiChartData.length === 0 ? (
               <p className="py-12 text-center text-sm text-[var(--text-secondary)]">
@@ -590,7 +598,7 @@ export default function KedisiplinanDashboardPage() {
             <CardTitle className="text-base">Breakdown Status</CardTitle>
           </CardHeader>
           <CardContent>
-            {isLoading ? (
+            {showDashboardSkeleton ? (
               <ChartSkeleton className="h-[280px] w-full" />
             ) : statusChartData.length === 0 ? (
               <p className="py-12 text-center text-sm text-[var(--text-secondary)]">

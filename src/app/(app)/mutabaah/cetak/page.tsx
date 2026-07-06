@@ -20,6 +20,7 @@ import {
   getKamarByMusyrif,
   getMutabaahCetakSiswa,
   getKegiatanWithSub,
+  getSiswaByKamar,
   type MutabaahStatus,
   type KegiatanItem,
 } from '@/lib/queries/mutabaah'
@@ -62,6 +63,8 @@ interface SimpleSiswa {
   kamar: string | null
 }
 
+const EMPTY_SISWA_LIST: SimpleSiswa[] = []
+
 // ─── Halaman Cetak Laporan Mutabaah ──────────────────────────────────────────
 
 export default function CetakMutabaahPage() {
@@ -69,7 +72,7 @@ export default function CetakMutabaahPage() {
 
   const [activeTab, setActiveTab] = useState<'SD' | 'SMP' | 'SMA'>('SD')
   const [filterKategori, setFilterKategori] = useState<string>('all')
-  const [selectedKamar, setSelectedKamar] = useState<string>('')
+  const [selectedKamarId, setSelectedKamarId] = useState<string>('')
   const [selectedSiswaId, setSelectedSiswaId] = useState<string>('')
   const [tanggalDari, setTanggalDari] = useState<Date>(() => {
     const d = new Date()
@@ -122,34 +125,33 @@ export default function CetakMutabaahPage() {
     return result
   }, [kamarList, activeTab, filterKategori])
 
-  // Auto-reset atau filter select kamar berdasarkan unit tab aktif
+  // Auto-reset select kamar jika tidak ada di list terfilter (jangan reset saat masih loading)
   useEffect(() => {
-    if (selectedKamar !== '') {
-      const exists = filteredKamarList.some((k) => k.nama_kamar === selectedKamar)
-      if (!exists) {
-        setSelectedKamar('')
-        setSelectedSiswaId('')
-        setSearchSiswa('')
-      }
+    if (loadingKamar || selectedKamarId === '') return
+    const exists = filteredKamarList.some((k) => k.id === selectedKamarId)
+    if (!exists) {
+      setSelectedKamarId('')
+      setSelectedSiswaId('')
+      setSearchSiswa('')
     }
-  }, [filteredKamarList, selectedKamar])
+  }, [filteredKamarList, selectedKamarId, loadingKamar])
+
+  const selectedKamarNama = useMemo(
+    () => filteredKamarList.find((k) => k.id === selectedKamarId)?.nama_kamar ?? '',
+    [filteredKamarList, selectedKamarId]
+  )
 
   // ── Query Siswa di kamar ──
-  const { data: siswaKamarList = [], isLoading: loadingSiswa } = useQuery({
-    queryKey: ['siswa-cetak-kamar', selectedKamar],
-    queryFn: async (): Promise<SimpleSiswa[]> => {
-      if (!selectedKamar) return []
-      const supabase = (await import('@/lib/supabase/client')).createClient()
-      const { data, error } = await supabase
-        .from('students')
-        .select('id, nama, kelas, kamar')
-        .eq('kamar', selectedKamar)
-        .eq('is_alumni', false)
-        .order('nama', { ascending: true })
-      if (error) throw new Error(error.message)
-      return (data ?? []) as SimpleSiswa[]
-    },
-    enabled: !!selectedKamar,
+  const { data: siswaKamarList = EMPTY_SISWA_LIST, isLoading: loadingSiswa } = useQuery({
+    queryKey: ['students-dropdown', activeTab, filterKategori, selectedKamarId],
+    queryFn: () =>
+      selectedKamarId
+        ? getSiswaByKamar(selectedKamarId, {
+            unit: activeTab,
+            kategori: filterKategori,
+          })
+        : Promise.resolve(EMPTY_SISWA_LIST),
+    enabled: !!selectedKamarId,
   })
 
   const filteredSiswaList = useMemo(() => {
@@ -274,7 +276,7 @@ export default function CetakMutabaahPage() {
           value={activeTab}
           onValueChange={(val) => {
             setActiveTab(val as 'SD' | 'SMP' | 'SMA')
-            setSelectedKamar('')
+            setSelectedKamarId('')
             setSelectedSiswaId('')
           }}
           className="w-full no-print mt-4"
@@ -294,7 +296,7 @@ export default function CetakMutabaahPage() {
               value={filterKategori}
               onValueChange={(v) => {
                 setFilterKategori(v)
-                setSelectedKamar('')
+                setSelectedKamarId('')
                 setSelectedSiswaId('')
                 setSearchSiswa('')
               }}
@@ -312,9 +314,9 @@ export default function CetakMutabaahPage() {
           <div className="flex flex-col gap-1.5">
             <label className="text-xs font-medium text-[var(--text-secondary)]">Kamar</label>
             <Select
-              value={selectedKamar}
+              value={selectedKamarId}
               onValueChange={(v) => {
-                setSelectedKamar(v)
+                setSelectedKamarId(v)
                 setSelectedSiswaId('')
                 setSearchSiswa('')
               }}
@@ -324,12 +326,12 @@ export default function CetakMutabaahPage() {
               </SelectTrigger>
               <SelectContent>
                 {filteredKamarList.map((k) => (
-                  <SelectItem key={k.id} value={k.nama_kamar}>{k.nama_kamar}</SelectItem>
+                  <SelectItem key={k.id} value={k.id}>{k.nama_kamar}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
-          {selectedKamar && (
+          {selectedKamarId && (
             <div className="flex flex-col gap-1.5">
               <label className="text-xs font-medium text-[var(--text-secondary)]">Siswa</label>
               <div className="w-56">
@@ -406,7 +408,7 @@ export default function CetakMutabaahPage() {
               </div>
               <div className="space-y-1">
                 <span className="text-xs font-medium text-[var(--text-tertiary)] print:text-gray-500 block">Nama Kamar</span>
-                <span className="font-semibold text-[var(--text-primary)] print:text-black block">{(selectedSiswa?.kamar ?? selectedKamar) || '——'}</span>
+                <span className="font-semibold text-[var(--text-primary)] print:text-black block">{(selectedSiswa?.kamar ?? selectedKamarNama) || '——'}</span>
               </div>
               <div className="space-y-1">
                 <span className="text-xs font-medium text-[var(--text-tertiary)] print:text-gray-500 block">Periode Laporan</span>
