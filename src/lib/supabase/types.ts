@@ -190,6 +190,7 @@ export interface Guru {
   nip: string | null
   jenis_kelamin: JenisKelamin | null
   mapel_ids: string[] | null
+  kamar_ids: string[] | null
   unit: string[] | null
   tipe: TipeGuru
   email: string | null

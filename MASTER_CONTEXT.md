@@ -1,6 +1,6 @@
 # MASTER CONTEXT — AMANAH Platform V2
 # Dibaca WAJIB oleh AI sebelum memulai apapun
-# Versi: 2.0 | Status: PRODUCTION-SAFE
+# Versi: 2.1 | Status: PRODUCTION-SAFE | Terakhir disinkronkan: Juli 2026
 
 ---
 
@@ -133,18 +133,21 @@ Di `globals.css`: ganti semua CSS variable lama.
 - unit: text NOT NULL CHECK IN ('SD','SMP','SMA')
 - created_at: timestamptz
 
-**guru**
+**guru** (profil operasional — bisa ada tanpa akun auth)
 - id: uuid PK
 - nama_lengkap: text NOT NULL
 - nip: text
 - jenis_kelamin: text CHECK IN ('L','P')
-- mapel_ids: uuid[]
-- unit: text[]
+- mapel_ids: uuid[] (wajib untuk tipe guru / guru_musyrif)
+- kamar_ids: uuid[] (wajib untuk tipe musyrif / guru_musyrif — FK ke kamar)
+- unit: text[] (unit mengajar untuk guru; unit binaan SD/SMP/SMA untuk musyrif)
 - tipe: text DEFAULT 'guru' CHECK IN ('guru','musyrif','guru_musyrif')
 - email: text
 - no_hp: text
-- profile_id: uuid FK → profiles(id)
+- profile_id: uuid FK → profiles(id) nullable
 - created_at: timestamptz
+
+> Migrasi DB jika belum ada: `ALTER TABLE guru ADD COLUMN IF NOT EXISTS kamar_ids uuid[] DEFAULT '{}';`
 
 **orangtua**
 - id: uuid PK
@@ -259,6 +262,7 @@ Di `globals.css`: ganti semua CSS variable lama.
 - nama_kegiatan: text NOT NULL
 - urutan: integer DEFAULT 0
 - poin_target: integer DEFAULT 1
+- semester_id: uuid FK → semester(id) nullable (kegiatan bisa di-scope per semester)
 - created_at: timestamptz
 
 **sub_kegiatan**
@@ -319,19 +323,34 @@ Setiap kali guru input prestasi baru (createPrestasi):
    - siswa_id, tanggal, diberikan_oleh dari data prestasi
 4. Set prestasi.sudah_dilempar_kedisiplinan = true
 
-Di Dashboard Kedisiplinan: tampilkan tabel "Antrian Persetujuan Poin" berisi
+**Status implementasi (Juli 2026):**
+- Query layer ✅: `getAntrianPoinPrestasi()`, `approveAntrianPoin()` di `kedisiplinan.ts`
+- Alur insert otomatis ✅: `createPrestasi()` di `prestasi.ts`
+- UI Dashboard ❌ **BELUM**: tabel "Antrian Persetujuan Poin" di `/kedisiplinan` belum dibuat (PRD C5)
+
+Spesifikasi UI (wajib dikerjakan):
+Di Dashboard Kedisiplinan tampilkan tabel "Antrian Persetujuan Poin" berisi
 kedisiplinan WHERE sumber='prestasi' AND status='Belum Diproses'.
 Admin/user klik "Setujui" → UPDATE status='Sudah Diproses' → poin masuk rekap.
+Aksi "Tolak" → DELETE record. Bulk "Setujui Semua" untuk baris terpilih.
 
 ### 6.3 Alumni Logic
-students WHERE is_alumni=true → TIDAK muncul di tab SD/SMP/SMA
-students WHERE is_alumni=true → muncul di tab "Alumni"
-Semua relasi hanya pada menu prestasi tetap ada datanya, namun dibuatkan tab baru yaitu ALUMNI (bebarengan dengan SD/SMP/SMA). siswa alumni tidak memiliki relasi dengan kamar, mutabaah, kedisiplinan, catatan kelakuan, presensi, nilai harian, nilai uas, nilai rapor
+Gunakan kolom **`students.is_alumni`** (boolean) — BUKAN kolom `status` teks.
+- `is_alumni = true` → TIDAK muncul di tab SD/SMP/SMA
+- `is_alumni = true` → muncul di tab "Alumni"
+- Tab Alumni berdampingan dengan SD/SMP/SMA di halaman Data Siswa
+- Siswa alumni tidak memiliki relasi aktif dengan kamar, mutabaah, kedisiplinan, catatan kelakuan, presensi, nilai harian, nilai uas, nilai rapor
+- Data prestasi alumni tetap dapat ditampilkan
 
-### 6.4 Guru Multi-Mapel
+### 6.4 Guru Multi-Mapel & GuruMapelGate
 Jika profile.is_multi_mapel=true:
 - Saat input presensi/nilai → tampilkan dropdown pilih mapel dari mapel_ids[]
 - Setiap record presensi/nilai punya mata_pelajaran_id yang spesifik
+
+**GuruMapelGate** (`diknas/_components/guru-mapel-gate.tsx`):
+- Wajib di: presensi, nilai-harian, nilai-uas, bank-soal
+- Belum di: catatan kelakuan, rekap-nilai
+- Server guard: `assertGuruMapelWriteAccess()` di `diknas.ts`
 
 ### 6.5 Nilai Rapor Formula
 nilai_rapot = AVERAGE(avg_formatif, avg_sumatif, nilai_uas)
@@ -346,6 +365,8 @@ B = >= 75% dan < 90%
 C = >= 60% dan < 75%
 D = >= 40% dan < 60%
 E = < 40%
+
+**Implementasi UI (`/mutabaah/target`):** target diambil dari `kegiatan.poin_target` / `sub_kegiatan.poin_target` (fallback default 30). Tabel `target_mutabaah` ada di schema tetapi belum dipakai untuk admin CRUD.
 
 ### 6.7 Hari Libur → Auto 'L' Mutabaah
 Jika tanggal ada di tabel hari_libur:
@@ -363,13 +384,16 @@ Orang Tua: role='orangtua', isi siswa_id (cari anak)
 Guru: role='user', isi unit_mengajar, mapel_ids, kamar_ids (jika musyrif)
 Semua perlu approval admin (is_approved=false dulu)
 
-### 6.10
-Menu Tentang berisi dua tab: Tentang Aplikasi dan Panduan Pengguna.
-Pada tab Panduan Pengguna, berisi panduan user untuk role user, admin, superadmin, dan orangtua. Menu ini berada di profile pojok kanan atas setelah pengguna mengklik avatar profile.
+### 6.10 Halaman Tentang (/about)
+**Implementasi saat ini:** satu halaman scroll dengan deskripsi AMANAH + panduan conditional per role (bukan komponen Tabs terpisah).
+Akses: dropdown avatar pojok kanan atas → "Tentang".
+```
 Profile Account (avatar)
    ├─ Akun Saya
-   ├─ Tentang
+   ├─ Tentang  → /about
    └─ Keluar
+```
+Panduan per role: user/guru, musyrif, admin, superadmin, orangtua — dirender conditional berdasarkan `profile.role` dan `profile.tipe_role`.
 
 ---
 
@@ -377,57 +401,88 @@ Profile Account (avatar)
 
 ```
 src/app/(app)/
+├── dashboard/page.tsx
+├── students/page.tsx
+├── about/page.tsx
+├── account/page.tsx
 ├── mutabaah/
-│   ├── page.tsx              ← dashboard mutabaah
+│   ├── page.tsx              ← dashboard mutabaah (getMutabaahDashboardData gabungan)
 │   ├── input/page.tsx        ← input checklist harian
 │   ├── rekap/page.tsx        ← rekap per kamar/siswa
-│   ├── target/page.tsx       ← target & nilai A-E
-│   ├── kegiatan/page.tsx     ← CRUD kegiatan
-│   ├── sub-kegiatan/page.tsx ← CRUD sub kegiatan
+│   ├── target/page.tsx       ← target & nilai A-E (target dari poin_target kegiatan)
+│   ├── kegiatan/page.tsx     ← CRUD kegiatan (admin)
+│   ├── sub-kegiatan/page.tsx ← CRUD sub kegiatan (admin)
 │   └── cetak/page.tsx        ← cetak laporan mutabaah
 ├── diknas/
 │   ├── page.tsx              ← dashboard diknas
-│   ├── presensi/page.tsx     ← CRUD presensi
-│   ├── nilai-harian/page.tsx ← CRUD nilai harian
-│   ├── nilai-uas/page.tsx    ← CRUD nilai UAS
+│   ├── presensi/page.tsx     ← CRUD presensi (+ GuruMapelGate)
+│   ├── nilai-harian/page.tsx ← CRUD nilai harian (+ GuruMapelGate)
+│   ├── nilai-uas/page.tsx    ← CRUD nilai UAS (+ GuruMapelGate)
 │   ├── catatan/page.tsx      ← CRUD catatan kelakuan
-│   ├── bank-soal/page.tsx    ← CRUD bank soal
+│   ├── bank-soal/page.tsx    ← CRUD bank soal (+ GuruMapelGate)
 │   ├── rekap-nilai/page.tsx  ← rekap nilai rapor
-│   └── semester/page.tsx     ← manajemen semester
+│   ├── laporan-bulanan/page.tsx ← laporan hasil belajar bulanan (guru)
+│   └── _components/guru-mapel-gate.tsx ← gate akses mapel guru
 ├── orangtua/
 │   ├── page.tsx              ← dashboard orang tua
-│   ├── mutabaah/page.tsx     ← pantau mutabaah anak
-│   ├── diknas/page.tsx       ← pantau nilai anak
-│   ├── kedisiplinan/page.tsx ← pantau kedisiplinan anak
-│   └── prestasi/page.tsx     ← pantau prestasi anak
+│   ├── mutabaah/page.tsx
+│   ├── diknas/page.tsx       ← nilai approved only
+│   ├── kedisiplinan/page.tsx
+│   ├── prestasi/page.tsx
+│   └── laporan-bulanan/page.tsx
 ├── admin/
-│   ├── guru/page.tsx         ← CRUD data guru (BARU)
-│   ├── orangtua/page.tsx     ← CRUD data orang tua (BARU)
-│   ├── mapel/page.tsx        ← CRUD mata pelajaran (BARU)
-│   └── ... (existing)
-└── about/page.tsx            ← tentang aplikasi + panduan per role
+│   ├── overview/page.tsx
+│   ├── users/page.tsx
+│   ├── guru/page.tsx         ← CRUD profil operasional guru (tanpa buat auth)
+│   ├── orangtua/page.tsx
+│   ├── mapel/page.tsx
+│   ├── mapel/kelas/page.tsx  ← master kelas
+│   ├── tipe-nilai/page.tsx   ← master tipe nilai
+│   ├── kamar/page.tsx        ← CRUD kamar + assign musyrif
+│   ├── semester/page.tsx     ← manajemen semester & tahun pelajaran
+│   └── announcements/page.tsx
+├── kedisiplinan/ ... (existing V1)
+├── prestasi/ ... (existing V1)
+└── superadmin/ ... (existing V1)
 
 src/app/(auth)/
+├── login/page.tsx
 ├── signup/
 │   ├── page.tsx              ← pilih jalur signup
-│   ├── guru/page.tsx         ← form signup guru
-│   └── orangtua/page.tsx     ← form signup orangtua
+│   ├── guru/page.tsx
+│   └── orangtua/page.tsx
+
+src/components/
+├── providers/query-provider.tsx  ← global React Query defaults
+└── layout/sidebar.tsx            ← localStorage: amanah-sidebar-collapsed
 
 src/lib/queries/
-├── mutabaah.ts
-├── diknas.ts
+├── mutabaah.ts       ← getMutabaahDashboardData() (query gabungan dashboard)
+├── diknas.ts         ← assertGuruMapelWriteAccess()
+├── admin-extended.ts ← guru/orangtua CRUD + normalizeGuruRelations()
+├── semester.ts       ← setActiveSemester/TahunPelajaran (single-active global)
 ├── orangtua.ts
-├── guru.ts
-└── ... (existing tidak berubah)
+├── report.ts         ← laporan bulanan guru & orang tua
+├── kepesantrenan.ts
+├── kamar.ts
+└── ... (existing V1 tidak berubah)
 ```
+
+**PATH_TITLES** di `src/app/(app)/layout.tsx` harus mencakup semua route aktif.
+Saat ini belum lengkap: route `/mutabaah/*` staff dan `/orangtua/laporan-bulanan` → header fallback "Halaman".
 
 ---
 
 ## 8. SIDEBAR MENU V2 PER ROLE
 
+> Sumber kebenaran implementasi: `src/components/layout/sidebar.tsx`
+> Filter role: `minRole` + `filterMenuByRole()` — role `user` tidak melihat item `minRole: 'admin'`
+> Collapse state: localStorage key `amanah-sidebar-collapsed`
+
 ### Role: user (Guru/Musyrif)
 ```
 📊 Dashboard
+👥 Data Siswa
 📚 Akademik (DIKNAS)
    ├─ Dashboard Diknas
    ├─ Presensi
@@ -435,11 +490,13 @@ src/lib/queries/
    ├─ Nilai UAS
    ├─ Catatan Kelakuan
    ├─ Bank Soal
-   └─ Rekap Nilai
+   ├─ Rekap Nilai
+   └─ Laporan Hasil Belajar
 🕌 Kepesantrenan (Mutabaah)
    ├─ Dashboard Mutabaah
    ├─ Input Harian
    ├─ Rekap Kegiatan
+   ├─ Target & Nilai
    └─ Cetak Laporan
 ⚖️ Kedisiplinan
    ├─ Dashboard
@@ -454,37 +511,25 @@ src/lib/queries/
 
 ### Role: admin (semua user +)
 ```
-🕌 Kepesantrenan (Mutabaah)
-   ├─ Dashboard Mutabaah
-   ├─ Input Harian
-   ├─ Rekap Kegiatan
-   ├─ Target
-   └─ Cetak Laporan
-⚖️ Kedisiplinan
-   ├─ Dashboard
-   ├─ Data
-   ├─ Rekap Poin
-   ├─ Kategori
-   ├─ Divisi
-   ├─ Pasal
-   ├─ Tindakan
-   └─ Cetak Laporan
-🏆 Prestasi
-   ├─ Dashboard
-   ├─ Data
-   ├─ Event
-   ├─ Juara
-   ├─ Bidang
-   ├─ Kategori
-   └─ Cetak Laporan
+📚 Akademik — tambahan admin-only:
+   ├─ Data Mata Pelajaran
+   ├─ Data Kelas
+   └─ Tipe Nilai
+🕌 Kepesantrenan — tambahan admin-only:
+   ├─ Kegiatan
+   ├─ Sub Kegiatan
+   └─ Data Kamar
+⚖️ Kedisiplinan — tambahan admin-only:
+   ├─ Kategori, Divisi, Pasal, Tindakan
+🏆 Prestasi — tambahan admin-only:
+   ├─ Event, Juara, Bidang, Kategori
 🛡️ Admin
    ├─ Overview
    ├─ Kelola User
    ├─ Data Guru
    ├─ Data Orang Tua
-   ├─ Mata Pelajaran
-   ├─ Pengumuman
-   └─ Semester & TP
+   ├─ Semester & TP
+   └─ Pengumuman
 ```
 
 ### Role: superadmin (semua admin +)
@@ -504,24 +549,78 @@ src/lib/queries/
    ├─ Mutabaah
    ├─ Akademik (Diknas)
    ├─ Kedisiplinan
-   └─ Prestasi
+   ├─ Prestasi
+   └─ Laporan Hasil Belajar
 ```
 
 ---
 
-## 9. KOMPONEN BARU YANG DIBUTUHKAN V2
+## 9. KOMPONEN V2 — STATUS IMPLEMENTASI
 
-- src/components/ui/progress.tsx — Progress bar untuk target mutabaah
-- src/components/shared/grade-badge.tsx — Badge A/B/C/D/E untuk nilai
-- src/components/shared/approval-banner.tsx — Banner untuk notif nilai belum approve
-- src/components/mutabaah/checklist-grid.tsx — Grid checklist kegiatan per siswa
-- src/components/mutabaah/libur-banner.tsx — Banner hari libur
-- src/components/diknas/nilai-form.tsx — Reusable form nilai dengan remedial
-- src/components/orangtua/child-selector.tsx — Selector anak (jika punya >1 anak)
+### Sudah ada sebagai file terpisah:
+- `src/components/ui/progress.tsx` — progress bar
+- `src/components/shared/approval-banner.tsx` — banner nilai belum approve
+- `src/components/orangtua/child-selector.tsx` — selector anak
+- `src/app/(app)/diknas/_components/guru-mapel-gate.tsx` — gate akses mapel guru
+
+### Logika ada inline di halaman (belum diekstrak ke komponen terpisah):
+- Checklist grid mutabaah → `mutabaah/input/page.tsx`
+- Banner hari libur → `mutabaah/input/page.tsx`
+- Badge nilai A-E → `mutabaah/target/page.tsx`
+- Form nilai remedial → inline di `diknas/nilai-harian` & `nilai-uas`
+
+> Komponen di bawah ini OPSIONAL untuk refactor masa depan — jangan wajibkan pembuatan file baru jika logika sudah berfungsi inline:
+> `checklist-grid.tsx`, `libur-banner.tsx`, `grade-badge.tsx`, `nilai-form.tsx`
 
 ---
 
-## 10. POIN PRESTASI — MAPPING PASAL (WAJIB INSERT KE SUPABASE)
+## 10. POLA REACT QUERY & PERFORMA (WAJIB IKUTI)
+
+File: `src/components/providers/query-provider.tsx`
+
+```typescript
+defaultOptions: {
+  queries: {
+    refetchOnWindowFocus: false,
+    staleTime: 30 * 1000,
+    retry: false,
+  },
+}
+```
+
+Aturan tambahan:
+1. **`queryKey` wajib mencakup semua filter aktif** — jangan `useEffect` + `refetch()` jika filter sudah di key
+2. **Gabungkan query dashboard** yang memakai resolver/filter sama (contoh: `getMutabaahDashboardData()` memanggil `resolveSiswaIds` sekali, lalu `Promise.all`)
+3. **`EMPTY_ARRAY` stabil di luar komponen** — jangan `const x = []` di dalam render (hindari re-fetch loop)
+4. **`invalidateQueries` harus mencakup cache terkait** setelah mutasi master (mis. `active-semester`, `active-semester-mutabaah`, `active-semester-diknas`)
+5. Halaman dashboard boleh override `staleTime` (contoh kedisiplinan: 60 detik)
+
+---
+
+## 11. SEMESTER, TAHUN PELAJARAN & KEAMANAN QUERY SUPABASE
+
+### Aturan single-active (GLOBAL):
+- Hanya **1** `tahun_pelajaran.is_aktif = true` dalam seluruh sistem
+- Hanya **1** `semester.is_aktif = true` dalam seluruh sistem (bukan per tahun pelajaran)
+- Implementasi: `src/lib/queries/semester.ts` — reset semua aktif dulu, baru set yang dipilih
+
+### Larangan filter UUID kosong:
+```typescript
+// ❌ JANGAN — PostgreSQL error: invalid input syntax for type uuid: ""
+.neq('id', '')
+
+// ✅ GUNAKAN
+.eq('is_aktif', true)  // untuk reset flag aktif
+// atau guard di aplikasi:
+if (!id || id.trim() === '') return  // sebelum mutasi
+```
+
+### Guard UUID wajib di UI sebelum panggil mutasi:
+File: `src/app/(app)/admin/semester/page.tsx` — `handleActivateTahun()`, `handleActivateSemester()`
+
+---
+
+## 12. POIN PRESTASI — MAPPING PASAL (WAJIB INSERT KE SUPABASE)
 
 Sebelum coding, jalankan SUPABASE_MIGRATIONS.sql untuk insert pasal-pasal prestasi.
 Poin maksimal 30. Makin tinggi tingkat + makin bagus juara = makin besar poin.
@@ -536,7 +635,7 @@ Poin maksimal 30. Makin tinggi tingkat + makin bagus juara = makin besar poin.
 | Nasional | 25 | 22 | 19 | 14 |
 | Internasional | 30 | 27 | 24 | 18 |
 
-## Poin 21 deskripsi AMANAH Platform
+## 13. POIN 21 DESKRIPSI AMANAH PLATFORM
 AMANAH (Aplikasi Manajemen Anak & Sekolah), Amanah adalah platform ekosistem digital sekolah terpadu yang hadir sebagai solusi total untuk menjembatani komunikasi, transparansi, dan pemantauan perkembangan anak secara real-time. 
 Dirancang khusus untuk institusi pendidikan modern dan berasrama (pesantren), Amanah mengubah proses pencatatan konvensional yang rumit menjadi satu sistem manajemen digital yang praktis, cepat, dan terintegrasi dalam satu genggaman. Mengapa AMANAH adalah Solusi yang Anda Butuhkan?
 Seringkali, perkembangan anak di sekolah—baik dari sisi akademis, karakter, maupun spiritual—terhambat oleh sekat komunikasi antara pihak sekolah, asrama, dan rumah. Amanah hadir memecahkan masalah tersebut dengan menyatukan tiga pilar utama pendidikan: Guru, Musyrif, dan Orang Tua ke dalam satu ekosistem informasi yang transparan dan akurat.

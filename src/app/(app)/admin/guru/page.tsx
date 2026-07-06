@@ -4,7 +4,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { type ColumnDef } from '@tanstack/react-table'
 import { Edit, ExternalLink, Plus, Search, Trash2, X } from 'lucide-react'
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { PageHeader } from '@/components/layout/page-header'
@@ -38,11 +38,11 @@ import { logAudit } from '@/lib/audit/log'
 import {
   createGuru,
   deleteGuru,
-  getAllMapel,
   getGuru,
   updateGuru,
   type CreateGuruInput,
 } from '@/lib/queries/admin-extended'
+import { getKamarOptions, getMataKuliah } from '@/lib/queries/students'
 import type { Guru, JenisKelamin, MataPelajaran, TipeGuru, Unit } from '@/lib/supabase/types'
 
 const PAGE_SIZE_OPTIONS = [10, 20, 30, 50] as const
@@ -54,16 +54,46 @@ const TIPE_GURU_LABEL: Record<TipeGuru, string> = {
   guru_musyrif: 'Guru & Musyrif',
 }
 
-const guruSchema = z.object({
-  nama_lengkap: z.string().min(2, 'Nama lengkap minimal 2 karakter'),
-  nip: z.string().optional(),
-  jenis_kelamin: z.enum(['L', 'P']).optional(),
-  tipe: z.enum(['guru', 'musyrif', 'guru_musyrif']),
-  mapel_ids: z.array(z.string()).optional(),
-  unit: z.array(z.string()).min(1, 'Pilih minimal 1 unit'),
-  email: z.string().email('Format email tidak valid').optional().or(z.literal('')),
-  no_hp: z.string().optional(),
-})
+const guruSchema = z
+  .object({
+    nama_lengkap: z.string().min(2, 'Nama lengkap minimal 2 karakter'),
+    nip: z.string().optional(),
+    jenis_kelamin: z.enum(['L', 'P']).optional(),
+    tipe: z.enum(['guru', 'musyrif', 'guru_musyrif']),
+    mapel_ids: z.array(z.string()).optional(),
+    kamar_ids: z.array(z.string()).optional(),
+    unit: z.array(z.string()).optional(),
+    email: z.string().email('Format email tidak valid').optional().or(z.literal('')),
+    no_hp: z.string().optional(),
+  })
+  .superRefine((data, ctx) => {
+    const isGuru = data.tipe === 'guru' || data.tipe === 'guru_musyrif'
+    const isMusyrif = data.tipe === 'musyrif' || data.tipe === 'guru_musyrif'
+
+    if (isGuru && (!data.unit || data.unit.length === 0)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Pilih minimal 1 unit mengajar',
+        path: ['unit'],
+      })
+    }
+
+    if (data.tipe === 'musyrif' && (!data.unit || data.unit.length === 0)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Pilih minimal 1 unit (SD/SMP/SMA) untuk menampilkan kamar',
+        path: ['unit'],
+      })
+    }
+
+    if (isMusyrif && (!data.kamar_ids || data.kamar_ids.length === 0)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Pilih minimal 1 kamar yang dibina',
+        path: ['kamar_ids'],
+      })
+    }
+  })
 
 type GuruFormValues = z.infer<typeof guruSchema>
 
@@ -75,6 +105,7 @@ function guruToRecord(item: Guru): Record<string, unknown> {
     jenis_kelamin: item.jenis_kelamin,
     tipe: item.tipe,
     mapel_ids: item.mapel_ids,
+    kamar_ids: item.kamar_ids,
     unit: item.unit,
     email: item.email,
     no_hp: item.no_hp,
@@ -100,6 +131,8 @@ export default function GuruPage() {
   const [editingItem, setEditingItem] = useState<Guru | null>(null)
   const [deletingItem, setDeletingItem] = useState<Guru | null>(null)
   const [mapelSearch, setMapelSearch] = useState('')
+  const [kamarSearch, setKamarSearch] = useState('')
+  const [mengasuhLebihDari1Kamar, setMengasuhLebihDari1Kamar] = useState(false)
 
   const debouncedSearch = useDebounce(search, 300)
   const isFormOpen = isAddOpen || isEditOpen
@@ -111,14 +144,20 @@ export default function GuruPage() {
       nip: '',
       tipe: 'guru',
       mapel_ids: [],
+      kamar_ids: [],
       unit: [],
       email: '',
       no_hp: '',
     },
   })
 
+  const selectedTipe = form.watch('tipe')
   const selectedMapelIds = form.watch('mapel_ids') ?? []
+  const selectedKamarIds = form.watch('kamar_ids') ?? []
   const selectedUnits = form.watch('unit') ?? []
+
+  const isGuruRole = selectedTipe === 'guru' || selectedTipe === 'guru_musyrif'
+  const isMusyrifRole = selectedTipe === 'musyrif' || selectedTipe === 'guru_musyrif'
 
   const queryFilters = useMemo(
     () => ({ search: debouncedSearch || undefined, page, pageSize }),
@@ -131,22 +170,73 @@ export default function GuruPage() {
   })
 
   const { data: allMapel = [] } = useQuery({
-    queryKey: ['all-mapel'],
-    queryFn: () => getAllMapel(),
-    enabled: true,
+    queryKey: ['all-mapel-guru-table'],
+    queryFn: () => getMataKuliah(['SD', 'SMP', 'SMA']),
   })
 
+  const { data: mapelData = [], isLoading: isMapelLoading } = useQuery({
+    queryKey: ['mapel-options-guru-admin', selectedUnits],
+    queryFn: () => getMataKuliah(selectedUnits),
+    enabled: isFormOpen && isGuruRole && selectedUnits.length > 0,
+  })
+
+  const kamarUnits = selectedUnits.length > 0 ? selectedUnits : undefined
+  const { data: kamarData = [], isLoading: isKamarLoading } = useQuery({
+    queryKey: ['kamar-options-guru-admin', kamarUnits, selectedTipe],
+    queryFn: () => getKamarOptions(kamarUnits),
+    enabled: isFormOpen && isMusyrifRole && selectedUnits.length > 0,
+  })
+
+  useEffect(() => {
+    if (selectedTipe === 'musyrif') {
+      form.setValue('mapel_ids', [])
+    } else if (selectedTipe === 'guru') {
+      form.setValue('kamar_ids', [])
+    }
+  }, [selectedTipe, form])
+
+  const serializedUnits = selectedUnits.join(',')
+  useEffect(() => {
+    if (isGuruRole) {
+      form.setValue('mapel_ids', [])
+    }
+    if (isMusyrifRole) {
+      form.setValue('kamar_ids', [])
+    }
+  }, [serializedUnits, isGuruRole, isMusyrifRole, form])
+
+  useEffect(() => {
+    if (!mengasuhLebihDari1Kamar && selectedKamarIds.length > 1) {
+      form.setValue('kamar_ids', [selectedKamarIds[0]], { shouldValidate: true })
+    }
+  }, [mengasuhLebihDari1Kamar, selectedKamarIds, form])
+
   const filteredMapel: MataPelajaran[] = useMemo(() => {
-    const byUnit = allMapel.filter((m) => selectedUnits.includes(m.unit))
-    if (!mapelSearch) return byUnit
-    return byUnit.filter((m) =>
+    if (!mapelSearch) return mapelData
+    return mapelData.filter((m) =>
       m.nama_mapel.toLowerCase().includes(mapelSearch.toLowerCase())
     )
-  }, [allMapel, selectedUnits, mapelSearch])
+  }, [mapelData, mapelSearch])
 
   const mapelOptions: ComboboxOption[] = useMemo(
     () => filteredMapel.map((m) => ({ value: m.id, label: `${m.nama_mapel} (${m.unit})` })),
     [filteredMapel]
+  )
+
+  const filteredKamar = useMemo(() => {
+    if (!kamarSearch) return kamarData
+    return kamarData.filter((k) =>
+      k.nama_kamar.toLowerCase().includes(kamarSearch.toLowerCase())
+    )
+  }, [kamarData, kamarSearch])
+
+  const kamarOptions: ComboboxOption[] = useMemo(
+    () =>
+      filteredKamar.map((k) => ({
+        value: k.id,
+        label: k.unit ? `${k.nama_kamar} (${k.unit})` : k.nama_kamar,
+      })),
+    [filteredKamar]
   )
 
   const getUserId = (): string | null => profile?.user_id ?? null
@@ -159,24 +249,48 @@ export default function GuruPage() {
     setIsAddOpen(false)
     setIsEditOpen(false)
     setEditingItem(null)
-    form.reset({ nama_lengkap: '', nip: '', tipe: 'guru', mapel_ids: [], unit: [], email: '', no_hp: '' })
+    setMengasuhLebihDari1Kamar(false)
+    form.reset({
+      nama_lengkap: '',
+      nip: '',
+      tipe: 'guru',
+      mapel_ids: [],
+      kamar_ids: [],
+      unit: [],
+      email: '',
+      no_hp: '',
+    })
     setMapelSearch('')
+    setKamarSearch('')
   }
 
   const openAddDialog = () => {
     setEditingItem(null)
-    form.reset({ nama_lengkap: '', nip: '', tipe: 'guru', mapel_ids: [], unit: [], email: '', no_hp: '' })
+    setMengasuhLebihDari1Kamar(false)
+    form.reset({
+      nama_lengkap: '',
+      nip: '',
+      tipe: 'guru',
+      mapel_ids: [],
+      kamar_ids: [],
+      unit: [],
+      email: '',
+      no_hp: '',
+    })
     setIsAddOpen(true)
   }
 
   const openEditDialog = (item: Guru) => {
     setEditingItem(item)
+    const kamarIds = item.kamar_ids ?? []
+    setMengasuhLebihDari1Kamar(kamarIds.length > 1)
     form.reset({
       nama_lengkap: item.nama_lengkap,
       nip: item.nip ?? '',
       jenis_kelamin: (item.jenis_kelamin as JenisKelamin) ?? undefined,
       tipe: item.tipe,
       mapel_ids: item.mapel_ids ?? [],
+      kamar_ids: kamarIds,
       unit: item.unit ?? [],
       email: item.email ?? '',
       no_hp: item.no_hp ?? '',
@@ -189,16 +303,36 @@ export default function GuruPage() {
     setIsDeleteOpen(true)
   }
 
-  const buildPayload = (values: GuruFormValues): CreateGuruInput => ({
-    nama_lengkap: values.nama_lengkap,
-    nip: values.nip || undefined,
-    jenis_kelamin: values.jenis_kelamin,
-    tipe: values.tipe,
-    mapel_ids: values.mapel_ids,
-    unit: values.unit,
-    email: values.email || undefined,
-    no_hp: values.no_hp || undefined,
-  })
+  const buildPayload = (values: GuruFormValues): CreateGuruInput => {
+    const isGuru = values.tipe === 'guru' || values.tipe === 'guru_musyrif'
+    const isMusyrif = values.tipe === 'musyrif' || values.tipe === 'guru_musyrif'
+
+    return {
+      nama_lengkap: values.nama_lengkap,
+      nip: values.nip || undefined,
+      jenis_kelamin: values.jenis_kelamin,
+      tipe: values.tipe,
+      unit: isGuru || isMusyrif ? values.unit ?? [] : [],
+      mapel_ids: isGuru ? values.mapel_ids ?? [] : [],
+      kamar_ids: isMusyrif ? values.kamar_ids ?? [] : [],
+      email: values.email || undefined,
+      no_hp: values.no_hp || undefined,
+    }
+  }
+
+  const handleTipeChange = (value: TipeGuru) => {
+    form.setValue('tipe', value, { shouldValidate: true })
+    if (value === 'musyrif') {
+      form.setValue('mapel_ids', [])
+    } else if (value === 'guru') {
+      form.setValue('kamar_ids', [])
+      setMengasuhLebihDari1Kamar(false)
+    }
+  }
+
+  const showUnitSection = isGuruRole || selectedTipe === 'musyrif'
+  const unitSectionLabel =
+    selectedTipe === 'musyrif' ? 'Unit Binaan' : 'Unit Mengajar'
 
   const createMutation = useMutation({
     mutationFn: (input: CreateGuruInput) => createGuru(input),
@@ -271,6 +405,19 @@ export default function GuruPage() {
     form.setValue('mapel_ids', updated, { shouldValidate: true })
   }
 
+  const toggleKamar = (kamarId: string) => {
+    const current = selectedKamarIds
+    let updated: string[]
+    if (mengasuhLebihDari1Kamar) {
+      updated = current.includes(kamarId)
+        ? current.filter((id) => id !== kamarId)
+        : [...current, kamarId]
+    } else {
+      updated = current.includes(kamarId) ? [] : [kamarId]
+    }
+    form.setValue('kamar_ids', updated, { shouldValidate: true })
+  }
+
   const toggleUnit = (unit: string) => {
     const current = selectedUnits
     const updated = current.includes(unit)
@@ -280,7 +427,7 @@ export default function GuruPage() {
 
     const currentMapelIds = form.getValues('mapel_ids') ?? []
     const updatedMapelIds = currentMapelIds.filter((id) => {
-      const mapel = allMapel.find((m) => m.id === id)
+      const mapel = mapelData.find((m) => m.id === id)
       return mapel && updated.includes(mapel.unit)
     })
     form.setValue('mapel_ids', updatedMapelIds, { shouldValidate: true })
@@ -507,12 +654,7 @@ export default function GuruPage() {
             {/* Tipe */}
             <div className="space-y-2">
               <Label htmlFor="tipe-guru">Tipe</Label>
-              <Select
-                value={form.watch('tipe')}
-                onValueChange={(value) =>
-                  form.setValue('tipe', value as TipeGuru, { shouldValidate: true })
-                }
-              >
+              <Select value={selectedTipe} onValueChange={handleTipeChange}>
                 <SelectTrigger id="tipe-guru">
                   <SelectValue placeholder="Pilih tipe" />
                 </SelectTrigger>
@@ -526,106 +668,204 @@ export default function GuruPage() {
               </Select>
             </div>
 
-            {/* Unit (multi-checkbox) */}
-            <div className="space-y-2">
-              <Label>Unit Mengajar</Label>
-              <div className="flex gap-4">
-                {UNITS.map((unit) => (
-                  <div key={unit} className="flex items-center gap-2">
+            {/* Unit SD/SMP/SMA — Guru, Musyrif, atau keduanya */}
+            {showUnitSection && (
+              <div className="space-y-2">
+                <Label>{unitSectionLabel}</Label>
+                <div className="flex gap-4">
+                  {UNITS.map((unit) => (
+                    <div key={unit} className="flex items-center gap-2">
+                      <Checkbox
+                        id={`guru-unit-${unit}`}
+                        checked={selectedUnits.includes(unit)}
+                        onCheckedChange={() => toggleUnit(unit)}
+                      />
+                      <Label htmlFor={`guru-unit-${unit}`} className="font-normal">
+                        {unit}
+                      </Label>
+                    </div>
+                  ))}
+                </div>
+                {form.formState.errors.unit && (
+                  <p className="text-xs text-status-red">
+                    {form.formState.errors.unit.message}
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* Mata Pelajaran — hanya Guru / Guru & Musyrif */}
+            {isGuruRole && (
+              <div className="space-y-2">
+                <Label>Mata Pelajaran (opsional)</Label>
+                {selectedUnits.length === 0 ? (
+                  <p className="text-xs text-[var(--text-tertiary)] italic">
+                    Pilih unit mengajar terlebih dahulu untuk menampilkan daftar mata pelajaran.
+                  </p>
+                ) : (
+                  <>
+                    <div className="relative">
+                      <Combobox
+                        options={mapelOptions}
+                        value=""
+                        onSelect={(val) => toggleMapel(val)}
+                        onSearch={setMapelSearch}
+                        placeholder="Cari mata pelajaran..."
+                        isLoading={isMapelLoading}
+                      />
+                    </div>
+                    {mapelOptions.length > 0 ? (
+                      <div className="mt-2 max-h-32 space-y-1 overflow-y-auto rounded-md border border-[var(--border)] p-2">
+                        {mapelOptions.map((opt) => (
+                          <div key={opt.value} className="flex items-center gap-2">
+                            <Checkbox
+                              id={`mapel-${opt.value}`}
+                              checked={selectedMapelIds.includes(opt.value)}
+                              onCheckedChange={() => toggleMapel(opt.value)}
+                            />
+                            <Label htmlFor={`mapel-${opt.value}`} className="font-normal text-sm">
+                              {opt.label}
+                            </Label>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      mapelSearch && (
+                        <p className="text-xs text-status-red italic mt-2">
+                          Mata pelajaran tidak ditemukan
+                        </p>
+                      )
+                    )}
+                    {selectedMapelIds.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 mt-2">
+                        {selectedMapelIds.map((id) => {
+                          const mapelObj = mapelData.find((m) => m.id === id) ?? allMapel.find((m) => m.id === id)
+                          if (!mapelObj) return null
+                          return (
+                            <Badge
+                              key={id}
+                              variant="secondary"
+                              className="flex items-center gap-1.5 py-1 px-2.5 text-xs bg-[var(--surface-3)] hover:bg-[var(--surface-4)] text-[var(--text-primary)] border border-[var(--border)] font-normal rounded-md"
+                            >
+                              <span>
+                                {mapelObj.nama_mapel} - {mapelObj.unit}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => toggleMapel(id)}
+                                className="rounded-full p-0.5 hover:bg-[var(--surface-4)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors focus:outline-none"
+                                aria-label={`Hapus ${mapelObj.nama_mapel}`}
+                              >
+                                <X className="h-3 w-3" />
+                              </button>
+                            </Badge>
+                          )
+                        })}
+                      </div>
+                    )}
+                    {selectedMapelIds.length > 0 && (
+                      <p className="text-xs text-[var(--text-secondary)] mt-1">
+                        {selectedMapelIds.length} mata pelajaran dipilih
+                      </p>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* Kamar Diasuh — hanya Musyrif / Guru & Musyrif */}
+            {isMusyrifRole && (
+              <div className="space-y-3 border-t border-[var(--border)] pt-3">
+                <div className="flex items-center justify-between">
+                  <Label>Pilihan Kamar</Label>
+                  <div className="flex items-center gap-2">
                     <Checkbox
-                      id={`guru-unit-${unit}`}
-                      checked={selectedUnits.includes(unit)}
-                      onCheckedChange={() => toggleUnit(unit)}
+                      id="multi-kamar-guru-admin"
+                      checked={mengasuhLebihDari1Kamar}
+                      onCheckedChange={(checked) => setMengasuhLebihDari1Kamar(!!checked)}
                     />
-                    <Label htmlFor={`guru-unit-${unit}`} className="font-normal">
-                      {unit}
+                    <Label htmlFor="multi-kamar-guru-admin" className="font-normal text-xs cursor-pointer">
+                      Mengasuh lebih dari 1 kamar
                     </Label>
                   </div>
-                ))}
-              </div>
-              {form.formState.errors.unit && (
-                <p className="text-xs text-status-red">
-                  {form.formState.errors.unit.message}
-                </p>
-              )}
-            </div>
-
-            {/* Mata Pelajaran (multi-select via combobox + checkboxes) */}
-            <div className="space-y-2">
-              <Label>Mata Pelajaran (opsional)</Label>
-              {selectedUnits.length === 0 ? (
-                <p className="text-xs text-[var(--text-tertiary)] italic">
-                  Pilih unit mengajar terlebih dahulu untuk menampilkan daftar mata pelajaran.
-                </p>
-              ) : (
-                <>
-                  <div className="relative">
-                    <Combobox
-                      options={mapelOptions}
-                      value=""
-                      onSelect={(val) => toggleMapel(val)}
-                      onSearch={setMapelSearch}
-                      placeholder="Cari mata pelajaran..."
-                      isLoading={false}
-                    />
-                  </div>
-                  {mapelOptions.length > 0 ? (
-                    <div className="mt-2 max-h-32 space-y-1 overflow-y-auto rounded-md border border-[var(--border)] p-2">
-                      {mapelOptions.map((opt) => (
-                        <div key={opt.value} className="flex items-center gap-2">
-                          <Checkbox
-                            id={`mapel-${opt.value}`}
-                            checked={selectedMapelIds.includes(opt.value)}
-                            onCheckedChange={() => toggleMapel(opt.value)}
-                          />
-                          <Label htmlFor={`mapel-${opt.value}`} className="font-normal text-sm">
-                            {opt.label}
-                          </Label>
-                        </div>
-                      ))}
+                </div>
+                {selectedUnits.length === 0 ? (
+                  <p className="text-xs text-[var(--text-tertiary)] italic">
+                    Pilih unit (SD/SMP/SMA) terlebih dahulu untuk menampilkan daftar kamar.
+                  </p>
+                ) : (
+                  <>
+                    <div className="relative">
+                      <Combobox
+                        options={kamarOptions}
+                        value={selectedKamarIds[0] ?? ''}
+                        onSelect={() => {}}
+                        onSearch={setKamarSearch}
+                        placeholder="Cari kamar..."
+                        isLoading={isKamarLoading}
+                        emptyMessage={
+                          kamarSearch
+                            ? 'Kamar tidak ditemukan'
+                            : 'Belum ada kamar tersedia'
+                        }
+                      />
                     </div>
-                  ) : (
-                    mapelSearch && (
-                      <p className="text-xs text-status-red italic mt-2">
-                        Mata pelajaran tidak ditemukan
-                      </p>
-                    )
-                  )}
-                  {selectedMapelIds.length > 0 && (
-                    <div className="flex flex-wrap gap-1.5 mt-2">
-                      {selectedMapelIds.map((id) => {
-                        const mapelObj = allMapel.find((m) => m.id === id)
-                        if (!mapelObj) return null
-                        return (
-                          <Badge
-                            key={id}
-                            variant="secondary"
-                            className="flex items-center gap-1.5 py-1 px-2.5 text-xs bg-[var(--surface-3)] hover:bg-[var(--surface-4)] text-[var(--text-primary)] border border-[var(--border)] font-normal rounded-md"
-                          >
-                            <span>
-                              {mapelObj.nama_mapel} - {mapelObj.unit}
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => toggleMapel(id)}
-                              className="rounded-full p-0.5 hover:bg-[var(--surface-4)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors focus:outline-none"
-                              aria-label={`Hapus ${mapelObj.nama_mapel}`}
+                    {kamarOptions.length > 0 ? (
+                      <div className="mt-2 max-h-36 space-y-1 overflow-y-auto rounded-md border border-[var(--border)] p-2 bg-[var(--surface-2)]">
+                        {kamarOptions.map((opt) => (
+                          <div key={opt.value} className="flex items-center gap-2">
+                            <Checkbox
+                              id={`kamar-guru-${opt.value}`}
+                              checked={selectedKamarIds.includes(opt.value)}
+                              onCheckedChange={() => toggleKamar(opt.value)}
+                            />
+                            <Label htmlFor={`kamar-guru-${opt.value}`} className="font-normal text-sm cursor-pointer">
+                              {opt.label}
+                            </Label>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      kamarSearch && (
+                        <p className="text-xs text-status-red italic mt-2">
+                          Kamar tidak ditemukan
+                        </p>
+                      )
+                    )}
+                    {selectedKamarIds.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 mt-2">
+                        {selectedKamarIds.map((id) => {
+                          const kamarObj = kamarData.find((k) => k.id === id)
+                          if (!kamarObj) return null
+                          return (
+                            <Badge
+                              key={id}
+                              variant="secondary"
+                              className="flex items-center gap-1.5 py-1 px-2.5 text-xs"
                             >
-                              <X className="h-3 w-3" />
-                            </button>
-                          </Badge>
-                        )
-                      })}
-                    </div>
-                  )}
-                  {selectedMapelIds.length > 0 && (
-                    <p className="text-xs text-[var(--text-secondary)] mt-1">
-                      {selectedMapelIds.length} mata pelajaran dipilih
-                    </p>
-                  )}
-                </>
-              )}
-            </div>
+                              <span>{kamarObj.nama_kamar}</span>
+                              <button
+                                type="button"
+                                onClick={() => toggleKamar(id)}
+                                className="rounded-full p-0.5 hover:bg-[var(--surface-4)]"
+                                aria-label={`Hapus ${kamarObj.nama_kamar}`}
+                              >
+                                <X className="h-3 w-3" />
+                              </button>
+                            </Badge>
+                          )
+                        })}
+                      </div>
+                    )}
+                    {form.formState.errors.kamar_ids && (
+                      <p className="text-xs text-status-red">
+                        {form.formState.errors.kamar_ids.message}
+                      </p>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
 
             {/* Email */}
             <div className="space-y-2">

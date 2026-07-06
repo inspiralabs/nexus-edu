@@ -1,5 +1,5 @@
 # .antigravityrules — AMANAH Platform V2
-# Versi: 2.0.0 
+# Versi: 2.1.0 | Terakhir disinkronkan: Juli 2026
 # Antigravity WAJIB membaca dan mengikuti SEMUA aturan ini setiap sesi
 
 ## IDENTITAS PROYEK
@@ -57,7 +57,9 @@ Jika prompt yang diberikan user kurang tepat karena kurang sesuai dengan MASTER_
 ❌ JANGAN lupa error handling di setiap Supabase query
 ❌ JANGAN lupa loading skeleton di setiap data fetch
 ❌ JANGAN lupa empty state di setiap tabel/list
-❌ JANGAN gunakan warna hijau #2D7A4F atau emas #C9A84C lagi — sudah diganti (lihat Design System)
+❌ JANGAN hardcode warna chart Recharts dengan #2D7A4F atau #C9A84C — gunakan var(--primary) atau #1e5d7e
+❌ JANGAN gunakan .neq('id', '') atau filter UUID dengan string kosong di Supabase
+❌ JANGAN buat const [] di dalam render untuk default query data — gunakan EMPTY_ARRAY stabil di luar komponen
 ❌ JANGAN menyebut atau menampilkan kata "SQA Platform" atau "Nexus-Edu" di UI mana pun
 ❌ JANGAN tampilkan data nilai siswa ke role orang_tua sebelum status approved oleh guru
 ❌ JANGAN izinkan guru input/update/delete di luar mata pelajarannya sendiri
@@ -68,7 +70,7 @@ Jika prompt yang diberikan user kurang tepat karena kurang sesuai dengan MASTER_
 ## KEWAJIBAN — SELALU LAKUKAN
 
 ```
-✅ SELALU baca PRD_V2.md sebelum mulai setiap sesi
+✅ SELALU baca PRD.md sebelum mulai setiap sesi (alias: PRD_V2 — gunakan file PRD.md)
 ✅ SELALU gunakan TypeScript strict — semua props dan return types harus typed
 ✅ SELALU gunakan komponen dari /components/ui/ dan /components/shared/
 ✅ SELALU gunakan Tailwind CSS untuk styling
@@ -187,201 +189,240 @@ if (profile?.role !== 'admin' && profile?.role !== 'superadmin') redirect('/dash
 ### Field Tambahan di Tabel profiles (V2):
 ```sql
 -- Tambahkan ke tabel profiles yang sudah ada:
-role: text CHECK IN ('user', 'admin', 'superadmin', 'orang_tua')  -- tambah orang_tua
-divisi_asal: text  -- 'DIKNAS' | 'KEPESANTRENAN'
-unit_asal: text    -- 'SD' | 'SMP' | 'SMA'
-kamar_ids: uuid[]  -- untuk musyrif/musyrifah yang mengemban kamar
-student_ids: uuid[] -- khusus orang_tua, relasi ke students yang dipantau
+role: text CHECK IN ('user', 'admin', 'superadmin', 'orang_tua')
+tipe_role: text CHECK IN ('guru', 'musyrif', 'guru_musyrif', 'orangtua')
+unit_mengajar: text[]   -- ['SD','SMP','SMA']
+mapel_ids: uuid[]       -- FK ke mata_pelajaran (guru)
+kamar_ids: uuid[]       -- FK ke kamar (musyrif)
+is_multi_mapel: boolean DEFAULT false
+is_musyrif: boolean DEFAULT false
+pekerjaan: text         -- untuk orang tua
+siswa_id: uuid          -- legacy; relasi utama orang tua via orangtua_siswa
 ```
+
+> Relasi orang tua ↔ siswa: tabel junction **`orangtua_siswa`** (bukan `student_ids[]` di profiles).
 
 ---
 
 ## SIDEBAR MENU STRUCTURE V2
-> baca MASTER_CONTEXT.md dan PRD.md untuk struktur lengkap.
+> baca MASTER_CONTEXT.md §8 dan PRD.md untuk struktur lengkap.
 
-### Sidebar bisa di-hide/unhide:
-- Gunakan state `sidebarOpen` di layout
-- Simpan preferensi di localStorage key `amanah_sidebar_open`
-- Toggle button di header kiri
+### Sidebar bisa di-collapse:
+- State `isCollapsed` di `sidebar.tsx`
+- Simpan preferensi di localStorage key **`amanah-sidebar-collapsed`**
+- Toggle button di sidebar (icon PanelLeftClose / PanelLeftOpen)
+- Filter menu: `minRole` + `filterMenuByRole()` — role `user` tidak melihat item admin-only
 
 ---
 
-## STRUKTUR DATABASE V2 — TABEL BARU
+## STRUKTUR DATABASE V2 — NAMA TABEL RESMI (SESUAI KODE)
 
-> Tabel V1 TIDAK BOLEH diubah strukturnya. Tabel baru di bawah ini BOLEH dibuat.
+> ⚠️ Nama tabel di bawah ini adalah **sumber kebenaran**. Jangan gunakan alias lama (`teachers`, `diknas_presensi`, `mutabaah_presensi`, dll).
 
-### Tabel: teachers (data guru)
+### Tabel: guru (profil operasional — bisa tanpa akun auth)
 ```sql
-id: uuid PK DEFAULT uuid_generate_v4()
+id: uuid PK
 nama_lengkap: text NOT NULL
 nip: text
 email: text
-nomor_hp: text
-divisi: text CHECK IN ('DIKNAS', 'KEPESANTRENAN')
-unit: text CHECK IN ('SD', 'SMP', 'SMA')
-mapel_ids: uuid[]  -- FK ke mata_pelajaran.id, bisa lebih dari satu
-created_at: timestamptz DEFAULT now()
+no_hp: text
+jenis_kelamin: text CHECK IN ('L','P')
+tipe: text CHECK IN ('guru','musyrif','guru_musyrif')
+unit: text[]              -- unit mengajar / unit binaan
+mapel_ids: uuid[]         -- FK ke mata_pelajaran
+kamar_ids: uuid[]         -- FK ke kamar (musyrif)
+profile_id: uuid FK → profiles(id) NULLABLE
+created_at: timestamptz
 ```
 
 ### Tabel: mata_pelajaran
 ```sql
-id: uuid PK DEFAULT uuid_generate_v4()
+id: uuid PK
 nama_mapel: text NOT NULL
-kategori: text NOT NULL  -- 'DIKNAS SD' | 'DIKNAS SMP' | 'DIKNAS SMA' | 'KEPESANTRENAN SD' | dst
+kategori: text NOT NULL
 unit: text CHECK IN ('SD', 'SMP', 'SMA')
-created_at: timestamptz DEFAULT now()
+created_at: timestamptz
 ```
 
 ### Tabel: kamar
 ```sql
-id: uuid PK DEFAULT uuid_generate_v4()
+id: uuid PK
 nama_kamar: text NOT NULL
 unit: text CHECK IN ('SD', 'SMP', 'SMA')
-musyrif_ids: uuid[]  -- FK ke profiles.id
-created_at: timestamptz DEFAULT now()
+musyrif_id: uuid FK → profiles(id)  -- SINGULAR (bukan array)
+created_at: timestamptz
+```
+> Musyrif yang mengemban banyak kamar: `profiles.kamar_ids uuid[]` + `guru.kamar_ids uuid[]`
+
+### Tabel: tahun_pelajaran
+```sql
+id: uuid PK
+nama: text NOT NULL
+tahun_mulai: integer
+tahun_selesai: integer
+is_aktif: boolean DEFAULT false
+created_at: timestamptz
 ```
 
 ### Tabel: semester
 ```sql
-id: uuid PK DEFAULT uuid_generate_v4()
-nama_semester: text NOT NULL  -- cth: 'Semester 1 2025/2026'
-tahun_pelajaran: text NOT NULL  -- cth: '2025/2026'
-nomor_semester: integer NOT NULL  -- 1, 2, 3, 4, 5, 6
-tanggal_mulai: date NOT NULL
-tanggal_selesai: date NOT NULL
-is_active: boolean DEFAULT false
-unit: text CHECK IN ('SD', 'SMP', 'SMA')
-kelas: text  -- opsional, jika spesifik kelas
-created_at: timestamptz DEFAULT now()
+id: uuid PK
+tahun_pelajaran_id: uuid FK → tahun_pelajaran(id)
+nomor_semester: integer CHECK IN (1, 2)
+tanggal_mulai: date
+tanggal_selesai: date
+is_aktif: boolean DEFAULT false  -- SINGLE-ACTIVE GLOBAL
+created_at: timestamptz
 ```
 
-### Tabel: mutabaah_kegiatan
+### Tabel: kegiatan (mutabaah)
 ```sql
-id: uuid PK DEFAULT uuid_generate_v4()
+id: uuid PK
 nama_kegiatan: text NOT NULL
 urutan: integer DEFAULT 0
-poin_per_hadir: integer DEFAULT 1
-target_per_periode: integer DEFAULT 30
-created_at: timestamptz DEFAULT now()
+poin_target: integer DEFAULT 1
+semester_id: uuid FK → semester(id) NULLABLE
+created_at: timestamptz
 ```
 
-### Tabel: mutabaah_sub_kegiatan
+### Tabel: sub_kegiatan
 ```sql
-id: uuid PK DEFAULT uuid_generate_v4()
-kegiatan_id: uuid FK → mutabaah_kegiatan(id)
+id: uuid PK
+kegiatan_id: uuid FK → kegiatan(id)
 nama_sub: text NOT NULL
 urutan: integer DEFAULT 0
-poin_per_hadir: integer DEFAULT 1
-created_at: timestamptz DEFAULT now()
+poin_target: integer DEFAULT 1
+created_at: timestamptz
 ```
 
-### Tabel: mutabaah_presensi
+### Tabel: mutabaah
 ```sql
-id: uuid PK DEFAULT uuid_generate_v4()
+id: uuid PK
 tanggal: date NOT NULL
 siswa_id: uuid FK → students(id)
-kamar_id: uuid FK → kamar(id)
-kegiatan_id: uuid FK → mutabaah_kegiatan(id)
-sub_kegiatan_id: uuid FK → mutabaah_sub_kegiatan(id) NULLABLE
-status: text CHECK IN ('Hadir', 'Izin', 'Sakit', 'Terlambat', 'Terlambat Sekali', 'Istihadhah', 'Haid', 'Alpha', 'L')
+kegiatan_id: uuid FK → kegiatan(id)
+sub_kegiatan_id: uuid FK → sub_kegiatan(id) NULLABLE
+status: text CHECK IN ('Hadir','Izin','Sakit','Terlambat','Terlambat Sekali','Istihadhah','Haid','Alpha','L')
 is_libur: boolean DEFAULT false
-dicatat_oleh: uuid FK → profiles.id
-created_at: timestamptz DEFAULT now()
-UNIQUE (tanggal, siswa_id, kegiatan_id, sub_kegiatan_id)
+dicatat_oleh: uuid FK → profiles(id)
+created_at: timestamptz
+UNIQUE (siswa_id, kegiatan_id, sub_kegiatan_id, tanggal)
 ```
 
-### Tabel: diknas_presensi
+### Tabel: presensi (diknas)
 ```sql
-id: uuid PK DEFAULT uuid_generate_v4()
+id: uuid PK
 tanggal: date NOT NULL
 siswa_id: uuid FK → students(id)
-mapel_id: uuid FK → mata_pelajaran(id)
-status: text CHECK IN ('Hadir', 'Izin', 'Sakit', 'Terlambat', 'Terlambat Sekali', 'Istihadhah', 'Haid', 'Alpha')
-dicatat_oleh: uuid FK → profiles.id
-created_at: timestamptz DEFAULT now()
-UNIQUE (tanggal, siswa_id, mapel_id)
+mata_pelajaran_id: uuid FK → mata_pelajaran(id)
+semester_id: uuid FK → semester(id)
+status: text CHECK IN ('Hadir','Izin','Sakit','Terlambat','Terlambat Sekali','Istihadhah','Haid','Alpha')
+keterangan: text
+dicatat_oleh: uuid FK → profiles(id)
+created_at: timestamptz
 ```
 
-### Tabel: diknas_nilai
+### Tabel: nilai_harian
 ```sql
-id: uuid PK DEFAULT uuid_generate_v4()
+id: uuid PK
 siswa_id: uuid FK → students(id)
-mapel_id: uuid FK → mata_pelajaran(id)
+mata_pelajaran_id: uuid FK → mata_pelajaran(id)
 semester_id: uuid FK → semester(id)
-jenis_nilai: text CHECK IN ('Formatif', 'Sumatif', 'UAS')
-nama_tugas: text  -- judul tugas / keterangan
-materi: text  -- bab/topik
+tipe_nilai: text CHECK IN ('Formatif','Sumatif')
+nama_tugas: text NOT NULL
+materi: text
+bab: text
 nilai_asli: numeric(5,2)
-nilai_remedial: numeric(5,2) NULLABLE
-keterangan_remedial: text NULLABLE
-bank_soal_id: uuid NULLABLE FK → bank_soal(id)
+nilai_remedial: numeric(5,2)
+nilai_final: numeric GENERATED
+bank_soal_id: uuid FK → bank_soal(id)
 is_approved: boolean DEFAULT false
-approved_at: timestamptz NULLABLE
-approved_by: uuid NULLABLE FK → profiles.id
-dicatat_oleh: uuid FK → profiles.id
-created_at: timestamptz DEFAULT now()
-updated_at: timestamptz DEFAULT now()
+approved_at: timestamptz
+approved_by: uuid FK → profiles(id)
+dicatat_oleh: uuid FK → profiles(id)
+tanggal: date
+created_at: timestamptz
+```
+
+### Tabel: nilai_uas
+```sql
+id: uuid PK
+siswa_id: uuid FK → students(id)
+mata_pelajaran_id: uuid FK → mata_pelajaran(id)
+semester_id: uuid FK → semester(id)
+nilai_asli: numeric(5,2)
+nilai_remedial: numeric(5,2)
+nilai_final: numeric GENERATED
+bank_soal_id: uuid FK → bank_soal(id)
+is_approved: boolean DEFAULT false
+approved_at: timestamptz
+approved_by: uuid FK → profiles(id)
+dicatat_oleh: uuid FK → profiles(id)
+created_at: timestamptz
 ```
 
 ### Tabel: bank_soal
 ```sql
-id: uuid PK DEFAULT uuid_generate_v4()
-mapel_id: uuid FK → mata_pelajaran(id)
+id: uuid PK
+mata_pelajaran_id: uuid FK → mata_pelajaran(id)
 semester_id: uuid FK → semester(id)
 judul: text NOT NULL
-jenis: text CHECK IN ('Pilihan Ganda', 'Esai')
-materi: text
-unit: text CHECK IN ('SD', 'SMP', 'SMA')
-dibuat_oleh: uuid FK → profiles.id
-created_at: timestamptz DEFAULT now()
+tipe: text CHECK IN ('Pilihan Ganda','Essai')
+konten: jsonb
+dibuat_oleh: uuid FK → profiles(id)
+created_at: timestamptz
 ```
 
-### Tabel: diknas_catatan_kelakuan
+### Tabel: catatan_kelakuan
 ```sql
-id: uuid PK DEFAULT uuid_generate_v4()
+id: uuid PK
 siswa_id: uuid FK → students(id)
-tanggal: date NOT NULL
-jenis: text CHECK IN ('Baik', 'Kurang Baik')
+semester_id: uuid FK → semester(id)
+tipe: text CHECK IN ('Baik','Kurang Baik')
 catatan: text NOT NULL
-dicatat_oleh: uuid FK → profiles.id
-created_at: timestamptz DEFAULT now()
+tanggal: date
+dicatat_oleh: uuid FK → profiles(id)
+created_at: timestamptz
 ```
 
-### Tabel: orangtua (data orang tua)
+### Tabel: orangtua
 ```sql
-id: uuid PK DEFAULT uuid_generate_v4()
-user_id: uuid UNIQUE FK → auth.users(id) NULLABLE
+id: uuid PK
 nama_lengkap: text NOT NULL
 pekerjaan: text
-nomor_hp: text
 email: text
-student_ids: uuid[]  -- FK ke students.id
-created_at: timestamptz DEFAULT now()
+no_hp: text
+profile_id: uuid FK → profiles(id) NULLABLE
+created_at: timestamptz
 ```
 
-### Update Tabel students (tambah kolom baru):
+### Tabel: orangtua_siswa (junction many-to-many)
 ```sql
--- Tambahkan kolom ini ke tabel students yang sudah ada:
-ALTER TABLE students ADD COLUMN IF NOT EXISTS kamar_id uuid REFERENCES kamar(id);
-ALTER TABLE students ADD COLUMN IF NOT EXISTS status text DEFAULT 'Aktif' CHECK (status IN ('Aktif', 'Alumni'));
-ALTER TABLE students ADD COLUMN IF NOT EXISTS nis text;
-ALTER TABLE students ADD COLUMN IF NOT EXISTS nisn text;
-ALTER TABLE students ADD COLUMN IF NOT EXISTS tempat_lahir text;
-ALTER TABLE students ADD COLUMN IF NOT EXISTS tanggal_lahir date;
-ALTER TABLE students ADD COLUMN IF NOT EXISTS alamat text;
-ALTER TABLE students ADD COLUMN IF NOT EXISTS nama_ayah text;
-ALTER TABLE students ADD COLUMN IF NOT EXISTS nama_ibu text;
-ALTER TABLE students ADD COLUMN IF NOT EXISTS nomor_hp_ortu text;
+id: uuid PK
+orangtua_id: uuid FK → orangtua(id)
+siswa_id: uuid FK → students(id)
+hubungan: text DEFAULT 'ayah/ibu'
+UNIQUE(orangtua_id, siswa_id)
 ```
 
-### Update Tabel prestasi (tambah kolom status & poin):
+### Update Tabel students (kolom V2):
 ```sql
--- Tambahkan kolom ini ke tabel prestasi yang sudah ada:
-ALTER TABLE prestasi ADD COLUMN IF NOT EXISTS status text DEFAULT 'Belum Diproses' CHECK (status IN ('Belum Diproses', 'Sudah Diproses'));
-ALTER TABLE prestasi ADD COLUMN IF NOT EXISTS poin integer DEFAULT 0;
-ALTER TABLE prestasi ADD COLUMN IF NOT EXISTS keterangan text;
-ALTER TABLE prestasi ADD COLUMN IF NOT EXISTS is_guru boolean DEFAULT false;
-ALTER TABLE prestasi ADD COLUMN IF NOT EXISTS guru_id uuid REFERENCES teachers(id);
+ALTER TABLE students ADD COLUMN IF NOT EXISTS is_alumni boolean DEFAULT false;
+ALTER TABLE students ADD COLUMN IF NOT EXISTS kamar text;
+ALTER TABLE students ADD COLUMN IF NOT EXISTS nomor_induk text;
+```
+
+### Update Tabel prestasi (kolom V2):
+```sql
+ALTER TABLE prestasi ADD COLUMN IF NOT EXISTS tipe text DEFAULT 'siswa' CHECK (tipe IN ('siswa','guru'));
+ALTER TABLE prestasi ADD COLUMN IF NOT EXISTS guru_id uuid REFERENCES profiles(id);
+ALTER TABLE prestasi ADD COLUMN IF NOT EXISTS sudah_dilempar_kedisiplinan boolean DEFAULT false;
+```
+
+### Update Tabel kedisiplinan (kolom V2):
+```sql
+ALTER TABLE kedisiplinan ADD COLUMN IF NOT EXISTS sumber text DEFAULT 'manual';
+ALTER TABLE kedisiplinan ADD COLUMN IF NOT EXISTS prestasi_id uuid REFERENCES prestasi(id);
 ```
 
 ---
@@ -408,33 +449,49 @@ Tingkat Sekolah       : Juara 1=5,  Juara 2=4,  Juara 3=3,  Harapan=2
 
 ### 3. Approval Nilai oleh Guru:
 ```
-- Nilai di diknas_nilai dengan is_approved = false → TIDAK tampil di dashboard orang_tua
-- Guru approve massal → update is_approved=true, approved_at=now(), approved_by=guru_id
+- nilai_harian dan nilai_uas dengan is_approved = false → TIDAK tampil di dashboard orang_tua
+- Guru approve massal → update is_approved=true, approved_at=now(), approved_by=profile.id
 - Setelah diapprove, nilai masih bisa diubah, tapi is_approved kembali ke false (perlu re-approve)
 ```
 
 ### 4. Akses Guru Berdasarkan Mata Pelajaran:
 ```
-- Guru hanya bisa CRUD di mapel_id yang ada di teachers.mapel_ids miliknya
-- Cek di setiap Server Action: ambil profile guru → cek mapel_ids → validasi mapel_id target
+- Guru hanya bisa CRUD di mata_pelajaran_id yang ada di profiles.mapel_ids miliknya
+- Komponen GuruMapelGate di: presensi, nilai-harian, nilai-uas, bank-soal
+- Validasi server: assertGuruMapelWriteAccess() di diknas.ts
 - Jika guru mengajar >1 mapel: tampilkan dropdown pilih mapel sebelum input
 ```
 
 ### 5. Status Alumni di Data Siswa:
 ```
-- students.status = 'Alumni' → data TIDAK muncul di filter SD/SMP/SMA
-- Muncul di filter khusus 'Alumni'
-- Kaitan dengan fitur lain (kedisiplinan, mutabaah, diknas) → hanya tampil data aktif by default
+- students.is_alumni = true → data TIDAK muncul di filter SD/SMP/SMA
+- Muncul di tab khusus 'Alumni'
+- Default query siswa aktif: .eq('is_alumni', false)
 ```
 
 ### 6. Mutabaah — Libur:
 ```
-- Jika hari libur diaktifkan oleh musyrif, semua kegiatan hari itu auto status 'L'
-- Input libur dilakukan per tanggal di level kamar
-- is_libur = true di mutabaah_presensi
+- Jika tanggal ada di tabel hari_libur: input mutabaah auto status 'L', is_libur=true
+- Set via setHariLibur() di query layer
+- Belum ada halaman admin kalender libur — libur di-set saat input harian
 ```
 
-### 7. Nilai Rapot — Rumus:
+### 7. Semester & Tahun Pelajaran — Single-Active Global:
+```
+- Hanya 1 tahun_pelajaran.is_aktif = true di seluruh sistem
+- Hanya 1 semester.is_aktif = true di seluruh sistem (bukan per tahun pelajaran)
+- Implementasi: semester.ts — reset .eq('is_aktif', true) dulu, baru set target
+- Setelah aktivasi: invalidate active-semester, active-semester-mutabaah, active-semester-diknas
+```
+
+### 8. Antrian Poin Prestasi (PRD C5):
+```
+- Query layer ✅: getAntrianPoinPrestasi(), approveAntrianPoin() di kedisiplinan.ts
+- Alur insert otomatis ✅: createPrestasi() di prestasi.ts
+- UI dashboard kedisiplinan ❌ BELUM — wajib dikerjakan
+```
+
+### 9. Nilai Rapot — Rumus:
 ```typescript
 const nilaiRapot = average([
   average(nilai_formatif[]),   // rata-rata semua tugas formatif
@@ -443,13 +500,68 @@ const nilaiRapot = average([
 ])
 ```
 
-### 8. Grading Mutabaah (A–E):
+### 10. Grading Mutabaah (A–E):
 ```
 ≥ 90% → A (Sangat Baik)
 ≥ 75% → B (Baik)
 ≥ 60% → C (Cukup)
 ≥ 40% → D (Kurang)
 < 40%  → E (Sangat Kurang)
+```
+
+---
+
+## KEAMANAN QUERY SUPABASE (WAJIB)
+
+```typescript
+// ❌ JANGAN — PostgreSQL error: invalid input syntax for type uuid: ""
+.neq('id', '')
+.eq('id', '')
+
+// ✅ Reset flag aktif
+.update({ is_aktif: false }).eq('is_aktif', true)
+
+// ✅ Guard sebelum mutasi
+if (!id || id.trim() === '') {
+  toast({ title: 'Gagal', description: 'ID tidak valid', variant: 'destructive' })
+  return
+}
+```
+
+Aturan `is_aktif`:
+- Single-active **global** untuk semester dan tahun pelajaran
+- Jangan scope reset hanya ke `tahun_pelajaran_id` yang sama
+
+---
+
+## REACT QUERY — PERFORMA & STABILITAS
+
+File global: `src/components/providers/query-provider.tsx`
+```typescript
+defaultOptions: {
+  queries: {
+    refetchOnWindowFocus: false,
+    staleTime: 30 * 1000,
+    retry: false,
+  },
+}
+```
+
+Aturan wajib:
+1. `queryKey` harus mencakup semua filter — jangan `useEffect` + `refetch()` redundan
+2. Gabungkan query dashboard yang share resolver (contoh: `getMutabaahDashboardData`)
+3. `EMPTY_ARRAY` stabil di luar komponen untuk default data query
+4. `invalidateQueries` harus mencakup cache terkait setelah mutasi master
+5. Halaman boleh override `staleTime` per-query (contoh kedisiplinan: 60 detik)
+
+Contoh gabungan dashboard:
+```typescript
+// mutabaah.ts — resolveSiswaIds sekali, lalu Promise.all
+export async function getMutabaahDashboardData(filters) {
+  const siswaIds = await resolveSiswaIds(filters)
+  const [stats, kehadiran, trend] = await Promise.all([...])
+  return { stats, kehadiran, trend }
+}
 ```
 
 ---
@@ -526,8 +638,8 @@ const mutation = useMutation({
 
 ### Supabase Query dengan Filter Unit/Status:
 ```typescript
-// Filter siswa aktif saja (SELALU tambahkan ini kecuali halaman Alumni):
-.eq('status', 'Aktif')
+// Filter siswa aktif saja (SELALU kecuali halaman Alumni):
+.eq('is_alumni', false)
 
 // Filter hanya data yang sudah diproses (SELALU untuk perhitungan poin):
 .eq('status', 'Sudah Diproses')
@@ -567,7 +679,12 @@ Popover, Toast, Command, Table, Skeleton, Calendar
 ### /components/shared/:
 ```
 DataTable, Combobox, DatePicker, ConfirmDialog, StatCard,
-PageTitle, EmptyState, LoadingSpinner
+PageTitle, EmptyState, LoadingSpinner, ApprovalBanner
+```
+
+### /components/diknas/:
+```
+guru-mapel-gate.tsx — gate akses mapel untuk guru
 ```
 
 ### Status Badge Colors (tidak berubah):
@@ -627,7 +744,11 @@ Setelah menulis kode untuk setiap prompt, wajib cek:
 - [ ] Tidak ada console.log tertinggal
 - [ ] Filter status 'Sudah Diproses' sudah diterapkan di semua perhitungan poin
 - [ ] Poin nilai tidak tampil ke orang_tua sebelum is_approved = true
-- [ ] Akses guru sudah dibatasi sesuai mapel_ids
+- [ ] Akses guru sudah dibatasi sesuai mapel_ids (GuruMapelGate + assertGuruMapelWriteAccess)
+- [ ] Tidak ada filter UUID dengan string kosong (.neq('id', ''))
+- [ ] Single-active is_aktif bersifat global untuk semester & tahun pelajaran
+- [ ] React Query: queryKey lengkap, tidak ada refetch loop, EMPTY_ARRAY stabil
+- [ ] Chart Recharts tidak memakai #2D7A4F / #C9A84C
 - [ ] Tampilan responsif sudah dicek (mobile & desktop)
 - [ ] class no-print sudah diterapkan di semua elemen yang tidak perlu dicetak
 - [ ] Nama "AMANAH Platform" digunakan — bukan "SQA" atau "Nexus-Edu"

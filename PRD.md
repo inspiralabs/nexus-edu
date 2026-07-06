@@ -1,7 +1,9 @@
 # PRD V2 — AMANAH Platform
 # Aplikasi Manajemen Anak & Sekolah
-# Version: 2.0 | Upgrade dari SQA Platform V1
+# Version: 2.1 | Upgrade dari SQA Platform V1
 # STATUS: SUMBER KEBENARAN TUNGGAL V2 — BACA DULU SEBELUM KODE APAPUN
+#
+# Alias file: PRD.md = PRD_V2.md (gunakan PRD.md sebagai referensi resmi)
 
 ---
 
@@ -35,71 +37,88 @@ Dependencies: SAMA dengan V1, tidak ada yang baru kecuali yang disebutkan ekspli
 
 ## 2. FASE IMPLEMENTASI V2
 
+### Status Progress (Juli 2026)
+
+| Fase | Status | Catatan |
+|------|--------|---------|
+| A Foundation | ⚠️ ~85% | CSS variables ✅; chart Recharts & teks "SQA" di beberapa file masih partial |
+| B Quick Wins | ✅ ~95% | Sidebar collapsible ✅; minRole filter ✅ |
+| C Admin Extended | ⚠️ ~90% | **C5 UI antrian belum ada**; C6 alur prestasi→kedisiplinan ✅ |
+| D Signup | ✅ 100% | |
+| E Mutabaah | ✅ ~95% | Target pakai `poin_target` kegiatan, bukan CRUD `target_mutabaah` |
+| F Diknas | ✅ ~100% | + laporan bulanan, tipe nilai, data kelas (extra) |
+| G Orang Tua | ✅ ~95% | + laporan bulanan orang tua |
+| H Deploy | — | Tidak diverifikasi di audit dokumentasi |
+
 ### FASE A — Foundation (Harus dikerjakan PERTAMA, tidak ada dependency fitur)
-- A1: Jalankan SUPABASE_MIGRATIONS.sql di Supabase
-- A2: Update warna (primary #1e5d7e, secondary #437793) di globals.css + tailwind.config.ts
-- A3: Rename "SQA Platform"→"AMANAH Platform" di seluruh codebase
-- A4: Fix bug dark mode (globals.css + komponen yang hardcode warna)
-- A5: Fix bug cetak laporan (CSS @media print — sembunyikan sidebar/header)
-- A6: Fix icon browser (favicon dari public/icon.png)
-- A7: Fix landing page responsif mobile
-- A8: Fix bug password show/hide di account page
-- A9: Fix filter status "Sudah Diproses" di rekap poin & dashboard kedisiplinan
-- A10: Update types.ts dengan semua tipe baru
+- A1: Jalankan SUPABASE_MIGRATIONS.sql di Supabase — ✅
+- A2: Update warna (primary #1e5d7e, secondary #437793) di globals.css + tailwind.config.ts — ⚠️ **PARTIAL** (chart masih `#2D7A4F`/`#C9A84C` di dashboard, kedisiplinan, prestasi, superadmin)
+- A3: Rename "SQA Platform"→"AMANAH Platform" di seluruh codebase — ⚠️ **PARTIAL** (masih ada di landing hero/how-it-works, superadmin settings default)
+- A4: Fix bug dark mode (globals.css + komponen yang hardcode warna) — ✅ sebagian besar
+- A5: Fix bug cetak laporan (CSS @media print — sembunyikan sidebar/header) — ✅
+- A6: Fix icon browser (favicon dari public/icon.png) — ✅
+- A7: Fix landing page responsif mobile — ✅
+- A8: Fix bug password show/hide di account page — ✅
+- A9: Fix filter status "Sudah Diproses" di rekap poin & dashboard kedisiplinan — ✅
+- A10: Update types.ts dengan semua tipe baru — ✅
 
 ### FASE B — Quick Wins & Identity
-- B1: Landing page — tambah Section About (deskripsi AMANAH)
-- B2: Landing page — tambah CTA button InspiraLabs
-- B3: Link InspiraLabs → https://inspiralabs.id/ dan nama creator → WhatsApp
-- B4: Sidebar collapsible (hide/unhide toggle)
-- B5: Menu About di dashboard (per role)
-- B6: Update Data Siswa — full edit (bukan hanya kelas) + alumni tab + filter
-- B7: Prestasi — tambah prestasi guru (tipe='guru')
-- B8: Role user: sembunyikan menu master kedisiplinan & prestasi (hanya Dashboard+Data)
+- B1: Landing page — tambah Section About (deskripsi AMANAH) — ✅
+- B2: Landing page — tambah CTA button InspiraLabs — ✅
+- B3: Link InspiraLabs → https://inspiralabs.id/ dan nama creator → WhatsApp — ✅
+- B4: Sidebar collapsible (hide/unhide toggle) — ✅ (`amanah-sidebar-collapsed`)
+- B5: Menu About di dashboard (per role) — ✅
+- B6: Update Data Siswa — full edit + alumni tab + filter — ✅
+- B7: Prestasi — tambah prestasi guru (tipe='guru') — ✅
+- B8: Role user: sembunyikan menu master kedisiplinan & prestasi — ✅ (via minRole)
 
 ### FASE C — Admin Extended
-- C1: CRUD Mata Pelajaran (/admin/mapel)
-- C2: CRUD Guru (/admin/guru) — integrasi dengan Kelola User
-- C3: CRUD Orang Tua (/admin/orangtua)
-- C4: Manajemen Semester & Tahun Pelajaran (/admin/semester)
-- C5: Dashboard Kedisiplinan — tabel antrian persetujuan poin prestasi
-- C6: Alur otomatis prestasi → kedisiplinan (trigger di createPrestasi)
+- C1: CRUD Mata Pelajaran (/admin/mapel) — ✅
+- C2: CRUD Guru (/admin/guru) — ✅ (lihat detail expanded di bawah)
+- C3: CRUD Orang Tua (/admin/orangtua) — ✅
+- C4: Manajemen Semester & Tahun Pelajaran (/admin/semester) — ✅ (single-active global)
+- C5: Dashboard Kedisiplinan — tabel antrian persetujuan poin prestasi — ❌ **UI BELUM** (query layer ✅)
+- C6: Alur otomatis prestasi → kedisiplinan (trigger di createPrestasi) — ✅
 
 ### FASE D — Signup Dua Jalur
-- D1: Halaman pilih tipe signup (/signup)
-- D2: Form signup guru/musyrif (/signup/guru) — dengan mapel & kamar
-- D3: Form signup orang tua (/signup/orangtua) — dengan pencarian anak
+- D1: Halaman pilih tipe signup (/signup) — ✅
+- D2: Form signup guru/musyrif (/signup/guru) — dengan mapel & kamar — ✅
+- D3: Form signup orang tua (/signup/orangtua) — dengan pencarian anak — ✅
 
 ### FASE E — Mutabaah (Kepesantrenan)
-- E1: Query functions (src/lib/queries/mutabaah.ts)
-- E2: CRUD Kamar (terintegrasi di admin)
-- E3: CRUD Kegiatan & Sub Kegiatan
-- E4: Input Harian — checklist grid per kamar
-- E5: Rekap Kegiatan — filter kamar, search, tanggal range
-- E6: Target & Nilai A-E
-- E7: Dashboard grafik mutabaah
-- E8: Cetak Laporan Mutabaah
+- E1: Query functions (src/lib/queries/mutabaah.ts) — ✅ (+ getMutabaahDashboardData gabungan)
+- E2: CRUD Kamar (terintegrasi di admin) — ✅ `/admin/kamar`
+- E3: CRUD Kegiatan & Sub Kegiatan — ✅
+- E4: Input Harian — checklist grid per kamar — ✅
+- E5: Rekap Kegiatan — filter kamar, search, tanggal range — ✅
+- E6: Target & Nilai A-E — ✅ (target dari poin_target, bukan CRUD target_mutabaah)
+- E7: Dashboard grafik mutabaah — ✅
+- E8: Cetak Laporan Mutabaah — ✅
 
 ### FASE F — Diknas (Akademik)
-- F1: Query functions (src/lib/queries/diknas.ts)
-- F2: CRUD Presensi — bulk input per tanggal/kelas/mapel
-- F3: CRUD Nilai Harian — formatif/sumatif + remedial + bank soal
-- F4: CRUD Nilai UAS — + remedial
-- F5: Bank Soal CRUD
-- F6: Catatan Kelakuan CRUD
-- F7: Rekap Nilai Rapor — formula tiga komponen
-- F8: Sistem Approval massal (guru approve → tampil di orangtua)
-- F9: Dashboard grafik diknas
-- F10: Manajemen Semester lanjutan
+- F1: Query functions (src/lib/queries/diknas.ts) — ✅
+- F2: CRUD Presensi — bulk input per tanggal/kelas/mapel — ✅ (+ GuruMapelGate)
+- F3: CRUD Nilai Harian — formatif/sumatif + remedial + bank soal — ✅ (+ GuruMapelGate)
+- F4: CRUD Nilai UAS — + remedial — ✅ (+ GuruMapelGate)
+- F5: Bank Soal CRUD — ✅ (+ GuruMapelGate)
+- F6: Catatan Kelakuan CRUD — ✅ (tanpa GuruMapelGate)
+- F7: Rekap Nilai Rapor — formula tiga komponen — ✅
+- F8: Sistem Approval massal (guru approve → tampil di orangtua) — ✅
+- F9: Dashboard grafik diknas — ✅
+- F10: Manajemen Semester lanjutan — ✅ (di /admin/semester, bukan /diknas/semester)
+- **F-EXTRA:** Laporan Hasil Belajar Bulanan (/diknas/laporan-bulanan) — ✅
+- **F-EXTRA:** Master Tipe Nilai (/admin/tipe-nilai) — ✅
+- **F-EXTRA:** Master Data Kelas (/admin/mapel/kelas) — ✅
 
 ### FASE G — Role Orang Tua
-- G1: Protected route group /orangtua
-- G2: Dashboard orang tua
-- G3: Pantau Mutabaah anak
-- G4: Pantau Diknas anak (nilai yang sudah approved)
-- G5: Pantau Kedisiplinan anak
-- G6: Pantau Prestasi anak
-- G7: Filter tanggal + cetak per menu
+- G1: Protected route group /orangtua — ✅
+- G2: Dashboard orang tua — ✅
+- G3: Pantau Mutabaah anak — ✅
+- G4: Pantau Diknas anak (nilai yang sudah approved) — ✅
+- G5: Pantau Kedisiplinan anak — ✅
+- G6: Pantau Prestasi anak — ✅
+- G7: Filter tanggal + cetak per menu — ✅ sebagian besar
+- **G-EXTRA:** Laporan Hasil Belajar Bulanan (/orangtua/laporan-bulanan) — ✅
 
 ### FASE H — Deploy V2
 - H1: Build check + TypeScript error 0
@@ -114,14 +133,15 @@ Dependencies: SAMA dengan V1, tidak ada yang baru kecuali yang disebutkan ekspli
 
 #### A2: Ganti Warna
 File: `src/app/globals.css` dan `tailwind.config.ts`
-- `--primary: #1e5d7e` (ganti dari #2D7A4F)
+- `--primary: #1e5d7e` (ganti dari #2D7A4F) — ✅ di CSS variables
 - `--primary-hover: #174d6a`
 - `--primary-light: #e8f4fa`
 - `--secondary: #437793` (ganti dari #C9A84C)
 - `--secondary-hover: #366180`
 - `--secondary-light: #eaf3f8`
-- Di tailwind.config.ts: ganti hex di objek colors.primary dan colors.secondary
-- Recharts fill yang hardcode hex lama juga diganti
+- Di tailwind.config.ts: ganti hex di objek colors.primary dan colors.secondary — ✅
+- Recharts fill yang hardcode hex lama juga diganti — ⚠️ **BELUM SEMUA** (cek: `dashboard/page.tsx`, `kedisiplinan/page.tsx`, `prestasi/page.tsx`, `superadmin/*`)
+- Gunakan `var(--primary)` atau `#1e5d7e` — jangan `#2D7A4F` / `#C9A84C`
 
 #### A4: Fix Dark Mode
 Masalah: beberapa komponen masih pakai class Tailwind hard-coded `bg-white`, `text-black`,
@@ -192,7 +212,7 @@ File: `src/components/layout/sidebar.tsx`
 - Collapsed state: width w-14 (hanya icon, tanpa label)
 - Expanded state: width w-60 (icon + label seperti sekarang)
 - Transisi: CSS transition-width duration-200
-- Simpan preferensi ke localStorage ('sidebar-collapsed')
+- Simpan preferensi ke localStorage (`amanah-sidebar-collapsed`)
 - Header component: sesuaikan margin-left saat sidebar collapsed
 
 #### B5: Menu About
@@ -236,7 +256,17 @@ Pagination: 10,20,30,50 default 10
 Tabel kolom: No | Nama | NIP | Tipe | Mapel/Kamar | Email | Status Akun | Aksi
 Status Akun: Badge "Punya Akun" (hijau) / "Belum Ada Akun" (abu-abu)
 Aksi per row: Edit, Hapus, "Buat Akun" (jika belum ada profile_id → arahkan ke Kelola User)
-Form: Nama, NIP, JK, Tipe (guru/musyrif/guru_musyrif), Mapel (multi-select dari mata_pelajaran), Unit, Email, No HP
+
+**Form profil operasional (TANPA buat akun auth di form ini):**
+- Field umum: Nama, NIP, JK, Email, No HP
+- Tipe (guru / musyrif / guru_musyrif) — UI kondisional:
+  - **guru:** Unit Mengajar (SD/SMP/SMA checkbox) + Mapel (multi-select)
+  - **musyrif:** Unit Binaan (SD/SMP/SMA checkbox) + Kamar (multi-select, di-fetch setelah unit dipilih via `getKamarOptions`)
+  - **guru_musyrif:** ketiganya (unit mengajar + mapel + unit binaan + kamar)
+- Validasi Zod: musyrif wajib minimal 1 unit binaan + 1 kamar
+- Simpan ke tabel `guru`: `mapel_ids`, `kamar_ids`, `unit[]`, `tipe`
+- Jika `profile_id` ada: sync juga ke `profiles` via `normalizeGuruRelations()`
+- DB: kolom `guru.kamar_ids uuid[]` — jalankan migrasi jika belum ada
 
 #### C3: CRUD Orang Tua (/admin/orangtua)
 Tabel kolom: No | Nama | Pekerjaan | Anak | Email | Status Akun | Aksi
@@ -248,9 +278,13 @@ Dua section:
 1. Tahun Pelajaran: CRUD (nama, tahun_mulai, tahun_selesai, toggle is_aktif)
 2. Semester: CRUD per tahun pelajaran (nomor, tanggal_mulai, tanggal_selesai, toggle is_aktif)
 Info: semester aktif ditampilkan sebagai badge "AKTIF"
-Peringatan: hanya boleh 1 tahun pelajaran aktif dan 1 semester aktif dalam satu waktu
+Peringatan: hanya boleh 1 tahun pelajaran aktif dan 1 semester aktif **secara global** dalam satu waktu
+Implementasi: `setActiveSemester` / `setActiveTahunPelajaran` reset semua `is_aktif=true` dulu, baru set target
+Guard UUID: jangan panggil mutasi jika id kosong; jangan gunakan `.neq('id', '')` pada kolom UUID
+Invalidate cache: `active-semester`, `active-semester-mutabaah`, `active-semester-diknas` setelah aktivasi
 
 #### C5: Tabel Antrian Persetujuan Poin
+**Status: ❌ UI BELUM DIIMPLEMENTASI** (query layer sudah ada di `kedisiplinan.ts`)
 File: `src/app/(app)/kedisiplinan/page.tsx`
 Tambahkan di ATAS grafik tren:
 - Card "Antrian Persetujuan Poin Prestasi"
@@ -261,6 +295,7 @@ Tambahkan di ATAS grafik tren:
 - Badge counter di judul: "X antrian"
 
 #### C6: Alur Otomatis Prestasi → Kedisiplinan
+**Status: ✅ SELESAI** di `src/lib/queries/prestasi.ts` — fungsi `createPrestasi()`
 File: `src/lib/queries/prestasi.ts` — update fungsi createPrestasi()
 Setelah INSERT prestasi berhasil:
 1. Cari kategori_disiplin WHERE nama_kategori='Prestasi' → dapat kategori_id
@@ -291,9 +326,22 @@ Route: /mutabaah/target
 Filter: Siswa individual ATAU per kamar + filter semester
 Tabel per siswa: baris = kegiatan/sub_kegiatan
 Kolom: Nama Kegiatan | Total Hadir | Target | Progress Bar | Persentase | Nilai
+
+**Implementasi aktual (bukan CRUD tabel `target_mutabaah`):**
+- Target diambil dari `kegiatan.poin_target` / `sub_kegiatan.poin_target`
+- Fallback default: 30 jika `poin_target` null
+- Tabel `target_mutabaah` ada di schema tapi belum dipakai untuk UI admin CRUD
+
 Progress bar: width = (hadir/target)*100, warna sesuai grade
 Grade: A≥90%, B≥75%, C≥60%, D≥40%, E<40%
 Color: A=hijau, B=biru, C=kuning, D=oranye, E=merah
+
+### E7: Dashboard Mutabaah — Optimasi Performa
+**Status: ✅ SELESAI**
+- Satu fungsi gabungan: `getMutabaahDashboardData()` di `mutabaah.ts`
+- Memanggil `resolveSiswaIds` sekali, lalu `Promise.all` untuk stat/chart
+- Halaman `/mutabaah` memakai satu `useQuery` (bukan 3 query terpisah)
+- Global defaults React Query di `query-provider.tsx`
 
 ---
 
@@ -301,6 +349,7 @@ Color: A=hijau, B=biru, C=kuning, D=oranye, E=merah
 
 ### F2: CRUD Presensi
 Route: /diknas/presensi
+**GuruMapelGate:** guru hanya bisa input/update mapel yang ada di `profile.mapel_ids` (komponen `guru-mapel-gate.tsx`)
 Layout: Filter unit (SD/SMP/SMA tabs seperti Kedisiplinan→Data)
 Mode input: "Per Tanggal" (pilih tanggal → muncul list semua siswa kelas+mapel → bulk checkbox)
 Kolom tabel: No | Nama Siswa | Kelas | Mata Pelajaran | Tanggal | Status | Keterangan | Aksi
@@ -346,16 +395,20 @@ Di halaman nilai-harian dan nilai-uas:
 
 ## 7. HALAMAN ABOUT (/about)
 
+**Implementasi saat ini:** satu halaman scroll (bukan Tabs terpisah "Tentang" vs "Panduan").
+
 Konten:
 - Hero kecil: logo AMANAH + tagline
 - Deskripsi lengkap aplikasi (teks dari poin 21 spec)
-- Panduan penggunaan (conditional per role):
+- Panduan penggunaan (conditional per role, dalam satu halaman):
   - user/guru: panduan input kedisiplinan, prestasi, nilai, presensi
   - musyrif: panduan input mutabaah
   - admin: panduan kelola user, approve akun
   - orangtua: panduan memantau anak
   - superadmin: panduan sistem
 - Kontak: InspiraLabs (link) + Unggul Sulaiman S.Kom (WhatsApp)
+
+> Catatan: panduan menyebut antrian poin prestasi di dashboard kedisiplinan — fitur UI belum ada (C5).
 
 ---
 
@@ -384,6 +437,10 @@ Di CTA section (bawah landing page):
 5. Semua query functions BARU di lib/queries/: gunakan pola yang SAMA dengan queries yang sudah ada
 6. Jangan buat ulang komponen yang sudah ada — extend atau reuse
 7. Jika ada prompt yang kurang jelas karena prompt tidak sesuai dengan MASTER_CONTEXT.md atau PRD.md maka konfirmasi untuk penyempurnaan prompt ketika eksekusi
+8. **React Query:** ikuti global defaults di `query-provider.tsx`; gabungkan query dashboard yang share resolver; gunakan `EMPTY_ARRAY` stabil di luar komponen
+9. **Supabase UUID:** jangan filter UUID dengan string kosong; guard id sebelum mutasi; single-active `is_aktif` bersifat global
+10. **GuruMapelGate** wajib di presensi, nilai-harian, nilai-uas, bank-soal — belum di catatan kelakuan
+11. File PRD resmi: `PRD.md` (bukan `PRD_V2.md`)
 
 ---
 
