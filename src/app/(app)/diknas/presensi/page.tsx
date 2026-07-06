@@ -13,7 +13,7 @@ import {
   Trash2,
   Users,
 } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { ConfirmDialog } from '@/components/shared/confirm-dialog'
@@ -52,11 +52,15 @@ import {
   getMataKuliah,
   getPresensi,
   getSemesterOptions,
+  getStudentsByKelasId,
   PRESENSI_STATUS_OPTIONS,
   updatePresensi,
   type MataKuliah,
   type PresensiEntry,
+  type SiswaKelasRow,
 } from '@/lib/queries/diknas'
+import { getTahunPelajaran } from '@/lib/queries/semester'
+import type { TahunPelajaran } from '@/lib/supabase/types'
 import type { Unit } from '@/lib/supabase/types'
 import { GuruMapelGate } from '../_components/guru-mapel-gate'
 
@@ -64,6 +68,19 @@ import { GuruMapelGate } from '../_components/guru-mapel-gate'
 
 const UNITS: Unit[] = ['SD', 'SMP', 'SMA']
 const PAGE_SIZE_OPTIONS = [10, 20, 30, 50] as const
+const EMPTY_MAPEL_LIST: MataKuliah[] = []
+const EMPTY_KELAS_LIST: { id: string; nama_kelas: string }[] = []
+const EMPTY_SISWA_LIST: SiswaKelasRow[] = []
+const EMPTY_SEMESTER_LIST: { id: string; tahun_pelajaran_id: string; nomor_semester: number }[] = []
+const EMPTY_TAHUN_LIST: TahunPelajaran[] = []
+
+type SemesterFilterValue = 'ALL' | '1' | '2'
+
+const SEMESTER_FILTER_OPTIONS: { value: SemesterFilterValue; label: string }[] = [
+  { value: 'ALL', label: 'Semua Semester' },
+  { value: '1', label: 'Semester 1 (Ganjil)' },
+  { value: '2', label: 'Semester 2 (Genap)' },
+]
 
 // ─── Schema ───────────────────────────────────────────────────────────────────
 
@@ -106,7 +123,8 @@ export default function PresensiPage() {
   const [search, setSearch] = useState('')
   const [filterKelas, setFilterKelas] = useState('all')
   const [filterMapel, setFilterMapel] = useState('all')
-  const [filterSemester, setFilterSemester] = useState('aktif')
+  const [selectedTahunPelajaranId, setSelectedTahunPelajaranId] = useState('')
+  const [selectedSemester, setSelectedSemester] = useState<SemesterFilterValue>('1')
   const [selectedRows, setSelectedRows] = useState<string[]>([])
 
   // Sorting states
@@ -122,8 +140,11 @@ export default function PresensiPage() {
   const [bulkBulan, setBulkBulan] = useState('')
   const [bulkKelas, setBulkKelas] = useState('')
   const [bulkMapel, setBulkMapel] = useState('')
-  const [bulkItems, setBulkItems] = useState<BulkPresensiItem[]>([])
+  const [bulkOverrides, setBulkOverrides] = useState<
+    Record<string, { status: string; keterangan: string | null }>
+  >({})
   const [lastSemesterId, setLastSemesterId] = useState<string>('')
+  const filterDefaultsInitialized = useRef(false)
 
   // Dialog state
   const [isAddOpen, setIsAddOpen] = useState(false)
@@ -139,7 +160,7 @@ export default function PresensiPage() {
   const debouncedSearch = useDebounce(search, 300)
   const debouncedSiswaSearch = useDebounce(siswaSearch, 300)
 
-  const { data: mapelList = [] } = useQuery({
+  const { data: mapelList = EMPTY_MAPEL_LIST } = useQuery({
     queryKey: ['mapel-list', activeUnit],
     queryFn: () => getMataKuliah(activeUnit),
   })
@@ -166,14 +187,14 @@ export default function PresensiPage() {
     },
   })
 
-  // Sync mapel lock
+  // Sync mapel lock — guard nilai primitif agar tidak loop render Select
+  const { setValue: setFormMapel } = form
   useEffect(() => {
-    if (singleMapelId) {
-      setFilterMapel(singleMapelId)
-      setBulkMapel(singleMapelId)
-      form.setValue('mata_pelajaran_id', singleMapelId)
-    }
-  }, [singleMapelId, form])
+    if (!singleMapelId) return
+    setFilterMapel((prev) => (prev === singleMapelId ? prev : singleMapelId))
+    setBulkMapel((prev) => (prev === singleMapelId ? prev : singleMapelId))
+    setFormMapel('mata_pelajaran_id', singleMapelId)
+  }, [singleMapelId, setFormMapel])
 
   // ─── Queries ────────────────────────────────────────────────────────────────
 
@@ -234,23 +255,57 @@ export default function PresensiPage() {
     }
   }, [bulkBulan])
 
-  const { data: semesterList = [] } = useQuery({
+  const { data: tahunList = EMPTY_TAHUN_LIST } = useQuery({
+    queryKey: ['tahun-pelajaran-options'],
+    queryFn: getTahunPelajaran,
+  })
+
+  const { data: semesterList = EMPTY_SEMESTER_LIST } = useQuery({
     queryKey: ['semester-options'],
     queryFn: getSemesterOptions,
   })
 
-  const resolvedSemesterId = useMemo(() => {
-    if (filterSemester === 'aktif') return activeSemester?.id ?? undefined
-    if (filterSemester === 'all') return undefined
-    return filterSemester
-  }, [filterSemester, activeSemester])
+  // Default: tahun & semester aktif dari backend
+  useEffect(() => {
+    if (filterDefaultsInitialized.current) return
+
+    if (activeSemester) {
+      setSelectedTahunPelajaranId(activeSemester.tahun_pelajaran_id)
+      setSelectedSemester(String(activeSemester.nomor_semester) as SemesterFilterValue)
+      filterDefaultsInitialized.current = true
+      return
+    }
+
+    if (tahunList.length > 0) {
+      const activeTahun = tahunList.find((t) => t.is_aktif) ?? tahunList[0]
+      setSelectedTahunPelajaranId(activeTahun.id)
+      setSelectedSemester('1')
+      filterDefaultsInitialized.current = true
+    }
+  }, [activeSemester, tahunList])
+
+  const resolvedSemesterIds = useMemo(() => {
+    if (!selectedTahunPelajaranId) return undefined
+    const yearSemesters = semesterList.filter(
+      (s) => s.tahun_pelajaran_id === selectedTahunPelajaranId
+    )
+    if (selectedSemester === 'ALL') {
+      return yearSemesters.map((s) => s.id)
+    }
+    const match = yearSemesters.find(
+      (s) => s.nomor_semester === Number(selectedSemester)
+    )
+    return match ? [match.id] : []
+  }, [selectedTahunPelajaranId, selectedSemester, semesterList])
 
   const queryFilters = useMemo(
     () => ({
       unit: activeUnit,
       kelas: filterKelas !== 'all' ? filterKelas : undefined,
       mapelId: filterMapel !== 'all' ? filterMapel : undefined,
-      semesterId: resolvedSemesterId,
+      semesterIds: resolvedSemesterIds,
+      tahunPelajaranId: selectedTahunPelajaranId,
+      semesterFilter: selectedSemester,
       search: debouncedSearch || undefined,
       tanggal: filterTanggal ? format(filterTanggal, 'yyyy-MM-dd') : undefined,
       page,
@@ -258,54 +313,51 @@ export default function PresensiPage() {
       sortField,
       sortDirection,
     }),
-    [activeUnit, filterKelas, filterMapel, resolvedSemesterId, debouncedSearch, filterTanggal, page, pageSize, sortField, sortDirection]
+    [activeUnit, filterKelas, filterMapel, resolvedSemesterIds, selectedTahunPelajaranId, selectedSemester, debouncedSearch, filterTanggal, page, pageSize, sortField, sortDirection]
   )
+
+  const presensiQueryEnabled =
+    inputMode === 'tabel' &&
+    Boolean(selectedTahunPelajaranId) &&
+    resolvedSemesterIds !== undefined &&
+    resolvedSemesterIds.length > 0
 
   const { data, isLoading } = useQuery({
     queryKey: ['presensi', queryFilters],
     queryFn: () => getPresensi(queryFilters),
+    enabled: presensiQueryEnabled,
   })
 
-  // Siswa untuk bulk input — kini menggunakan kelas_id (UUID)
-  const { data: siswaPerKelas = [], isLoading: siswaLoading } = useQuery({
-    queryKey: ['siswa-kelas', bulkKelas, activeUnit],
-    queryFn: async () => {
-      if (!bulkKelas) return []
-      const { createClient } = await import('@/lib/supabase/client')
-      const supabase = createClient()
-      const { data: rows, error } = await supabase
-        .from('students')
-        .select('id, nama, kelas_id, kelas(nama_kelas)')
-        .eq('kelas_id', bulkKelas)
-        .eq('unit', activeUnit)
-        .eq('is_alumni', false)
-        .order('nama')
-      if (error) throw new Error(error.message)
-      return (rows ?? []).map((r: any) => ({
-        id: r.id as string,
-        nama: r.nama as string,
-        nama_kelas: (Array.isArray(r.kelas) ? r.kelas[0]?.nama_kelas : r.kelas?.nama_kelas) ?? '-',
-      }))
-    },
-    enabled: inputMode === 'massal' && Boolean(bulkKelas),
+  const bulkKelasSelected = !!bulkKelas && bulkKelas !== ''
+
+  // Siswa bulk — HANYA jalan setelah kelas dipilih (hindari request unit=SMA liar)
+  const { data: siswaPerKelas, isLoading: siswaLoading } = useQuery({
+    queryKey: ['siswa-kelas', bulkKelas],
+    queryFn: () => getStudentsByKelasId(bulkKelas),
+    enabled: inputMode === 'massal' && bulkKelasSelected,
   })
 
-  // Update bulk items saat siswa per kelas berubah
+  // Langsung pakai data query — tanpa filter client tambahan
+  const studentsToRender = useMemo(() => {
+    if (!bulkKelasSelected || siswaLoading) return EMPTY_SISWA_LIST
+    return siswaPerKelas ?? EMPTY_SISWA_LIST
+  }, [bulkKelasSelected, siswaLoading, siswaPerKelas])
+
+  const bulkRows = useMemo<BulkPresensiItem[]>(
+    () =>
+      studentsToRender.map((s) => ({
+        siswa_id: s.id,
+        nama: s.nama,
+        nama_kelas: s.nama_kelas,
+        status: bulkOverrides[s.id]?.status ?? 'Hadir',
+        keterangan: bulkOverrides[s.id]?.keterangan ?? null,
+      })),
+    [studentsToRender, bulkOverrides]
+  )
+
   useEffect(() => {
-    if (siswaPerKelas.length > 0) {
-      setBulkItems(
-        siswaPerKelas.map((s) => ({
-          siswa_id: s.id,
-          nama: s.nama,
-          nama_kelas: s.nama_kelas,
-          status: 'Hadir',
-          keterangan: null,
-        }))
-      )
-    } else if (bulkItems.length > 0) {
-      setBulkItems([])
-    }
-  }, [siswaPerKelas])
+    setBulkOverrides({})
+  }, [bulkKelas])
 
   // Inisialisasi default bulkBulan dan bulkTanggal berdasarkan rentang semester aktif
   useEffect(() => {
@@ -452,7 +504,7 @@ export default function PresensiPage() {
       if (!profile?.id) throw new Error('Sesi pengguna tidak valid')
       if (!activeSemester?.id) throw new Error('Semester aktif tidak ditemukan')
       return bulkCreatePresensi(
-        bulkItems.map((item) => ({
+        bulkRows.map((item) => ({
           siswa_id: item.siswa_id,
           mata_pelajaran_id: bulkMapel,
           semester_id: activeSemester.id,
@@ -480,7 +532,7 @@ export default function PresensiPage() {
         description: `${results.length} data presensi berhasil dicatat`,
       })
       setInputMode('tabel')
-      setBulkItems([])
+      setBulkOverrides({})
       setBulkKelas('')
       setBulkBulan('')
     },
@@ -627,24 +679,31 @@ export default function PresensiPage() {
     deleteMutation.isPending
 
   // ─── Kelas list helper dinamis ───
-  const { data: kelasList = [] } = useQuery({
+  const { data: kelasList = EMPTY_KELAS_LIST } = useQuery({
     queryKey: ['kelas-options', activeUnit],
     queryFn: () => getKelasOptions(activeUnit),
   })
 
-  // Reset filter/bulk kelas jika tidak valid saat unit berubah
+  const kelasIdsKey = useMemo(
+    () => kelasList.map((k) => k.id).join('|'),
+    [kelasList]
+  )
+
+  // Reset filter/bulk kelas jika tidak valid saat unit berubah (guard primitif)
   useEffect(() => {
-    if (bulkKelas && kelasList.length > 0 && !kelasList.some((k) => k.id === bulkKelas)) {
-      setBulkKelas('')
-      setBulkItems([])
-    }
-  }, [activeUnit, kelasList, bulkKelas])
+    if (!bulkKelas || !kelasIdsKey) return
+    const validIds = new Set(kelasIdsKey.split('|'))
+    if (validIds.has(bulkKelas)) return
+    setBulkKelas('')
+    setBulkOverrides({})
+  }, [bulkKelas, kelasIdsKey])
 
   useEffect(() => {
-    if (filterKelas !== 'all' && kelasList.length > 0 && !kelasList.some((k) => k.id === filterKelas)) {
-      setFilterKelas('all')
-    }
-  }, [activeUnit, kelasList, filterKelas])
+    if (filterKelas === 'all' || !kelasIdsKey) return
+    const validIds = new Set(kelasIdsKey.split('|'))
+    if (validIds.has(filterKelas)) return
+    setFilterKelas('all')
+  }, [filterKelas, kelasIdsKey])
 
   // ─── Render ─────────────────────────────────────────────────────────────────
 
@@ -714,7 +773,10 @@ export default function PresensiPage() {
             </div>
             <div className="space-y-1">
               <Label>Kelas</Label>
-              <Select value={bulkKelas} onValueChange={(v) => { setBulkKelas(v); setBulkItems([]) }}>
+              <Select
+                value={bulkKelas}
+                onValueChange={setBulkKelas}
+              >
                 <SelectTrigger>
                   <SelectValue placeholder="Pilih kelas" />
                 </SelectTrigger>
@@ -746,7 +808,7 @@ export default function PresensiPage() {
             <div className="py-8 text-center text-sm text-[var(--text-secondary)]">
               Pilih bulan terlebih dahulu
             </div>
-          ) : bulkItems.length === 0 ? (
+          ) : studentsToRender.length === 0 ? (
             <div className="py-8 text-center text-sm text-[var(--text-secondary)]">
               {bulkKelas ? 'Tidak ada siswa di kelas ini' : 'Pilih kelas terlebih dahulu'}
             </div>
@@ -765,9 +827,16 @@ export default function PresensiPage() {
                           variant="outline"
                           size="sm"
                           onClick={() => {
-                            setBulkItems((prev) =>
-                              prev.map((item) => ({ ...item, status: 'Hadir' }))
-                            )
+                            setBulkOverrides((prev) => {
+                              const next = { ...prev }
+                              for (const s of studentsToRender) {
+                                next[s.id] = {
+                                  status: 'Hadir',
+                                  keterangan: prev[s.id]?.keterangan ?? null,
+                                }
+                              }
+                              return next
+                            })
                           }}
                           className="h-6 px-2 text-[10px]"
                         >
@@ -778,7 +847,7 @@ export default function PresensiPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {bulkItems.map((item, idx) => (
+                    {bulkRows.map((item) => (
                       <tr key={item.siswa_id} className="border-b border-[var(--border)] last:border-0">
                         <td className="px-4 py-2 text-[var(--text-primary)]">{item.nama}</td>
                         <td className="px-4 py-2 text-[var(--text-secondary)]">{item.nama_kelas}</td>
@@ -786,9 +855,13 @@ export default function PresensiPage() {
                           <Select
                             value={item.status}
                             onValueChange={(v) => {
-                              setBulkItems((prev) =>
-                                prev.map((x, i) => (i === idx ? { ...x, status: v } : x))
-                              )
+                              setBulkOverrides((prev) => ({
+                                ...prev,
+                                [item.siswa_id]: {
+                                  status: v,
+                                  keterangan: prev[item.siswa_id]?.keterangan ?? null,
+                                },
+                              }))
                             }}
                           >
                             <SelectTrigger className="h-8 w-40">
@@ -807,9 +880,13 @@ export default function PresensiPage() {
                             value={item.keterangan ?? ''}
                             onChange={(e) => {
                               const val = e.target.value
-                              setBulkItems((prev) =>
-                                prev.map((x, i) => (i === idx ? { ...x, keterangan: val || null } : x))
-                              )
+                              setBulkOverrides((prev) => ({
+                                ...prev,
+                                [item.siswa_id]: {
+                                  status: prev[item.siswa_id]?.status ?? 'Hadir',
+                                  keterangan: val || null,
+                                },
+                              }))
                             }}
                             className="h-8 w-60"
                           />
@@ -837,8 +914,8 @@ export default function PresensiPage() {
       {inputMode === 'tabel' && (
         <>
           {/* Filter bar */}
-          <div className="no-print flex flex-wrap items-center gap-3">
-            <div className="relative flex-1 min-w-[160px]">
+          <div className="no-print flex flex-wrap items-end gap-3">
+            <div className="relative min-w-[160px] flex-1">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-secondary)]" />
               <Input
                 placeholder="Cari nama siswa..."
@@ -859,7 +936,7 @@ export default function PresensiPage() {
               </SelectContent>
             </Select>
             <Select value={filterMapel} onValueChange={(v) => { setFilterMapel(v); setPage(1) }} disabled={isSingleMapel}>
-              <SelectTrigger className="w-48">
+              <SelectTrigger className="w-44">
                 <SelectValue placeholder="Mapel" />
               </SelectTrigger>
               <SelectContent>
@@ -869,16 +946,32 @@ export default function PresensiPage() {
                 ))}
               </SelectContent>
             </Select>
-            <Select value={filterSemester} onValueChange={(v) => { setFilterSemester(v); setPage(1) }}>
-              <SelectTrigger className="w-52">
-                <SelectValue placeholder="Semester" />
+            <Select
+              value={selectedTahunPelajaranId}
+              onValueChange={(v) => { setSelectedTahunPelajaranId(v); setPage(1) }}
+            >
+              <SelectTrigger className="w-44">
+                <SelectValue placeholder="Pilih Tahun Pelajaran" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="aktif">Semester Aktif</SelectItem>
-                <SelectItem value="all">Semua Semester</SelectItem>
-                {semesterList.map((s) => (
-                  <SelectItem key={s.id} value={s.id}>
-                    Smt {s.nomor_semester} — {s.tahun_pelajaran?.nama}
+                {tahunList.map((t) => (
+                  <SelectItem key={t.id} value={t.id}>
+                    {t.nama}{t.is_aktif ? ' (Aktif)' : ''}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select
+              value={selectedSemester}
+              onValueChange={(v) => { setSelectedSemester(v as SemesterFilterValue); setPage(1) }}
+            >
+              <SelectTrigger className="w-44">
+                <SelectValue placeholder="Pilih Semester" />
+              </SelectTrigger>
+              <SelectContent>
+                {SEMESTER_FILTER_OPTIONS.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value}>
+                    {opt.label}
                   </SelectItem>
                 ))}
               </SelectContent>

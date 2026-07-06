@@ -72,6 +72,7 @@ export interface RaportSiswa {
 
 export type DiknasDashboardFilters = {
   semesterId?: string
+  semesterIds?: string[]
   unit?: string
   kelas?: string
   search?: string
@@ -421,6 +422,53 @@ function assertGuruMapelWriteAccess(
 
 // ─── Helper: ambil siswa sesuai filter ────────────────────────────────────────
 
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+async function resolveKelasId(
+  kelas: string,
+  unit?: string
+): Promise<string | null> {
+  const supabase = createClient()
+  if (UUID_RE.test(kelas)) return kelas
+
+  let query = supabase.from('kelas').select('id').eq('nama_kelas', kelas)
+  if (unit) query = query.eq('unit', unit)
+  const { data: kelasRow } = await query.maybeSingle()
+  return kelasRow?.id ?? null
+}
+
+export interface SiswaKelasRow {
+  id: string
+  nama: string
+  nama_kelas: string
+}
+
+/** Siswa aktif per kelas — filter kelas_id saja (tanpa unit global). */
+export async function getStudentsByKelasId(
+  kelasId: string
+): Promise<SiswaKelasRow[]> {
+  if (!kelasId || kelasId === '') return []
+
+  const supabase = createClient()
+  const { data: rows, error } = await supabase
+    .from('students')
+    .select('id, nama, kelas_id, kelas(nama_kelas)')
+    .eq('kelas_id', kelasId)
+    .eq('is_alumni', false) // skema: students.is_alumni boolean, bukan status teks
+    .order('nama', { ascending: true })
+
+  if (error) throw new Error(error.message)
+
+  return (rows ?? []).map((r: any) => ({
+    id: r.id as string,
+    nama: r.nama as string,
+    nama_kelas:
+      (Array.isArray(r.kelas) ? r.kelas[0]?.nama_kelas : r.kelas?.nama_kelas) ??
+      '-',
+  }))
+}
+
 async function getSiswaIds(
   unit?: string,
   kelas?: string,
@@ -430,30 +478,20 @@ async function getSiswaIds(
   if (!hasFilter) return null
 
   const supabase = createClient()
+  let kelasIdFilter: string | null = null
+
+  if (kelas) {
+    kelasIdFilter = await resolveKelasId(kelas, unit)
+    if (!kelasIdFilter) return []
+  }
+
   let q = supabase.from('students').select('id').eq('is_alumni', false)
 
-  if (unit) q = q.eq('unit', unit)
-  
-  if (kelas) {
-    let kelasIdFilter: string | null = null
-    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(kelas)
-    if (!isUuid) {
-      let query = supabase.from('kelas').select('id').eq('nama_kelas', kelas)
-      if (unit) {
-        query = query.eq('unit', unit)
-      }
-      const { data: kelasRow } = await query.maybeSingle()
-      if (kelasRow) {
-        kelasIdFilter = kelasRow.id
-      }
-    } else {
-      kelasIdFilter = kelas
-    }
-    if (kelasIdFilter) {
-      q = q.eq('kelas_id', kelasIdFilter)
-    } else {
-      return []
-    }
+  // kelas_id lebih spesifik — jangan double-filter unit yang bisa mengosongkan hasil
+  if (kelasIdFilter) {
+    q = q.eq('kelas_id', kelasIdFilter)
+  } else if (unit) {
+    q = q.eq('unit', unit)
   }
 
   if (search) q = q.ilike('nama', `%${search}%`)
@@ -523,6 +561,19 @@ export async function getSemesterOptions(): Promise<SemesterOption[]> {
   return (data ?? []) as SemesterOption[]
 }
 
+function applySemesterFilter<Q extends { in: (col: string, vals: string[]) => Q; eq: (col: string, val: string) => Q }>(
+  query: Q,
+  filters: Pick<DiknasDashboardFilters, 'semesterId' | 'semesterIds'>
+): Q {
+  if (filters.semesterIds && filters.semesterIds.length > 0) {
+    return query.in('semester_id', filters.semesterIds)
+  }
+  if (filters.semesterId) {
+    return query.eq('semester_id', filters.semesterId)
+  }
+  return query
+}
+
 // ─── Presensi ─────────────────────────────────────────────────────────────────
 
 export async function getPresensi(
@@ -547,12 +598,16 @@ export async function getPresensi(
     return { data: [], total: 0 }
   }
 
+  if (filters.semesterIds && filters.semesterIds.length === 0) {
+    return { data: [], total: 0 }
+  }
+
   let countQ = supabase
     .from('presensi')
     .select('*', { count: 'exact', head: true })
 
   if (siswaIds) countQ = countQ.in('siswa_id', siswaIds)
-  if (filters.semesterId) countQ = countQ.eq('semester_id', filters.semesterId)
+  countQ = applySemesterFilter(countQ, filters)
   if (filters.mapelId) countQ = countQ.eq('mata_pelajaran_id', filters.mapelId)
   if (filters.tanggal) countQ = countQ.eq('tanggal', filters.tanggal)
   
@@ -568,7 +623,7 @@ export async function getPresensi(
     .select(PRESENSI_SELECT)
 
   if (siswaIds) dataQ = dataQ.in('siswa_id', siswaIds)
-  if (filters.semesterId) dataQ = dataQ.eq('semester_id', filters.semesterId)
+  dataQ = applySemesterFilter(dataQ, filters)
   if (filters.mapelId) dataQ = dataQ.eq('mata_pelajaran_id', filters.mapelId)
   if (filters.tanggal) dataQ = dataQ.eq('tanggal', filters.tanggal)
 

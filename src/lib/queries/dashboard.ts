@@ -62,6 +62,7 @@ export async function getStudentCounts(): Promise<{
   const { data, error } = await supabase
     .from('students')
     .select('unit')
+    .eq('is_alumni', false)
 
   if (error) throw new Error(error.message)
 
@@ -87,6 +88,7 @@ export async function getStudentsByClass(
     .from('students')
     .select('kelas_id, kelas(nama_kelas), jenis_kelamin')
     .eq('unit', unit)
+    .eq('is_alumni', false)
 
   if (error) throw new Error(error.message)
 

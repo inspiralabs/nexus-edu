@@ -130,7 +130,7 @@ function TableSkeleton() {
 
 function StudentsByClassChart({ unit }: { unit: Unit }) {
   const { data, isLoading } = useQuery({
-    queryKey: ['students-by-class', unit],
+    queryKey: ['students-by-class', unit, 'active'],
     queryFn: () => getStudentsByClass(unit),
   })
 
@@ -167,7 +167,7 @@ export default function DashboardPage() {
   const [activeUnit, setActiveUnit] = useState<Unit>('SD')
 
   const { data: studentCounts, isLoading: isLoadingCounts } = useQuery({
-    queryKey: ['student-counts'],
+    queryKey: ['student-counts', 'active'],
     queryFn: getStudentCounts,
   })
 
