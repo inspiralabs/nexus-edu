@@ -52,9 +52,15 @@ async function updateSession(request: NextRequest): Promise<NextResponse> {
     },
   })
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  let user = null
+  try {
+    const {
+      data: { user: foundUser },
+    } = await supabase.auth.getUser()
+    user = foundUser
+  } catch (error) {
+    console.error('Middleware: Error fetching user:', error)
+  }
 
   const { pathname } = request.nextUrl
 

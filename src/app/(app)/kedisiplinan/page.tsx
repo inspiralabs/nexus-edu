@@ -206,6 +206,8 @@ function FilterMultiSelect({
   )
 }
 
+const EMPTY_ARRAY: any[] = []
+
 export default function KedisiplinanDashboardPage() {
   const currentYear = new Date().getFullYear()
   const yearOptions = useMemo(
@@ -219,25 +221,31 @@ export default function KedisiplinanDashboardPage() {
   const [selectedKategori, setSelectedKategori] = useState<string[]>([])
   const [selectedDivisi, setSelectedDivisi] = useState<string[]>([])
 
-  const { data: kategoriList } = useQuery({
+  const { data: kategoriList = EMPTY_ARRAY } = useQuery({
     queryKey: ['kategori-disiplin'],
     queryFn: getKategoriDisiplin,
     retry: false,
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
   })
 
-  const { data: divisiList } = useQuery({
+  const { data: divisiList = EMPTY_ARRAY } = useQuery({
     queryKey: ['divisi'],
     queryFn: () => getDivisi(),
     retry: false,
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
   })
 
-  const { data: kelasOptions = [] } = useQuery({
+  const { data: kelasOptions = EMPTY_ARRAY } = useQuery({
     queryKey: ['kedisiplinan-dashboard-kelas', selectedUnits],
     queryFn: () =>
       getKelasOptionsByUnits(
         selectedUnits.length > 0 ? selectedUnits : undefined
       ),
     retry: false,
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
   })
 
   const dashboardFilters = useMemo<KedisiplinanDashboardFilters>(
@@ -262,6 +270,8 @@ export default function KedisiplinanDashboardPage() {
     queryKey: ['kedisiplinan-dashboard', dashboardFilters],
     queryFn: () => getKedisiplinanDashboard(dashboardFilters),
     retry: false,
+    staleTime: 1 * 60 * 1000,
+    refetchOnWindowFocus: false,
   })
 
   const trenData = useMemo(

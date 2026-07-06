@@ -1153,6 +1153,158 @@ export interface TrendHarianItem {
   total_hadir: number
 }
 
+/** Combined result for the dashboard – computed from a single DB fetch. */
+export interface DashboardMutabaahResult {
+  stats: DashboardMutabaahStats
+  kehadiranPerKegiatan: KehadiranPerKegiatanItem[]
+  trendHarian: TrendHarianItem[]
+}
+
+/**
+ * Fetch ALL data needed by the Mutabaah Dashboard in a single round-trip.
+ *
+ * Resolves siswa IDs once, issues one query to the `mutabaah` table, then
+ * derives stats, kehadiranPerKegiatan, and trendHarian from that single
+ * dataset in-memory.  This eliminates the previous 3× duplicate calls to
+ * resolveSiswaIds() and 3× separate DB round-trips that were causing the
+ * request waterfall.
+ */
+export async function getMutabaahDashboardData(
+  kamarNama?: string,
+  bulan?: string,
+  unit?: string,
+  kategori?: string,
+  topN = 5,
+): Promise<DashboardMutabaahResult> {
+  const supabase = createClient()
+
+  const now = new Date()
+  const targetBulan = bulan ?? `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+  const [yr, mo] = targetBulan.split('-').map(Number)
+  const tglMulai = `${targetBulan}-01`
+  const lastDay = new Date(yr, mo, 0).getDate()
+  const tglSelesai = `${targetBulan}-${String(lastDay).padStart(2, '0')}`
+
+  // ── 1. Resolve siswa IDs ONCE ──────────────────────────────────────────────
+  const siswaIds = await resolveSiswaIds(kamarNama, unit, kategori)
+  const totalSiswaAktif = siswaIds.length
+
+  // ── 2. Hari Libur (lightweight count query, runs in parallel) ──────────────
+  const liburPromise = supabase
+    .from('hari_libur')
+    .select('*', { count: 'exact', head: true })
+    .gte('tanggal', tglMulai)
+    .lte('tanggal', tglSelesai)
+
+  // ── 3. One mutabaah query with all required columns ────────────────────────
+  let mutabaahQuery = supabase
+    .from('mutabaah')
+    .select('tanggal, siswa_id, kegiatan_id, status, is_libur, kegiatan(nama_kegiatan)')
+    .gte('tanggal', tglMulai)
+    .lte('tanggal', tglSelesai)
+
+  if (siswaIds.length > 0) {
+    mutabaahQuery = mutabaahQuery.in('siswa_id', siswaIds)
+  }
+
+  const [{ count: hariLiburCount, error: liburErr }, { data: rawRows, error: mutErr }] =
+    await Promise.all([liburPromise, siswaIds.length === 0 ? Promise.resolve({ data: [], error: null }) : mutabaahQuery])
+
+  if (liburErr) throw new Error(liburErr.message)
+  if (mutErr) throw new Error(mutErr.message)
+
+  const hariLiburBulanIni = hariLiburCount ?? 0
+
+  // Early return when no students match the filter
+  if (siswaIds.length === 0) {
+    return {
+      stats: { totalSiswaAktif: 0, rataRataKehadiran: 0, totalHariDicatat: 0, hariLiburBulanIni },
+      kehadiranPerKegiatan: [],
+      trendHarian: [],
+    }
+  }
+
+  type RawRow = {
+    tanggal: string
+    siswa_id: string
+    kegiatan_id: string
+    status: MutabaahStatus
+    is_libur: boolean
+    kegiatan: { nama_kegiatan: string } | { nama_kegiatan: string }[] | null
+  }
+  const rows = (rawRows ?? []) as RawRow[]
+
+  // ── 4. Compute all three datasets in a single pass ─────────────────────────
+  const hariSet = new Set<string>()
+  let nonLiburTotal = 0
+  let nonLiburHadir = 0
+
+  // kehadiran per kegiatan
+  const kegiatanMap = new Map<string, { nama: string; hadir: number; total: number }>()
+
+  // trend harian
+  const dayMap = new Map<string, { hadirSet: Set<string>; siswaSet: Set<string> }>()
+
+  for (const r of rows) {
+    hariSet.add(r.tanggal)
+
+    const isNonLibur = !r.is_libur && r.status !== 'L'
+
+    // Stats calculation
+    if (isNonLibur) {
+      nonLiburTotal++
+      if (r.status === 'Hadir') nonLiburHadir++
+    }
+
+    // Kehadiran per kegiatan
+    const kegiatanRaw = Array.isArray(r.kegiatan) ? r.kegiatan[0] ?? null : r.kegiatan
+    const nama = (kegiatanRaw as { nama_kegiatan: string } | null)?.nama_kegiatan ?? ''
+    const existing = kegiatanMap.get(r.kegiatan_id) ?? { nama, hadir: 0, total: 0 }
+    if (isNonLibur) {
+      existing.total++
+      if (r.status === 'Hadir') existing.hadir++
+    }
+    kegiatanMap.set(r.kegiatan_id, existing)
+
+    // Trend harian
+    if (isNonLibur) {
+      const day = dayMap.get(r.tanggal) ?? { hadirSet: new Set<string>(), siswaSet: new Set<string>() }
+      day.siswaSet.add(r.siswa_id)
+      if (r.status === 'Hadir') day.hadirSet.add(r.siswa_id)
+      dayMap.set(r.tanggal, day)
+    }
+  }
+
+  const stats: DashboardMutabaahStats = {
+    totalSiswaAktif,
+    rataRataKehadiran: nonLiburTotal > 0 ? Math.round((nonLiburHadir / nonLiburTotal) * 100) : 0,
+    totalHariDicatat: hariSet.size,
+    hariLiburBulanIni,
+  }
+
+  const kehadiranPerKegiatan: KehadiranPerKegiatanItem[] = Array.from(kegiatanMap.entries())
+    .map(([kegiatan_id, v]) => ({
+      kegiatan_id,
+      nama_kegiatan: v.nama,
+      total_hadir: v.hadir,
+      total_tercatat: v.total,
+      persentase: v.total > 0 ? Math.round((v.hadir / v.total) * 100) : 0,
+    }))
+    .sort((a, b) => b.total_hadir - a.total_hadir)
+    .slice(0, topN)
+
+  const trendHarian: TrendHarianItem[] = Array.from(dayMap.entries())
+    .map(([tanggal, v]) => ({
+      tanggal,
+      total_siswa: v.siswaSet.size,
+      total_hadir: v.hadirSet.size,
+      persentase_hadir: v.siswaSet.size > 0 ? Math.round((v.hadirSet.size / v.siswaSet.size) * 100) : 0,
+    }))
+    .sort((a, b) => a.tanggal.localeCompare(b.tanggal))
+
+  return { stats, kehadiranPerKegiatan, trendHarian }
+}
+
 /**
  * Hitung statistik dashboard mutabaah untuk satu bulan tertentu.
  * bulan: format 'yyyy-MM'

@@ -153,6 +153,9 @@ export default function SemesterPage() {
   }
   const invalidateSemester = () => {
     queryClient.invalidateQueries({ queryKey: ['semester'] })
+    queryClient.invalidateQueries({ queryKey: ['active-semester'] })
+    queryClient.invalidateQueries({ queryKey: ['active-semester-mutabaah'] })
+    queryClient.invalidateQueries({ queryKey: ['active-semester-diknas'] })
   }
 
   // ─── Mutations Tahun ─────────────────────────────────────────────────────
@@ -303,6 +306,41 @@ export default function SemesterPage() {
     }
   }
 
+  const handleActivateTahun = (id: string) => {
+    if (!id || id.trim() === '') {
+      console.error('ID Tahun Pelajaran tidak valid atau kosong')
+      toast({
+        title: 'Gagal',
+        description: 'ID tahun pelajaran tidak valid',
+        variant: 'destructive',
+      })
+      return
+    }
+    setActiveTahunMutation.mutate(id)
+  }
+
+  const handleActivateSemester = (semesterId: string, tahunId: string) => {
+    if (!semesterId || semesterId.trim() === '') {
+      console.error('ID Semester tidak valid atau kosong')
+      toast({
+        title: 'Gagal',
+        description: 'ID semester tidak valid',
+        variant: 'destructive',
+      })
+      return
+    }
+    if (!tahunId || tahunId.trim() === '') {
+      console.error('ID Tahun Pelajaran tidak valid atau kosong')
+      toast({
+        title: 'Gagal',
+        description: 'Pilih tahun pelajaran terlebih dahulu',
+        variant: 'destructive',
+      })
+      return
+    }
+    setActiveSemesterMutation.mutate({ id: semesterId, tahunId })
+  }
+
   const onSubmitSemester = (values: SemesterFormValues) => {
     if (isSemEditOpen && editingSemester) {
       updateSemesterMutation.mutate({ id: editingSemester.id, values, old: editingSemester })
@@ -412,7 +450,7 @@ export default function SemesterPage() {
                             type="button"
                             variant="ghost"
                             size="icon"
-                            onClick={() => setActiveTahunMutation.mutate(tp.id)}
+                            onClick={() => handleActivateTahun(tp.id)}
                             title="Jadikan Aktif"
                             disabled={setActiveTahunMutation.isPending}
                           >
@@ -539,10 +577,7 @@ export default function SemesterPage() {
                             variant="ghost"
                             size="icon"
                             onClick={() =>
-                              setActiveSemesterMutation.mutate({
-                                id: sem.id,
-                                tahunId: selectedTahunId,
-                              })
+                              handleActivateSemester(sem.id, selectedTahunId)
                             }
                             title="Jadikan Aktif"
                             disabled={setActiveSemesterMutation.isPending}

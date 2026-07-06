@@ -98,13 +98,17 @@ export async function deleteTahunPelajaran(id: string): Promise<void> {
 }
 
 export async function setActiveTahunPelajaran(id: string): Promise<void> {
+  if (!id || id.trim() === '') {
+    throw new Error('ID tahun pelajaran tidak valid')
+  }
+
   const supabase = createClient()
 
-  // 1. Nonaktifkan semua
+  // 1. Nonaktifkan semua yang sedang aktif (hindari .neq('id', '') — invalid UUID)
   const { error: resetError } = await supabase
     .from('tahun_pelajaran')
     .update({ is_aktif: false })
-    .neq('id', '')  // update semua rows
+    .eq('is_aktif', true)
 
   if (resetError) throw new Error(resetError.message)
 
@@ -188,13 +192,20 @@ export async function setActiveSemester(
   id: string,
   tahunPelajaranId: string
 ): Promise<void> {
+  if (!id || id.trim() === '') {
+    throw new Error('ID semester tidak valid')
+  }
+  if (!tahunPelajaranId || tahunPelajaranId.trim() === '') {
+    throw new Error('ID tahun pelajaran tidak valid')
+  }
+
   const supabase = createClient()
 
-  // 1. Nonaktifkan semua semester dalam tahun pelajaran yang sama
+  // 1. Nonaktifkan SEMUA semester aktif di seluruh sistem (single-active global)
   const { error: resetError } = await supabase
     .from('semester')
     .update({ is_aktif: false })
-    .eq('tahun_pelajaran_id', tahunPelajaranId)
+    .eq('is_aktif', true)
 
   if (resetError) throw new Error(resetError.message)
 

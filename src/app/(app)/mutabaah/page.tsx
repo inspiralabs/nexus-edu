@@ -30,18 +30,20 @@ import { cn } from '@/lib/utils'
 import {
   getKamar,
   getKamarByMusyrif,
-  getMutabaahDashboardStats,
-  getKehadiranPerKegiatan,
-  getTrendKehadiranHarian,
+  getMutabaahDashboardData,
   getMutabaahRankings,
   getKegiatanWithSub,
   getMutabaahProgressWithNames,
   hitungNilai,
   type KegiatanItem,
   type MutabaahRankingSiswa,
+  type MutabaahProgressWithName,
   type NilaiMutabaah,
 } from '@/lib/queries/mutabaah'
 import { getActiveSemester } from '@/lib/queries/semester'
+
+const EMPTY_ARRAY: any[] = []
+const EMPTY_PROGRESS: MutabaahProgressWithName[] = []
 
 // ─── Konstanta & Helper Styling Peringkat ─────────────────────────────────────
 
@@ -110,12 +112,14 @@ function RankingDetailDialog({
   kegiatanList: KegiatanItem[]
   onClose: () => void
 }) {
-  const { data: progressList = [], isLoading } = useQuery({
+  const { data: progressList = EMPTY_PROGRESS, isLoading } = useQuery({
     queryKey: ['mutabaah-progress-detail', siswa?.siswa_id, semesterId],
     queryFn: () =>
-      siswa ? getMutabaahProgressWithNames(siswa.siswa_id, semesterId) : Promise.resolve([]),
+      siswa ? getMutabaahProgressWithNames(siswa.siswa_id, semesterId) : Promise.resolve(EMPTY_PROGRESS),
     enabled: !!siswa && !!semesterId,
     retry: false,
+    staleTime: 1 * 60 * 1000,
+    refetchOnWindowFocus: false,
   })
 
   const [expandedKegiatan, setExpandedKegiatan] = useState<Record<string, boolean>>({})
@@ -343,6 +347,8 @@ export default function DashboardMutabaahPage() {
     queryKey: ['active-semester-mutabaah'],
     queryFn: getActiveSemester,
     retry: false,
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
   })
 
   const { data: rankingsData, isLoading: loadingRankings } = useQuery({
@@ -351,13 +357,17 @@ export default function DashboardMutabaahPage() {
       activeSemester ? getMutabaahRankings(activeSemester.id, rankingUnit) : Promise.resolve({ topRajin: [], topPerluMotivasi: [] }),
     enabled: !!activeSemester,
     retry: false,
+    staleTime: 1 * 60 * 1000,
+    refetchOnWindowFocus: false,
   })
 
-  const { data: kegiatanList = [] } = useQuery({
+  const { data: kegiatanList = EMPTY_ARRAY } = useQuery({
     queryKey: ['kegiatan-list-with-sub', activeSemester?.id],
     queryFn: () => getKegiatanWithSub(),
     enabled: !!activeSemester,
     retry: false,
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
   })
 
   const [selectedUnit, setSelectedUnit] = useState<string>('all')
@@ -416,7 +426,7 @@ export default function DashboardMutabaahPage() {
   }, [activeSemester])
 
   // ── Query Kamar ──
-  const { data: kamarList = [], isLoading: loadingKamar } = useQuery({
+  const { data: kamarList = EMPTY_ARRAY, isLoading: loadingKamar } = useQuery({
     queryKey: ['kamar-dashboard', profile?.id, isAdmin],
     queryFn: async () => {
       if (!profile) return []
@@ -427,6 +437,8 @@ export default function DashboardMutabaahPage() {
     },
     enabled: !!profile,
     retry: false,
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
   })
 
   const filteredKamarList = useMemo(() => {
@@ -441,47 +453,41 @@ export default function DashboardMutabaahPage() {
   }, [kamarList, selectedUnit, filterKategori])
 
   useEffect(() => {
+    if (loadingKamar) return
     if (selectedKamar !== 'all') {
       const exists = filteredKamarList.some((k) => k.nama_kamar === selectedKamar)
       if (!exists) setSelectedKamar('all')
     }
-  }, [filteredKamarList, selectedKamar])
+  }, [filteredKamarList, selectedKamar, loadingKamar])
 
   const kamarFilter = selectedKamar === 'all' ? undefined : selectedKamar
 
-  // ── Query Stats ──
-  const { data: stats, isLoading: loadingStats } = useQuery({
-    queryKey: ['mutabaah-dashboard-stats', kamarFilter, selectedBulan, selectedUnit, filterKategori],
-    queryFn: () => getMutabaahDashboardStats(kamarFilter, selectedBulan, selectedUnit, filterKategori),
+  // ── Satu query gabungan untuk semua data dashboard utama ───────────────────
+  // Menggantikan 3 query terpisah (stats / kehadiranPerKegiatan / trendHarian)
+  // yang masing-masing memanggil resolveSiswaIds() secara duplikat.
+  const { data: dashboardData, isLoading: loadingDashboard } = useQuery({
+    queryKey: ['mutabaah-dashboard', kamarFilter, selectedBulan, selectedUnit, filterKategori],
+    queryFn: () => getMutabaahDashboardData(kamarFilter, selectedBulan, selectedUnit, filterKategori),
     enabled: !!selectedBulan && !!activeSemester,
     retry: false,
+    staleTime: 1 * 60 * 1000,
+    refetchOnWindowFocus: false,
   })
 
-  // ── Query Kehadiran Per Kegiatan ──
-  const { data: kehadiranPerKegiatan = [], isLoading: loadingBar } = useQuery({
-    queryKey: ['mutabaah-kehadiran-per-kegiatan', kamarFilter, selectedBulan, selectedUnit, filterKategori],
-    queryFn: () => getKehadiranPerKegiatan(kamarFilter, selectedBulan, 5, selectedUnit, filterKategori),
-    enabled: !!selectedBulan && !!activeSemester,
-    retry: false,
-  })
-
-  // ── Query Tren Harian ──
-  const { data: trendHarian = [], isLoading: loadingLine } = useQuery({
-    queryKey: ['mutabaah-trend-harian', kamarFilter, selectedBulan, selectedUnit, filterKategori],
-    queryFn: () => getTrendKehadiranHarian(kamarFilter, selectedBulan, selectedUnit, filterKategori),
-    enabled: !!selectedBulan && !!activeSemester,
-    retry: false,
-  })
+  const stats = dashboardData?.stats
+  const loadingStats = loadingDashboard
+  const loadingBar = loadingDashboard
+  const loadingLine = loadingDashboard
 
   // Format data untuk chart
-  const barData = kehadiranPerKegiatan.map((item) => ({
+  const barData = (dashboardData?.kehadiranPerKegiatan ?? []).map((item) => ({
     name: item.nama_kegiatan.length > 16 ? item.nama_kegiatan.slice(0, 16) + '…' : item.nama_kegiatan,
     fullName: item.nama_kegiatan,
     hadir: item.total_hadir,
     persen: item.persentase,
   }))
 
-  const lineData = trendHarian.map((item) => ({
+  const lineData = (dashboardData?.trendHarian ?? []).map((item) => ({
     tgl: format(new Date(item.tanggal), 'd'),
     persen: item.persentase_hadir,
     hadir: item.total_hadir,
