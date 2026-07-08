@@ -57,6 +57,7 @@ import {
   updatePrestasi,
   type CreatePrestasiInput,
 } from '@/lib/queries/prestasi'
+import { getKelasOptions } from '@/lib/queries/diknas'
 import { getStudentClasses, searchStudents } from '@/lib/queries/students'
 import { createClient } from '@/lib/supabase/client'
 import type {
@@ -71,6 +72,7 @@ import type {
 
 const PAGE_SIZE_OPTIONS = [10, 20, 30, 40, 50] as const
 const UNITS: Unit[] = ['SD', 'SMP', 'SMA']
+const EMPTY_KELAS_LIST: { id: string; nama_kelas: string }[] = []
 
 type TipePrestasi = 'siswa' | 'guru'
 
@@ -89,6 +91,7 @@ const prestasiSchema = z.object({
   tingkat_kejuaraan: z.enum(
     [...TINGKAT_KEJUARAAN] as [TingkatKejuaraan, ...TingkatKejuaraan[]]
   ),
+  kelas_saat_prestasi: z.string().min(1, 'Pilih kelas saat meraih prestasi'),
 })
 
 // Schema guru
@@ -152,6 +155,7 @@ function prestasiToRecord(item: Prestasi): Record<string, unknown> {
     bidang_id: item.bidang_id,
     kategori_id: item.kategori_id,
     tingkat_kejuaraan: item.tingkat_kejuaraan,
+    kelas_saat_prestasi: item.kelas_saat_prestasi,
     created_at: item.created_at,
   }
 }
@@ -365,8 +369,6 @@ export default function PrestasiDataPage() {
   const [editingItem, setEditingItem] = useState<Prestasi | null>(null)
   const [deletingItem, setDeletingItem] = useState<Prestasi | null>(null)
 
-  const [kelasDisplay, setKelasDisplay] = useState('')
-
   const [guruSearch, setGuruSearch] = useState('')
   const [guruOptions, setGuruOptions] = useState<ComboboxOption[]>([])
 
@@ -423,6 +425,7 @@ export default function PrestasiDataPage() {
       bidang_id: '',
       kategori_id: '',
       tingkat_kejuaraan: 'Tingkat Sekolah',
+      kelas_saat_prestasi: '',
     },
   })
 
@@ -490,6 +493,12 @@ export default function PrestasiDataPage() {
   const { data: studentClasses = [] } = useQuery({
     queryKey: ['students', 'classes', activeUnit],
     queryFn: () => getStudentClasses(activeUnit),
+  })
+
+  const { data: kelasList = EMPTY_KELAS_LIST } = useQuery({
+    queryKey: ['kelas-options', activeUnit],
+    queryFn: () => getKelasOptions(activeUnit),
+    enabled: (isFormOpen || isBulkAddOpen) && activeTipe === 'siswa',
   })
 
   const { data: juaraFilterList = [] } = useQuery({
@@ -691,6 +700,7 @@ export default function PrestasiDataPage() {
     bidang_id: values.bidang_id,
     kategori_id: values.kategori_id,
     tingkat_kejuaraan: values.tingkat_kejuaraan,
+    kelas_saat_prestasi: values.kelas_saat_prestasi || undefined,
   })
 
   const buildGuruPayload = (values: PrestasiGuruFormValues): CreatePrestasiInput => ({
@@ -743,6 +753,7 @@ export default function PrestasiDataPage() {
         bidang_id: sValues.bidang_id,
         kategori_id: sValues.kategori_id,
         tingkat_kejuaraan: sValues.tingkat_kejuaraan,
+        kelas_saat_prestasi: sValues.kelas_saat_prestasi || undefined,
       }
     }
   }
@@ -952,7 +963,6 @@ export default function PrestasiDataPage() {
     setJuaraSearch('')
     setBidangSearch('')
     setKategoriSearch('')
-    setKelasDisplay('')
 
     // Restore options synchronously from React Query cache for empty search terms
     const cachedStudents = queryClient.getQueryData<any[]>(['students-search', '', activeUnit])
@@ -1070,6 +1080,7 @@ export default function PrestasiDataPage() {
       bidang_id: '',
       kategori_id: '',
       tingkat_kejuaraan: 'Tingkat Sekolah',
+      kelas_saat_prestasi: '',
     })
     guruForm.reset({
       unit,
@@ -1172,7 +1183,6 @@ export default function PrestasiDataPage() {
             label: `${item.students?.nama ?? 'Siswa Dihapus'} - ${item.students?.kelas?.nama_kelas || '-'}`,
           },
         ])
-        setKelasDisplay(item.students?.kelas?.nama_kelas ?? '')
       }
 
       if (item.event && item.event_id) {
@@ -1213,6 +1223,10 @@ export default function PrestasiDataPage() {
         bidang_id: item.bidang_id ?? '',
         kategori_id: item.kategori_id ?? '',
         tingkat_kejuaraan: item.tingkat_kejuaraan ?? 'Tingkat Sekolah',
+        kelas_saat_prestasi:
+          item.kelas_saat_prestasi ??
+          item.students?.kelas?.nama_kelas ??
+          '',
       })
     }
     setIsEditOpen(true)
@@ -1261,7 +1275,7 @@ export default function PrestasiDataPage() {
         localId: crypto.randomUUID(),
         ...buildPayload({ ...values, unit: activeUnit }),
         siswaLabel,
-        kelas: kelasDisplay,
+        kelas: values.kelas_saat_prestasi,
         eventLabel,
         juaraLabel,
       },
@@ -1330,7 +1344,10 @@ export default function PrestasiDataPage() {
         id: 'kelas',
         header: 'Kelas',
         enableSorting: false,
-        cell: ({ row }) => row.original.students?.kelas?.nama_kelas ?? '-',
+        cell: ({ row }) =>
+          row.original.kelas_saat_prestasi ??
+          row.original.students?.kelas?.nama_kelas ??
+          '-',
       },
       {
         id: 'event',
@@ -1507,6 +1524,23 @@ export default function PrestasiDataPage() {
     [page, pageSize]
   )
 
+  const selectedKelasSaatPrestasi = form.watch('kelas_saat_prestasi')
+  const kelasDropdownOptions = useMemo(() => {
+    if (
+      selectedKelasSaatPrestasi &&
+      !kelasList.some((k) => k.nama_kelas === selectedKelasSaatPrestasi)
+    ) {
+      return [
+        {
+          id: `legacy-${selectedKelasSaatPrestasi}`,
+          nama_kelas: selectedKelasSaatPrestasi,
+        },
+        ...kelasList,
+      ]
+    }
+    return kelasList
+  }, [kelasList, selectedKelasSaatPrestasi])
+
   const renderPrestasiFormFields = (showAddToListButton = false, isGuru = false) => {
     const watchField = (field: any) => {
       return isGuru ? guruForm.watch(field) : form.watch(field)
@@ -1536,8 +1570,12 @@ export default function PrestasiDataPage() {
                 value={form.watch('siswa_id')}
                 onSelect={(value, label) => {
                   form.setValue('siswa_id', value, { shouldValidate: true })
-                  const kelasPart = label.split(' - ')[1]
-                  setKelasDisplay(kelasPart ?? '')
+                  const kelasPart = label.split(' - ')[1]?.trim()
+                  if (kelasPart && kelasPart !== '-') {
+                    form.setValue('kelas_saat_prestasi', kelasPart, {
+                      shouldValidate: true,
+                    })
+                  }
                 }}
                 onSearch={setStudentSearch}
                 placeholder="Cari siswa..."
@@ -1551,8 +1589,31 @@ export default function PrestasiDataPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="kelas">Kelas</Label>
-              <Input id="kelas" value={kelasDisplay} disabled readOnly />
+              <Label>Kelas Saat Meraih Prestasi</Label>
+              <Select
+                value={form.watch('kelas_saat_prestasi') || undefined}
+                onValueChange={(value) =>
+                  form.setValue('kelas_saat_prestasi', value, {
+                    shouldValidate: true,
+                  })
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Pilih kelas..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {kelasDropdownOptions.map((kelas) => (
+                    <SelectItem key={kelas.id} value={kelas.nama_kelas}>
+                      {kelas.nama_kelas}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {form.formState.errors.kelas_saat_prestasi && (
+                <p className="text-xs text-status-red">
+                  {form.formState.errors.kelas_saat_prestasi.message}
+                </p>
+              )}
             </div>
           </>
         )}
@@ -2011,6 +2072,7 @@ export default function PrestasiDataPage() {
                     <TableRow>
                       <TableHead>Waktu</TableHead>
                       <TableHead>Siswa</TableHead>
+                      <TableHead>Kelas</TableHead>
                       <TableHead>Event</TableHead>
                       <TableHead>Juara</TableHead>
                       <TableHead className="w-12" />
@@ -2021,6 +2083,7 @@ export default function PrestasiDataPage() {
                       <TableRow key={item.localId}>
                         <TableCell>{formatTanggal(item.waktu)}</TableCell>
                         <TableCell>{item.siswaLabel}</TableCell>
+                        <TableCell>{item.kelas_saat_prestasi ?? item.kelas ?? '-'}</TableCell>
                         <TableCell>{item.eventLabel}</TableCell>
                         <TableCell>{item.juaraLabel}</TableCell>
                         <TableCell>

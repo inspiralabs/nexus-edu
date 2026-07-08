@@ -25,6 +25,7 @@ export interface CreatePrestasiInput {
   bidang_id: string
   kategori_id: string
   tingkat_kejuaraan: TingkatKejuaraan
+  kelas_saat_prestasi?: string
 }
 
 export interface PrestasiFilters {

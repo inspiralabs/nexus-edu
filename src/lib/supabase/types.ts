@@ -145,6 +145,7 @@ export interface Prestasi {
   tipe: 'siswa' | 'guru' | null
   guru_id: string | null
   sudah_dilempar_kedisiplinan: boolean | null
+  kelas_saat_prestasi: string | null
   created_at: string
   students?: Student
   event?: Event
